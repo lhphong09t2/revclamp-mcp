@@ -4,7 +4,7 @@
 
 **`revclamp-mcp`** is the official Model Context Protocol (MCP) `stdio` bridge and CLI diagnostic client for [**RevClamp Enterprise**](https://revclamp.com). It connects Claude Desktop, Cursor, Windsurf, Cline, and CI pipelines to RevClamp's Streamable HTTP MCP endpoint (`POST https://api.revclamp.com/api/mcp`) with zero external npm dependencies.
 
-## Exposed MCP Tools (5)
+## Exposed MCP Tools (6)
 
 | Tool Name | Domain | Primary Capability | Mode |
 | :---: | :---: | :---: | :---: |
@@ -13,6 +13,7 @@
 | `revclamp_stage_stripe_dispute_ce3` | Visa 10.4 / CE 3.0 | Evaluates 120d–365d prior undisputed charges (`ip_subnet`/`device_id` overlap) and stages a `submit: false` draft (`<= 18,000` UTF-16 code units) | Stateless Sandbox or Workspace Key |
 | `revclamp_validate_eu_vat_vies` | EU & `XI` B2B VAT | Normalizes 27 EU member states + Northern Ireland (`XI`) VAT IDs (`GR -> EL`) and evaluates VIES `HTTP 200` `errorWrappers` holds | Stateless Sandbox or Workspace Key |
 | `revclamp_reconcile_b2b_net_terms` | B2B Wholesale Net-30 | Reconciles Net-15/30/60 upfront deposits and credit notes using integer EUR-cent accounting | Stateless Sandbox or Workspace Key |
+| `revclamp_verify_webhook_signature` | Webhook HMAC-SHA256 | Generates and verifies `Stripe-Signature`, `X-Shopify-Hmac-Sha256`, and `X-RevClamp-Signature` over raw UTF-8 bytes with 300s replay checks | Stateless Sandbox or Workspace Key |
 
 ## Quick Start (Claude Desktop / Cursor / Windsurf)
 
@@ -43,7 +44,7 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 ## CLI Usage
 
 ```bash
-# List all 5 MCP tools and JSON schemas
+# List all 6 MCP tools and JSON schemas
 node index.mjs --list-tools
 
 # Validate an EU or Northern Ireland (XI) B2B VAT ID (auto-converts Greece GR -> EL)

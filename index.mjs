@@ -400,7 +400,7 @@ function printHelp() {
       "",
       "Usage:",
       "  revclamp-mcp                                         Start MCP stdio server (for Claude Desktop / Cursor)",
-      "  revclamp-mcp --list-tools                            List all 5 exposed RevClamp MCP tools",
+      "  revclamp-mcp --list-tools                            List all 6 exposed RevClamp MCP tools",
       "  revclamp-mcp --check-vat <VAT_ID> [sellerCC] [mode]  Validate an EU or XI VAT identifier via MCP (default mode: LIVE)",
       "  revclamp-mcp --call <tool_name> '<json_args>'        Invoke any RevClamp MCP tool directly",
       "",
