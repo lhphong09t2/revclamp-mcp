@@ -10,6 +10,7 @@
   "files": [
     "index.mjs",
     "mcp-config.json",
+    "glama.json",
     "README.md",
     "LICENSE"
   ],
