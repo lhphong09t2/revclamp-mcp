@@ -400,8 +400,9 @@ function printHelp() {
       "",
       "Usage:",
       "  revclamp-mcp                                         Start MCP stdio server (for Claude Desktop / Cursor)",
-      "  revclamp-mcp --list-tools                            List all 6 exposed RevClamp MCP tools",
+      "  revclamp-mcp --list-tools                            List all 7 exposed RevClamp MCP tools",
       "  revclamp-mcp --check-vat <VAT_ID> [sellerCC] [mode]  Validate an EU or XI VAT identifier via MCP (default mode: LIVE)",
+      "  revclamp-mcp --calc-roi [disputeUsd] [bleedUsd] [ratePct] [events]  Calculate 0% take-rate ROI & plan fit",
       "  revclamp-mcp --call <tool_name> '<json_args>'        Invoke any RevClamp MCP tool directly",
       "",
       "Environment Variables:",
@@ -457,6 +458,58 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
         params: {
           name: "revclamp_validate_eu_vat_vies",
           arguments: { sellerCountry, buyerVatId, viesMode },
+        },
+      },
+      options
+    );
+    console.log(JSON.stringify(res, null, 2));
+    return !res || res.error || res.result?.isError === true ? 1 : 0;
+  }
+
+  const roiIdx = argv.indexOf("--calc-roi");
+  if (roiIdx !== -1) {
+    const positional = [];
+    for (let i = roiIdx + 1; i < argv.length; i += 1) {
+      const token = String(argv[i] ?? "").trim();
+      if (token.startsWith("--")) break;
+      positional.push(token);
+    }
+    if (positional.length > 4) {
+      console.error(
+        "Error: --calc-roi accepts at most 4 arguments: [disputeUsd] [bleedUsd] [ratePct] [events]"
+      );
+      return 1;
+    }
+    const parseCliDecimal = (rawStr, defVal, minV, maxV, intOnly = false) => {
+      if (rawStr === undefined) return { ok: true, value: defVal };
+      const pattern = intOnly ? /^\d+$/ : /^\d+(?:\.\d{1,2})?$/;
+      if (!pattern.test(rawStr)) return { ok: false };
+      const val = Number(rawStr);
+      if (!Number.isFinite(val) || val < minV || val > maxV) return { ok: false };
+      if (intOnly && !Number.isInteger(val)) return { ok: false };
+      return { ok: true, value: val };
+    };
+    const pDispute = parseCliDecimal(positional[0], 10_000, 0, 10_000_000, false);
+    const pBleed = parseCliDecimal(positional[1], 600, 0, 10_000_000, false);
+    const pRate = parseCliDecimal(positional[2], 25, 1, 50, false);
+    const pEvents = parseCliDecimal(positional[3], 250_000, 0, 50_000_000, true);
+    if (!pDispute.ok || !pBleed.ok || !pRate.ok || !pEvents.ok) {
+      console.error("Error: invalid --calc-roi numeric arguments");
+      return 1;
+    }
+    const res = await forwardMcpJsonRpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "revclamp_calculate_roi_and_plan_fit",
+          arguments: {
+            monthlyWonDisputeUsd: pDispute.value,
+            monthlyGhostBleedUsd: pBleed.value,
+            contingencyTakeRatePercent: pRate.value,
+            monthlyUsageEvents: pEvents.value,
+          },
         },
       },
       options
