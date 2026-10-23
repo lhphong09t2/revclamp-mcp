@@ -1,0 +1,39 @@
+{
+  "name": "revclamp-mcp",
+  "version": "1.0.0",
+  "description": "Model Context Protocol (MCP) server and CLI for Stripe 2025-03-31.basil entitlement checks, Visa CE 3.0 dispute staging, and EU VIES VAT validation.",
+  "type": "module",
+  "main": "./index.mjs",
+  "bin": {
+    "revclamp-mcp": "./index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "mcp-config.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node ./index.mjs",
+    "list-tools": "node ./index.mjs --list-tools"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "stripe",
+    "chargebacks",
+    "visa-ce3",
+    "eu-vat",
+    "vies",
+    "b2b-billing"
+  ],
+  "homepage": "https://revclamp.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lhphong09t2/revclamp-mcp.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
