@@ -300,32 +300,104 @@ export async function forwardMcpJsonRpc(
 export function startMcpStdioServer(options = {}) {
   const inputStream = options.inputStream || process.stdin;
   const outputStream = options.outputStream || process.stdout;
+  const maxPendingQueue =
+    Number.isInteger(options.maxPendingQueue) && options.maxPendingQueue > 0
+      ? options.maxPendingQueue
+      : 64;
   let lineBuffer = Buffer.alloc(0);
   let discardingOversizedLine = false;
+  let outputClosed = false;
+  let drainingOutput = false;
+  let inputPausedForQueue = false;
+  let pendingQueueCount = 0;
   let queue = Promise.resolve();
 
-  const emitOversizedError = () => {
-    outputStream.write(
+  const closeTransport = () => {
+    outputClosed = true;
+    try {
+      inputStream.pause?.();
+    } catch {}
+    try {
+      if (typeof outputStream.destroy === "function" && outputStream !== process.stdout) {
+        outputStream.destroy();
+      } else if (typeof outputStream.end === "function" && outputStream !== process.stdout) {
+        outputStream.end();
+      }
+    } catch {}
+  };
+
+  outputStream.on?.("error", () => {
+    closeTransport();
+  });
+  inputStream.on?.("error", () => {
+    closeTransport();
+  });
+
+  const safeWrite = async (payloadStr) => {
+    if (outputClosed || outputStream.destroyed || outputStream.writableEnded) {
+      return;
+    }
+    try {
+      const canContinue = outputStream.write(payloadStr);
+      if (canContinue === false && typeof outputStream.once === "function") {
+        drainingOutput = true;
+        try {
+          inputStream.pause?.();
+        } catch {}
+        const drained = await new Promise((resolve) => {
+          const onDrain = () => {
+            clearTimeout(timer);
+            resolve(true);
+          };
+          const timer = setTimeout(() => {
+            outputStream.off?.("drain", onDrain);
+            outputStream.removeListener?.("drain", onDrain);
+            resolve(false);
+          }, 2000);
+          timer.unref?.();
+          outputStream.once("drain", onDrain);
+        });
+        drainingOutput = false;
+        if (!drained) {
+          closeTransport();
+          return;
+        }
+        if (!outputClosed && !inputPausedForQueue) {
+          try {
+            inputStream.resume?.();
+          } catch {}
+        }
+      }
+    } catch {
+      closeTransport();
+    }
+  };
+
+  const emitOversizedError = () =>
+    safeWrite(
       `${JSON.stringify({
         jsonrpc: "2.0",
         id: null,
-        error: { code: -32600, message: "Payload exceeds 32,768 bytes" },
+        error: {
+          code: -32600,
+          message: `Payload exceeds ${MAX_PAYLOAD_BYTES.toLocaleString("en-US")} bytes`,
+        },
       })}\n`
     );
-  };
 
   const processCompleteLine = async (rawLineBuffer) => {
+    if (outputClosed || outputStream.destroyed || outputStream.writableEnded) return;
     const trimmed = rawLineBuffer.toString("utf8").trim();
     if (!trimmed) return;
     if (Buffer.byteLength(trimmed, "utf8") > MAX_PAYLOAD_BYTES) {
-      emitOversizedError();
+      await emitOversizedError();
       return;
     }
     let parsed;
     try {
       parsed = JSON.parse(trimmed);
     } catch {
-      outputStream.write(
+      await safeWrite(
         `${JSON.stringify({
           jsonrpc: "2.0",
           id: null,
@@ -334,13 +406,97 @@ export function startMcpStdioServer(options = {}) {
       );
       return;
     }
-    const response = await forwardMcpJsonRpc(parsed, options);
-    if (response !== null && response !== undefined) {
-      outputStream.write(`${JSON.stringify(response)}\n`);
+    let serializedResponse = null;
+    try {
+      const response = await forwardMcpJsonRpc(parsed, options);
+      if (response !== null && response !== undefined) {
+        serializedResponse = `${JSON.stringify(response)}\n`;
+      }
+    } catch {
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        Object.prototype.hasOwnProperty.call(parsed, "id")
+      ) {
+        await safeWrite(
+          `${JSON.stringify({
+            jsonrpc: "2.0",
+            id: parsed.id ?? null,
+            error: { code: -32603, message: "Internal JSON-RPC transport error" },
+          })}\n`
+        );
+      }
+      return;
+    }
+    if (serializedResponse !== null) {
+      await safeWrite(serializedResponse);
     }
   };
 
+  const emitQueueOverflowError = async (rawLineBuffer) => {
+    if (outputClosed || outputStream.destroyed || outputStream.writableEnded) return;
+    let reqId = null;
+    if (rawLineBuffer) {
+      try {
+        const parsed = JSON.parse(rawLineBuffer.toString("utf8").trim());
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed) &&
+          !Object.prototype.hasOwnProperty.call(parsed, "id")
+        ) {
+          return;
+        }
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          reqId = parsed.id ?? null;
+        }
+      } catch {}
+    }
+    await safeWrite(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: reqId,
+        error: { code: -32000, message: "MCP stdio queue capacity exceeded" },
+      })}\n`
+    );
+  };
+
+  const enqueueTask = (taskFn, overflowFallbackFn = null) => {
+    if (outputClosed) return;
+    if (pendingQueueCount >= maxPendingQueue) {
+      inputPausedForQueue = true;
+      try {
+        inputStream.pause?.();
+      } catch {}
+      if (overflowFallbackFn) {
+        queue = queue.then(() => overflowFallbackFn()).catch(() => {});
+      }
+      return;
+    }
+    pendingQueueCount += 1;
+    if (pendingQueueCount >= maxPendingQueue) {
+      inputPausedForQueue = true;
+      try {
+        inputStream.pause?.();
+      } catch {}
+    }
+    queue = queue
+      .then(() => taskFn())
+      .catch(() => {})
+      .finally(() => {
+        pendingQueueCount = Math.max(0, pendingQueueCount - 1);
+        if (inputPausedForQueue && pendingQueueCount < maxPendingQueue && !outputClosed && !drainingOutput) {
+          inputPausedForQueue = false;
+          try {
+            inputStream.resume?.();
+          } catch {}
+        }
+      });
+  };
+
   inputStream.on("data", (chunk) => {
+    if (outputClosed) return;
     let remaining = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8");
     while (remaining.length > 0) {
       const nlIdx = remaining.indexOf(0x0a);
@@ -367,28 +523,35 @@ export function startMcpStdioServer(options = {}) {
       if (discardingOversizedLine) {
         discardingOversizedLine = false;
         lineBuffer = Buffer.alloc(0);
-        queue = queue.then(() => emitOversizedError());
+        enqueueTask(() => emitOversizedError());
       } else if (lineBuffer.length + segment.length > MAX_PAYLOAD_BYTES) {
         lineBuffer = Buffer.alloc(0);
-        queue = queue.then(() => emitOversizedError());
+        enqueueTask(() => emitOversizedError());
       } else {
         const fullLine =
           lineBuffer.length === 0 ? segment : Buffer.concat([lineBuffer, segment]);
         lineBuffer = Buffer.alloc(0);
-        queue = queue.then(() => processCompleteLine(fullLine));
+        enqueueTask(
+          () => processCompleteLine(fullLine),
+          () => emitQueueOverflowError(fullLine)
+        );
       }
     }
   });
 
   inputStream.on("end", () => {
+    if (outputClosed) return;
     if (discardingOversizedLine) {
       discardingOversizedLine = false;
       lineBuffer = Buffer.alloc(0);
-      queue = queue.then(() => emitOversizedError());
+      enqueueTask(() => emitOversizedError());
     } else if (lineBuffer.length > 0) {
       const fullLine = lineBuffer;
       lineBuffer = Buffer.alloc(0);
-      queue = queue.then(() => processCompleteLine(fullLine));
+      enqueueTask(
+        () => processCompleteLine(fullLine),
+        () => emitQueueOverflowError(fullLine)
+      );
     }
   });
 }
