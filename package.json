@@ -1,7 +1,7 @@
 {
   "name": "revclamp-mcp",
-  "version": "1.0.0",
-  "description": "Model Context Protocol (MCP) server and CLI for Stripe 2025-03-31.basil entitlement checks, Visa CE 3.0 dispute staging, and EU VIES VAT validation.",
+  "version": "1.19.0",
+  "description": "Model Context Protocol (MCP) server and CLI for Stripe 2025-03-31.basil entitlement checks, Visa CE 3.0 dispute staging (submit: false), EU/XI VIES VAT validation, Shopify Plus B2B Net-15/30/60 reconciliation, webhook HMAC-SHA256 verification, 0% take-rate ROI calculation, and 72-hour webhook replay & out-of-order state-machine simulation.",
   "type": "module",
   "main": "./index.mjs",
   "bin": {

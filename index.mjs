@@ -563,9 +563,10 @@ function printHelp() {
       "",
       "Usage:",
       "  revclamp-mcp                                         Start MCP stdio server (for Claude Desktop / Cursor)",
-      "  revclamp-mcp --list-tools                            List all 7 exposed RevClamp MCP tools",
+      "  revclamp-mcp --list-tools                            List all 8 exposed RevClamp MCP tools",
       "  revclamp-mcp --check-vat <VAT_ID> [sellerCC] [mode]  Validate an EU or XI VAT identifier via MCP (default mode: LIVE)",
       "  revclamp-mcp --calc-roi [disputeUsd] [bleedUsd] [ratePct] [events]  Calculate 0% take-rate ROI & plan fit",
+      "  revclamp-mcp --sim-replay [presetKey] [windowSec]    Simulate webhook replay & out-of-order state machine",
       "  revclamp-mcp --call <tool_name> '<json_args>'        Invoke any RevClamp MCP tool directly",
       "",
       "Environment Variables:",
@@ -673,6 +674,60 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
             contingencyTakeRatePercent: pRate.value,
             monthlyUsageEvents: pEvents.value,
           },
+        },
+      },
+      options
+    );
+    console.log(JSON.stringify(res, null, 2));
+    return !res || res.error || res.result?.isError === true ? 1 : 0;
+  }
+
+  const simReplayIdx = argv.indexOf("--sim-replay");
+  if (simReplayIdx !== -1) {
+    const positional = [];
+    for (let i = simReplayIdx + 1; i < argv.length; i += 1) {
+      const token = String(argv[i] ?? "").trim();
+      if (token.startsWith("--")) break;
+      positional.push(token);
+    }
+    if (positional.length > 2) {
+      console.error(
+        "Error: --sim-replay accepts at most 2 arguments: [presetKey] [idempotencyWindowSec]"
+      );
+      return 1;
+    }
+    const allowedPresets = new Set([
+      "out_of_order_stale_update_after_cancel",
+      "duplicate_event_id_replay_72h",
+      "valid_monotonic_upgrade_sequence",
+      "expired_72h_window_stale_event",
+    ]);
+    const presetKey = positional[0] || "out_of_order_stale_update_after_cancel";
+    if (!allowedPresets.has(presetKey)) {
+      console.error(`Error: invalid --sim-replay preset '${presetKey}'`);
+      return 1;
+    }
+    const replayArgs = { scenarioPreset: presetKey };
+    if (positional[1] !== undefined) {
+      if (!/^\d+$/.test(positional[1])) {
+        console.error("Error: invalid --sim-replay idempotencyWindowSec argument");
+        return 1;
+      }
+      const winSec = Number(positional[1]);
+      if (!Number.isInteger(winSec) || winSec < 60 || winSec > 2_592_000) {
+        console.error("Error: invalid --sim-replay idempotencyWindowSec argument");
+        return 1;
+      }
+      replayArgs.idempotencyWindowSec = winSec;
+    }
+    const res = await forwardMcpJsonRpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "revclamp_simulate_webhook_replay",
+          arguments: replayArgs,
         },
       },
       options

@@ -4,7 +4,7 @@
 
 **`revclamp-mcp`** is the official Model Context Protocol (MCP) `stdio` bridge and CLI diagnostic client for [**RevClamp Enterprise**](https://revclamp.com). It connects Claude Desktop, Cursor, Windsurf, Cline, and CI pipelines to RevClamp's Streamable HTTP MCP endpoint (`POST https://api.revclamp.com/api/mcp`) with zero external npm dependencies.
 
-## Exposed MCP Tools (7)
+## Exposed MCP Tools (8)
 
 | Tool Name | Domain | Primary Capability | Mode |
 | :---: | :---: | :---: | :---: |
@@ -15,6 +15,7 @@
 | `revclamp_reconcile_b2b_net_terms` | B2B Wholesale Net-30 | Reconciles Net-15/30/60 upfront deposits and credit notes using integer EUR-cent accounting | Stateless Sandbox or Workspace Key |
 | `revclamp_verify_webhook_signature` | Webhook HMAC-SHA256 | Generates and verifies `Stripe-Signature`, `X-Shopify-Hmac-Sha256`, and `X-RevClamp-Signature` over raw UTF-8 bytes with 300s replay checks | Stateless Sandbox or Workspace Key |
 | `revclamp_calculate_roi_and_plan_fit` | 0% Take-Rate ROI & Plan Fit | Calculates monthly and annual B2B margin savings in integer USD cents vs. 25%–30% chargeback agencies and recommends the optimal tier | Stateless Sandbox or Workspace Key |
+| `revclamp_simulate_webhook_replay` | Webhook Replay & FSM | Simulates 1–10 subscription lifecycle webhooks against a 72h deduplication `Set` and monotonic `createdSec` guard vs. naive arrival-order handlers | Stateless Sandbox or Workspace Key |
 
 ## Quick Start (Claude Desktop / Cursor / Windsurf)
 
@@ -45,7 +46,7 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 ## CLI Usage
 
 ```bash
-# List all 7 MCP tools and JSON schemas
+# List all 8 MCP tools and JSON schemas
 node index.mjs --list-tools
 
 # Validate an EU or Northern Ireland (XI) B2B VAT ID (auto-converts Greece GR -> EL)
@@ -53,6 +54,9 @@ node index.mjs --check-vat GR123456789 DE
 
 # Calculate 0% take-rate ROI and optimal flat-rate plan fit
 node index.mjs --calc-roi 10000 600 25 250000
+
+# Simulate out-of-order webhook replay and 72-hour deduplication state machine
+node index.mjs --sim-replay out_of_order_stale_update_after_cancel
 
 # Invoke Visa CE 3.0 readiness staging in Stateless Sandbox mode
 node index.mjs --call revclamp_stage_stripe_dispute_ce3 '{"disputeId":"du_1Qxyz01","customerId":"cus_ent_88","disputeReason":"fraudulent"}'
