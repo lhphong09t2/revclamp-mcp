@@ -1,7 +1,13 @@
 {
   "name": "deprecated-legacy-sandbox",
-  "version": "0.0.1",
+  "version": "1.0.1",
   "description": "Deprecated legacy sandbox stub",
   "type": "module",
-  "main": "index.mjs"
+  "main": "index.mjs",
+  "bin": {
+    "deprecated-legacy-sandbox": "./index.mjs"
+  },
+  "scripts": {
+    "start": "node index.mjs"
+  }
 }
