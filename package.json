@@ -1,40 +1,7 @@
 {
-  "name": "revclamp-mcp",
-  "version": "1.19.0",
-  "description": "Model Context Protocol (MCP) server and CLI for Stripe 2025-03-31.basil entitlement checks, Visa CE 3.0 dispute staging (submit: false), EU/XI VIES VAT validation, Shopify Plus B2B Net-15/30/60 reconciliation, webhook HMAC-SHA256 verification, 0% take-rate ROI calculation, and 72-hour webhook replay & out-of-order state-machine simulation.",
+  "name": "deprecated-legacy-sandbox",
+  "version": "0.0.1",
+  "description": "Deprecated legacy sandbox stub",
   "type": "module",
-  "main": "./index.mjs",
-  "bin": {
-    "revclamp-mcp": "./index.mjs"
-  },
-  "files": [
-    "index.mjs",
-    "mcp-config.json",
-    "glama.json",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "start": "node ./index.mjs",
-    "list-tools": "node ./index.mjs --list-tools"
-  },
-  "keywords": [
-    "mcp",
-    "mcp-server",
-    "stripe",
-    "chargebacks",
-    "visa-ce3",
-    "eu-vat",
-    "vies",
-    "b2b-billing"
-  ],
-  "homepage": "https://revclamp.com",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/lhphong09t2/revclamp-mcp.git"
-  },
-  "license": "MIT",
-  "engines": {
-    "node": ">=20.0.0"
-  }
+  "main": "index.mjs"
 }
