@@ -1,0 +1,25 @@
+# Smithery.ai MCP Server Configuration for revclamp-mcp
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required: []
+    properties:
+      revclampApiKey:
+        type: string
+        title: RevClamp Workspace API Key (Optional)
+        description: Optional rg_live_... workspace key from https://revclamp.com/dashboard. Leave blank for zero-key Stateless Sandbox mode.
+      revclampMcpUrl:
+        type: string
+        title: RevClamp MCP Endpoint URL
+        default: https://api.revclamp.com/api/mcp
+        description: Pinned HTTPS origin (https://api.revclamp.com/api/mcp or https://revclamp.com/api/mcp).
+  commandFunction: |-
+    (config) => ({
+      command: 'node',
+      args: ['./index.mjs'],
+      env: {
+        ...(config && config.revclampApiKey ? { REVCLAMP_API_KEY: config.revclampApiKey } : {}),
+        REVCLAMP_MCP_URL: (config && config.revclampMcpUrl) ? config.revclampMcpUrl : 'https://api.revclamp.com/api/mcp'
+      }
+    })

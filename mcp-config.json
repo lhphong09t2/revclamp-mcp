@@ -1,3 +1,31 @@
 {
-  "mcpServers": {}
+  "actorType": "mcp_server",
+  "pricingModel": {
+    "type": "pay_per_event",
+    "priceUsdc": 0.05,
+    "costCeilingUsdc": 0.01,
+    "platformFeeRate": 0.02,
+    "minMarginMultiplier": 2.5
+  },
+  "resourceLimits": {
+    "maxTimeoutSec": 10,
+    "maxMemoryMb": 128,
+    "maxPayloadBytes": 32768
+  },
+  "allowedEgressUrls": [
+    "https://api.revclamp.com",
+    "https://revclamp.com"
+  ],
+  "x402Spec": {
+    "chainId": 8453,
+    "assetAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "amountUsdc": 0.05,
+    "recipientAddress": "0xf70da97812CB96acDF810712Aa562db8dfA3dbEF",
+    "replayWindowSec": 60,
+    "requireUniqueNonce": true
+  },
+  "manifest": {
+    "name": "revclamp-mcp",
+    "version": "1.20.8"
+  }
 }

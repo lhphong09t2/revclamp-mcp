@@ -1,0 +1,43 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.revclamp/revclamp-mcp",
+  "description": "Zero-take-rate Stripe 2025-03-31.basil, Visa CE 3.0 & EU/UK VIES VAT guardrails MCP server.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/lhphong09t2/revclamp-mcp",
+    "source": "github"
+  },
+  "version": "1.20.8",
+  "packages": [
+    {
+      "registry_type": "npm",
+      "registry_base_url": "https://registry.npmjs.org",
+      "identifier": "revclamp-mcp",
+      "version": "1.20.8",
+      "transport": {
+        "type": "stdio"
+      },
+      "environment_variables": [
+        {
+          "name": "REVCLAMP_API_KEY",
+          "description": "Optional RevClamp workspace key (rg_live_...). Omit to run all 9 tools 100% locally in-process via local_engine.mjs.",
+          "is_required": false,
+          "is_secret": true
+        },
+        {
+          "name": "REVCLAMP_MCP_URL",
+          "description": "Optional Streamable HTTP MCP endpoint override (defaults to https://api.revclamp.com/api/mcp).",
+          "is_required": false,
+          "is_secret": false,
+          "default": "https://api.revclamp.com/api/mcp"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.revclamp.com/api/mcp"
+    }
+  ]
+}
