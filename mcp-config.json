@@ -26,6 +26,17 @@
   },
   "manifest": {
     "name": "revclamp-mcp",
-    "version": "1.20.8"
+    "version": "1.20.9",
+    "tools": [
+      "revclamp_audit_revenue_leakage",
+      "revclamp_evaluate_ghost_usage",
+      "revclamp_stage_stripe_dispute_ce3",
+      "revclamp_validate_eu_vat_vies",
+      "revclamp_reconcile_b2b_net_terms",
+      "revclamp_verify_webhook_signature",
+      "revclamp_calculate_roi_and_plan_fit",
+      "revclamp_simulate_webhook_replay",
+      "revclamp_lint_dispute_evidence"
+    ]
   }
 }

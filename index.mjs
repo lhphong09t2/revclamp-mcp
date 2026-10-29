@@ -33,7 +33,7 @@ export {
   executeLocalMcpJsonRpc,
 };
 
-export const PACKAGE_VERSION = "1.20.8";
+export const PACKAGE_VERSION = "1.20.9";
 export const DEFAULT_MCP_ENDPOINT = "https://api.revclamp.com/api/mcp";
 export const ALLOWED_MCP_ORIGINS = Object.freeze(
   new Set(["https://api.revclamp.com", "https://revclamp.com"])
@@ -874,18 +874,191 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
         effectiveOptions.apiUrl ||
         DEFAULT_MCP_ENDPOINT
     );
-    const smokeAudit = executeLocalMcpTool("revclamp_audit_revenue_leakage", { demo: true });
-    const toolsCount = Array.isArray(LOCAL_MCP_TOOLS) ? LOCAL_MCP_TOOLS.length : 0;
+    const expectedToolNames = [
+      "revclamp_audit_revenue_leakage",
+      "revclamp_evaluate_ghost_usage",
+      "revclamp_stage_stripe_dispute_ce3",
+      "revclamp_validate_eu_vat_vies",
+      "revclamp_reconcile_b2b_net_terms",
+      "revclamp_verify_webhook_signature",
+      "revclamp_calculate_roi_and_plan_fit",
+      "revclamp_simulate_webhook_replay",
+      "revclamp_lint_dispute_evidence",
+    ];
+    const selfTestFixtures = {
+      revclamp_audit_revenue_leakage: {
+        args: { demo: true },
+        verify: (r) => Boolean(r && r.ok === true && r.ghostEventsDetected > 0),
+      },
+      revclamp_evaluate_ghost_usage: {
+        args: {
+          customerId: "cus_selftest_01",
+          subscriptions: {
+            has_more: false,
+            data: [
+              {
+                customer: "cus_selftest_01",
+                status: "canceled",
+                current_period_end: 1750000000,
+              },
+            ],
+          },
+          usageEvent: {
+            customer_id: "cus_selftest_01",
+            occurred_at_sec: 1760000000,
+          },
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              r.isGhostUsage === true &&
+              r.decision === "DISPATCH_SIGNED_REVOKE_WEBHOOK"
+          ),
+      },
+      revclamp_stage_stripe_dispute_ce3: {
+        args: {
+          disputeId: "du_selftest_01",
+          customerId: "cus_selftest_01",
+          demo: true,
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              r.submit === false &&
+              typeof r.evidence?.access_activity_log === "string" &&
+              r.utf16CodeUnits <= 18000
+          ),
+      },
+      revclamp_validate_eu_vat_vies: {
+        args: {
+          sellerCountry: "DE",
+          buyerVatId: "XI123456789",
+          viesMode: "FORMAT_ONLY",
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              r.formatValid === true &&
+              r.crossBorderSupply === true &&
+              r.memberState === "XI"
+          ),
+      },
+      revclamp_reconcile_b2b_net_terms: {
+        args: {
+          orderId: "ord_selftest_01",
+          totalOrderCents: 100000,
+          paidAmountCents: 30000,
+          requiredDepositPercent: 30,
+          paymentTermsDays: 30,
+          daysElapsedSinceInvoice: 5,
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              r.fulfillmentAllowed === true &&
+              r.doubleEntryBalanced === true &&
+              r.remainingBalanceCents === 70000
+          ),
+      },
+      revclamp_verify_webhook_signature: {
+        args: {
+          provider: "stripe",
+          secret: "whsec_test_selftest_secret_2026",
+          rawPayload: '{"id":"evt_selftest_01","type":"customer.subscription.deleted"}',
+          demo: true,
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              typeof r.verification?.generatedHeader === "string" &&
+              r.verification.generatedHeader.includes("v1=")
+          ),
+      },
+      revclamp_calculate_roi_and_plan_fit: {
+        args: {
+          monthlyWonDisputeUsd: 10000,
+          monthlyGhostBleedUsd: 600,
+          contingencyTakeRatePercent: 25,
+          monthlyUsageEvents: 250000,
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              r.zeroTakeRateGuaranteed === true &&
+              r.annualNetMarginSavedCents > 0 &&
+              r.recommendedTier === "growth_59"
+          ),
+      },
+      revclamp_simulate_webhook_replay: {
+        args: {
+          scenarioPreset: "out_of_order_stale_update_after_cancel",
+          demo: true,
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              r.preventedStateCorruption === true &&
+              r.finalStatus === "canceled"
+          ),
+      },
+      revclamp_lint_dispute_evidence: {
+        args: {
+          preset: "valid_ce3_non_destructive",
+          demo: true,
+        },
+        verify: (r) =>
+          Boolean(
+            r &&
+              r.ok === true &&
+              r.within18kCeiling === true &&
+              r.withinCeiling === true &&
+              r.overallVerdict === "PASS_CE3_READY"
+          ),
+      },
+    };
+
+    const toolsList = Array.isArray(LOCAL_MCP_TOOLS) ? LOCAL_MCP_TOOLS : [];
+    const toolsCount = toolsList.length;
+    const exactCatalogMatch =
+      toolsCount === expectedToolNames.length &&
+      expectedToolNames.every((tName, idx) => toolsList[idx]?.name === tName);
+
+    const toolResults = [];
+    let passedCount = 0;
+    for (const toolDef of toolsList) {
+      const tName = String(toolDef?.name || "");
+      const spec = selfTestFixtures[tName];
+      let itemOk = false;
+      if (spec) {
+        try {
+          const out = executeLocalMcpTool(tName, spec.args);
+          itemOk = Boolean(spec.verify(out));
+        } catch {
+          itemOk = false;
+        }
+      }
+      if (itemOk) passedCount += 1;
+      toolResults.push({ tool: tName, ok: itemOk });
+    }
+
     const localEngineVerified =
-      Boolean(smokeAudit && smokeAudit.ok === true && smokeAudit.ghostEventsDetected > 0) &&
-      toolsCount === 9;
+      Boolean(exactCatalogMatch) && toolsCount === 9 && passedCount === 9;
     console.log(
       JSON.stringify({
         ok: localEngineVerified,
         version: PACKAGE_VERSION,
         toolsCount,
+        passedCount,
         localEngineVerified,
         endpoint: validated,
+        toolResults,
       })
     );
     return localEngineVerified ? 0 : 1;
@@ -1073,6 +1246,9 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
       "valid_ce3_non_destructive",
       "utf16_overflow_19k",
       "missing_device_and_overwrite_risk",
+      "ce3_24k_truncation_trap",
+      "ce3_clean_compacted_14k",
+      "ce3_missing_device_binding_19k",
     ]);
     const preset = positional[0] || "valid_ce3_non_destructive";
     if (!allowedPresets.has(preset)) {

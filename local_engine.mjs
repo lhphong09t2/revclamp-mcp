@@ -17,6 +17,7 @@
  */
 
 import crypto from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 export const MCP_PROTOCOL_VERSION = "2024-11-05";
 export const SUPPORTED_MCP_PROTOCOL_VERSIONS = Object.freeze([
@@ -30,6 +31,7 @@ const LOCAL_LIVE_SECRET_GUARD_RE =
 
 const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
   revclamp_verify_webhook_signature: Object.freeze([
+    Object.freeze({ canonical: "provider", aliases: Object.freeze(["webhookProvider"]) }),
     Object.freeze({ canonical: "rawPayload", aliases: Object.freeze(["payload", "body"]) }),
     Object.freeze({
       canonical: "signatureHeader",
@@ -47,6 +49,10 @@ const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
   ]),
   revclamp_simulate_webhook_replay: Object.freeze([
     Object.freeze({ canonical: "scenarioPreset", aliases: Object.freeze(["preset"]) }),
+    Object.freeze({
+      canonical: "events",
+      aliases: Object.freeze(["webhookEvents", "eventSequence"]),
+    }),
     Object.freeze({
       canonical: "idempotencyWindowSec",
       aliases: Object.freeze(["windowSec", "dedupWindowSec"]),
@@ -79,7 +85,8 @@ export function normalizeMcpToolArgs(toolName, rawArgs) {
       const firstVal = rawArgs[firstKey];
       for (let i = 1; i < presentKeys.length; i += 1) {
         const otherKey = presentKeys[i];
-        if (!Object.is(firstVal, rawArgs[otherKey])) {
+        const otherVal = rawArgs[otherKey];
+        if (!Object.is(firstVal, otherVal) && !isDeepStrictEqual(firstVal, otherVal)) {
           return {
             ok: false,
             error: "CONFLICTING_PARAMETER_ALIASES",
@@ -205,6 +212,10 @@ const EU_VIES_FORMAT_RULES = Object.freeze({
 
 const REVCLAMP_START_MARKER = "--- BEGIN REVCLAMP CE3 EVIDENCE ---";
 const REVCLAMP_END_MARKER = "--- END REVCLAMP CE3 EVIDENCE ---";
+const REVCLAMP_BRACKET_START_MARKER = "[RevClamp Verified Product Usage Log]";
+const REVCLAMP_BRACKET_END_MARKER = "[/RevClamp Verified Product Usage Log]";
+const PRODUCTION_EMPTY_BLOCK_WRAPPER_CHARS =
+  REVCLAMP_BRACKET_START_MARKER.length + 1 + REVCLAMP_BRACKET_END_MARKER.length;
 const MAX_ACCESS_ACTIVITY_LOG_CHARS = 18_000;
 const CE3_MIN_WINDOW_SEC = 120 * 86_400;
 const CE3_MAX_WINDOW_SEC = 365 * 86_400;
@@ -400,6 +411,11 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
       properties: {
         provider: { type: "string", enum: ["stripe", "shopify", "revclamp"] },
         secret: { type: "string" },
+        secrets: {
+          type: "array",
+          maxItems: 5,
+          items: { type: "string" },
+        },
         rawPayload: { type: "string" },
         signatureHeader: { type: "string" },
         timestampSec: { type: "integer", minimum: 1, maximum: 9999999999 },
@@ -482,7 +498,7 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
   {
     name: "revclamp_lint_dispute_evidence",
     description:
-      "Lints Stripe dispute evidence[access_activity_log] payloads against the 18,000 UTF-16 code unit ceiling, non-destructive RevClamp CE 3.0 block markers, merchant note preservation, and Visa CE 3.0 two-identifier overlap.",
+      "Lints Stripe dispute evidence[access_activity_log] payloads against the 18,000 UTF-16 code unit ceiling, non-destructive RevClamp CE 3.0 block markers, merchant note preservation, 17,922/17,920-char fixed wrapper capacity threshold (SKIP_POST_PRESERVE_DRAFT), and Visa CE 3.0 two-identifier overlap.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -493,15 +509,64 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
             "valid_ce3_non_destructive",
             "utf16_overflow_19k",
             "missing_device_and_overwrite_risk",
+            "custom",
+            "ce3_24k_truncation_trap",
+            "ce3_clean_compacted_14k",
+            "ce3_missing_device_binding_19k",
           ],
           default: "valid_ce3_non_destructive",
+          description:
+            "Scenario preset to evaluate when custom evidenceLogText / accessActivityLog is omitted (default: 'valid_ce3_non_destructive').",
         },
-        accessActivityLog: { type: "string" },
-        disputedTransaction: { type: "object" },
-        priorTransactions: { type: "array" },
+        existingMerchantNotes: {
+          type: "string",
+          maxLength: 30000,
+          description:
+            "Existing human AE/support notes inside evidence[access_activity_log] that must be preserved.",
+        },
+        evidenceLogText: {
+          type: "string",
+          maxLength: 30000,
+          description:
+            "Merged or candidate Stripe dispute evidence[access_activity_log] payload evaluated against the 18,000 UTF-16 code unit ceiling and non-destructive delimiter markers.",
+        },
+        accessActivityLog: {
+          type: "string",
+          maxLength: 30000,
+          description:
+            "Alias for evidenceLogText representing Stripe dispute evidence[access_activity_log] payload.",
+        },
+        priorMatchedCount: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+          description:
+            "Number of prior undisputed Stripe charges (120d-365d old) with matching customer_id and IP/device fingerprint (Visa CE 3.0 requires >= 2).",
+        },
+        hasIpMatch: {
+          type: "boolean",
+          description:
+            "Whether the disputed charge IPv4/IPv6 address matches the historical undisputed charges.",
+        },
+        hasDeviceMatch: {
+          type: "boolean",
+          description:
+            "Whether the disputed charge device_id fingerprint matches the historical undisputed charges.",
+        },
+        disputedTransaction: {
+          type: "object",
+          description:
+            "Optional disputed Stripe charge/transaction metadata evaluated against priorTransactions for Visa CE 3.0 qualification.",
+        },
+        priorTransactions: {
+          type: "array",
+          description:
+            "Optional historical undisputed Stripe charges (120d-365d prior) evaluated for Visa CE 3.0 two-identifier overlap.",
+        },
         demo: {
           type: "boolean",
-          description: "Set true to lint a sample preset fixture when accessActivityLog is omitted.",
+          description:
+            "Set true to lint a sample preset fixture when evidenceLogText / accessActivityLog is omitted.",
           default: false,
         },
       },
@@ -557,6 +622,12 @@ export function validateArgsAgainstSchema(schema, args) {
       if (typeof val !== "string") {
         return { ok: false, message: `Argument '${key}' must be a string.` };
       }
+      if (propSchema.maxLength !== undefined && val.length > propSchema.maxLength) {
+        return {
+          ok: false,
+          message: `Argument '${key}' exceeds maximum length of ${propSchema.maxLength}.`,
+        };
+      }
     } else if (propSchema.type === "boolean") {
       if (typeof val !== "boolean") {
         return { ok: false, message: `Argument '${key}' must be a boolean.` };
@@ -590,7 +661,7 @@ function normalizeCountryCode(raw) {
 function normalizeVatId(rawVat) {
   const compact = String(rawVat || "")
     .toUpperCase()
-    .replace(/[\s.-]+/g, "");
+    .replace(/[\s.\-/:]+/g, "");
   if (compact.length < 4) {
     return { validFormat: false, memberState: "", vatNumber: "", fullVatId: compact };
   }
@@ -622,40 +693,66 @@ function sanitizeLogToken(raw, maxLen = 96) {
 
 function stripExistingRevClampBlock(rawNotes) {
   if (typeof rawNotes !== "string" || !rawNotes) {
-    return { ok: true, hadBlock: false, text: "" };
+    return { ok: true, hadBlock: false, prefix: "", suffix: "", text: "" };
   }
-  if (!rawNotes.includes(REVCLAMP_START_MARKER) && !rawNotes.includes(REVCLAMP_END_MARKER)) {
-    return { ok: true, hadBlock: false, text: rawNotes.trim() };
+  const hasCanonical =
+    rawNotes.includes(REVCLAMP_START_MARKER) || rawNotes.includes(REVCLAMP_END_MARKER);
+  const hasBracket =
+    rawNotes.includes(REVCLAMP_BRACKET_START_MARKER) ||
+    rawNotes.includes(REVCLAMP_BRACKET_END_MARKER);
+  if (!hasCanonical && !hasBracket) {
+    return { ok: true, hadBlock: false, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
   }
+  if (hasCanonical && hasBracket) {
+    return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
+  }
+  const activeStart = hasCanonical ? REVCLAMP_START_MARKER : REVCLAMP_BRACKET_START_MARKER;
+  const activeEnd = hasCanonical ? REVCLAMP_END_MARKER : REVCLAMP_BRACKET_END_MARKER;
   let cursor = 0;
-  const keptSegments = [];
+  const prefixSegments = [];
+  let trailingSegment = "";
   while (cursor < rawNotes.length) {
-    const startIdx = rawNotes.indexOf(REVCLAMP_START_MARKER, cursor);
+    const startIdx = rawNotes.indexOf(activeStart, cursor);
     if (startIdx === -1) {
-      if (rawNotes.indexOf(REVCLAMP_END_MARKER, cursor) !== -1) {
-        return { ok: false, hadBlock: true, text: rawNotes.trim() };
+      if (rawNotes.indexOf(activeEnd, cursor) !== -1) {
+        return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
       }
-      const tail = rawNotes.slice(cursor).trim();
-      if (tail) keptSegments.push(tail);
+      trailingSegment = rawNotes.slice(cursor);
       break;
     }
-    if (rawNotes.slice(cursor, startIdx).includes(REVCLAMP_END_MARKER)) {
-      return { ok: false, hadBlock: true, text: rawNotes.trim() };
+    if (rawNotes.slice(cursor, startIdx).includes(activeEnd)) {
+      return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
     }
-    const contentStart = startIdx + REVCLAMP_START_MARKER.length;
-    const endIdx = rawNotes.indexOf(REVCLAMP_END_MARKER, contentStart);
+    const contentStart = startIdx + activeStart.length;
+    const endIdx = rawNotes.indexOf(activeEnd, contentStart);
     if (endIdx === -1) {
-      return { ok: false, hadBlock: true, text: rawNotes.trim() };
+      return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
     }
-    const nextStartIdx = rawNotes.indexOf(REVCLAMP_START_MARKER, contentStart);
+    const nextStartIdx = rawNotes.indexOf(activeStart, contentStart);
     if (nextStartIdx !== -1 && nextStartIdx < endIdx) {
-      return { ok: false, hadBlock: true, text: rawNotes.trim() };
+      return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
     }
-    const before = rawNotes.slice(cursor, startIdx).trim();
-    if (before) keptSegments.push(before);
-    cursor = endIdx + REVCLAMP_END_MARKER.length;
+    const beforeSegment = rawNotes.slice(cursor, startIdx).replace(/\n{1,2}$/, "");
+    if (beforeSegment.length > 0) {
+      prefixSegments.push(beforeSegment);
+    }
+    cursor = endIdx + activeEnd.length;
+    if (rawNotes.slice(cursor, cursor + 2) === "\n\n") {
+      cursor += 2;
+    } else if (rawNotes[cursor] === "\n") {
+      cursor += 1;
+    }
   }
-  return { ok: true, hadBlock: true, text: keptSegments.join("\n\n").trim() };
+  const prefix = prefixSegments.join("\n");
+  const suffix = trailingSegment;
+  const keptTrimmed = [prefix.trim(), suffix.trim()].filter(Boolean);
+  return {
+    ok: true,
+    hadBlock: true,
+    prefix,
+    suffix,
+    text: keptTrimmed.join("\n\n").trim(),
+  };
 }
 
 function isValidUnixSec(val) {
@@ -1071,7 +1168,13 @@ function extractNormalizedCe3Identifiers(tx) {
     tx.metadata?.email ||
     "";
   const email = sanitizeLogToken(String(rawEmail || "").toLowerCase(), 96);
-  const rawIp = tx.ip_address || tx.ip || tx.client_ip || tx.metadata?.ip_address || "";
+  const rawIp =
+    tx.ip_address ||
+    tx.ip ||
+    tx.client_ip ||
+    tx.metadata?.ip_address ||
+    (typeof tx.ip_subnet === "string" ? tx.ip_subnet.replace(/\/\d{1,3}$/, "") : "") ||
+    "";
   const ipSubnet = normalizeIpForCe3Correlation(typeof rawIp === "string" ? rawIp : "");
   const rawDevice =
     tx.device_id ||
@@ -1088,6 +1191,27 @@ function extractNormalizedCe3Identifiers(tx) {
       .filter(Boolean)
       .join("|")
       .toLowerCase();
+  } else {
+    const addr =
+      tx.shipping?.address && typeof tx.shipping.address === "object"
+        ? tx.shipping.address
+        : tx.shipping_address && typeof tx.shipping_address === "object"
+          ? tx.shipping_address
+          : null;
+    if (addr) {
+      shippingAddr = [
+        addr.line1,
+        addr.line2,
+        addr.city,
+        addr.state,
+        addr.postal_code,
+        addr.country,
+      ]
+        .map((v) => sanitizeLogToken(String(v || "").trim(), 96))
+        .filter(Boolean)
+        .join("|")
+        .toLowerCase();
+    }
   }
   return {
     user_id: userId || null,
@@ -1183,11 +1307,16 @@ function evaluateLocalVisaCe3Qualification(disputeReason, disputedTransaction, p
   }
 
   const windowQualified = allWindowQualified
-    .sort((a, b) =>
-      b.occurredAtSec !== a.occurredAtSec
+    .sort((a, b) => {
+      const aHasNetOrDev =
+        a.matchedFields.includes("ip_subnet") || a.matchedFields.includes("device_id") ? 1 : 0;
+      const bHasNetOrDev =
+        b.matchedFields.includes("ip_subnet") || b.matchedFields.includes("device_id") ? 1 : 0;
+      if (bHasNetOrDev !== aHasNetOrDev) return bHasNetOrDev - aHasNetOrDev;
+      return b.occurredAtSec !== a.occurredAtSec
         ? b.occurredAtSec - a.occurredAtSec
-        : a.id.localeCompare(b.id)
-    )
+        : a.id.localeCompare(b.id);
+    })
     .slice(0, 100);
 
   let bestGroup = null;
@@ -1219,8 +1348,10 @@ function evaluateLocalVisaCe3Qualification(disputeReason, disputedTransaction, p
   const samePaymentMethodVerified = Boolean(
     qualified && bestGroup.every((p) => p.samePaymentMethodVerified)
   );
+  const matchedIds = qualified ? bestGroup.map((q) => q.id) : [];
   return {
     qualified,
+    eligible: qualified,
     samePaymentMethodVerified,
     status: !qualified
       ? "INSUFFICIENT_HISTORICAL_OVERLAP"
@@ -1232,7 +1363,8 @@ function evaluateLocalVisaCe3Qualification(disputeReason, disputedTransaction, p
       : sawPaymentCredentialMismatch
         ? "PAYMENT_CREDENTIAL_MISMATCH_OR_MISSING_ON_PRIOR_CHARGES"
         : "REQUIRES_2_UNDISPUTED_CHARGES_120D_TO_365D_WITH_CONSISTENT_TWO_FIELD_OVERLAP",
-    matchedTransactionIds: qualified ? bestGroup.map((q) => q.id) : [],
+    matchedTransactionIds: matchedIds,
+    matchedPriorTransactionIds: matchedIds,
     sharedIdentifiers: qualified ? bestSharedFields : [],
     ...(qualified && !samePaymentMethodVerified
       ? { limitations: ["SAME_PAYMENT_METHOD_NOT_PROVIDED_IN_LOCAL_PAYLOAD"] }
@@ -1645,77 +1777,312 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
   }
 
   if (toolName === "revclamp_lint_dispute_evidence") {
-    const hasCallerLog =
+    const lintToolSpec = LOCAL_MCP_TOOLS.find((t) => t.name === "revclamp_lint_dispute_evidence");
+    if (lintToolSpec) {
+      const schemaCheck = validateArgsAgainstSchema(lintToolSpec.inputSchema, args);
+      if (!schemaCheck.ok) {
+        const err = new Error(`Invalid params: ${schemaCheck.message}`);
+        err.code = -32602;
+        err.reason = "INVALID_DISPUTE_EVIDENCE_LINT_PARAMETERS";
+        throw err;
+      }
+    }
+    const hasEvidenceLogText =
+      typeof args.evidenceLogText === "string" && args.evidenceLogText.trim().length > 0;
+    const hasAccessActivityLog =
       typeof args.accessActivityLog === "string" && args.accessActivityLog.trim().length > 0;
-    const hasExplicitPreset = typeof args.preset === "string" && args.preset.trim().length > 0;
-    const isDemo = args.demo === true || (!hasCallerLog && hasExplicitPreset);
-    if (!hasCallerLog && !isDemo) {
+    if (
+      hasEvidenceLogText &&
+      hasAccessActivityLog &&
+      args.evidenceLogText.trim() !== args.accessActivityLog.trim()
+    ) {
       const err = new Error(
-        "MISSING_ACCESS_ACTIVITY_LOG: Provide accessActivityLog to lint a real dispute payload, or specify preset / demo: true to lint a sample fixture."
+        "CONFLICTING_EVIDENCE_LOG_ALIASES: evidenceLogText and accessActivityLog must match when both are provided"
       );
       err.code = -32602;
+      err.reason = "CONFLICTING_EVIDENCE_LOG_ALIASES";
       throw err;
     }
-    const preset = String(args.preset || "valid_ce3_non_destructive");
-    let logText = hasCallerLog ? args.accessActivityLog : "";
 
-    if (!logText) {
-      if (preset === "utf16_overflow_19k") {
-        logText =
-          "MERCHANT_NOTE\n--- BEGIN REVCLAMP CE3 EVIDENCE ---\n" +
-          "A".repeat(19_000) +
-          "\n--- END REVCLAMP CE3 EVIDENCE ---";
-      } else if (preset === "missing_device_and_overwrite_risk") {
-        logText = "2026-10-01T10:00:00Z | action=api.call | user=cus_123";
-      } else {
-        logText =
-          "MERCHANT_SUPPORT_NOTE: Confirmed seat provisioning.\n--- BEGIN REVCLAMP CE3 EVIDENCE ---\n2026-04-10T12:00:00Z | event=api.inference | actor=cus_123 | ip=203.0.113.42 | device=dev_fp_99a | model=gpt-4o | tokens=2048\n--- END REVCLAMP CE3 EVIDENCE ---";
+    const hasExplicitLogString =
+      typeof args.evidenceLogText === "string" || typeof args.accessActivityLog === "string";
+    const resolvedLogInput = hasEvidenceLogText
+      ? args.evidenceLogText
+      : hasAccessActivityLog
+        ? args.accessActivityLog
+        : typeof args.evidenceLogText === "string"
+          ? args.evidenceLogText
+          : typeof args.accessActivityLog === "string"
+            ? args.accessActivityLog
+            : undefined;
+    const rawCallerLog =
+      typeof resolvedLogInput === "string"
+        ? resolvedLogInput
+        : typeof args.existingMerchantNotes === "string" &&
+            args.existingMerchantNotes.trim().length > 0
+          ? args.existingMerchantNotes
+          : "";
+    const hasCallerLog = rawCallerLog.length > 0 || hasExplicitLogString;
+    const hasExplicitPreset =
+      typeof args.preset === "string" &&
+      args.preset.trim().length > 0 &&
+      args.preset.trim() !== "custom";
+    const hasSummaryArgs =
+      args.priorMatchedCount !== undefined ||
+      args.hasIpMatch !== undefined ||
+      args.hasDeviceMatch !== undefined;
+    const hasTransactionArgs =
+      (args.disputedTransaction !== undefined && args.disputedTransaction !== null) ||
+      (args.priorTransactions !== undefined && args.priorTransactions !== null);
+    const hasCustomInputFields =
+      args.evidenceLogText !== undefined ||
+      args.accessActivityLog !== undefined ||
+      args.existingMerchantNotes !== undefined ||
+      args.priorMatchedCount !== undefined ||
+      args.hasIpMatch !== undefined ||
+      args.hasDeviceMatch !== undefined ||
+      args.disputedTransaction !== undefined ||
+      args.priorTransactions !== undefined;
+    const preset =
+      typeof args.preset === "string" && args.preset.trim()
+        ? args.preset.trim()
+        : hasCustomInputFields
+          ? "custom"
+          : "valid_ce3_non_destructive";
+    const isDemo =
+      args.demo === true ||
+      (!hasCallerLog &&
+        (preset !== "custom" || hasExplicitPreset || hasSummaryArgs || hasTransactionArgs));
+    if (!hasCallerLog && !isDemo) {
+      const err = new Error(
+        "MISSING_ACCESS_ACTIVITY_LOG: Provide accessActivityLog / evidenceLogText to lint a real dispute payload, or specify preset / demo: true to lint a sample fixture."
+      );
+      err.code = -32602;
+      err.reason = "MISSING_ACCESS_ACTIVITY_LOG";
+      throw err;
+    }
+
+    const ce3Qualification = hasTransactionArgs
+      ? evaluateLocalVisaCe3Qualification(
+          "fraudulent",
+          args.disputedTransaction,
+          args.priorTransactions
+        )
+      : null;
+
+    if (ce3Qualification && hasSummaryArgs) {
+      const derived = {
+        priorMatchedCount: (ce3Qualification.matchedTransactionIds || []).length,
+        hasIpMatch: (ce3Qualification.sharedIdentifiers || []).includes("ip_subnet"),
+        hasDeviceMatch: (ce3Qualification.sharedIdentifiers || []).includes("device_id"),
+      };
+      if (
+        (args.priorMatchedCount !== undefined &&
+          Number(args.priorMatchedCount) !== derived.priorMatchedCount) ||
+        (args.hasIpMatch !== undefined && Boolean(args.hasIpMatch) !== derived.hasIpMatch) ||
+        (args.hasDeviceMatch !== undefined &&
+          Boolean(args.hasDeviceMatch) !== derived.hasDeviceMatch)
+      ) {
+        const err = new Error(
+          "CONFLICTING_CE3_SUMMARY_AND_TRANSACTIONS: Explicit CE 3.0 summary parameters (priorMatchedCount, hasIpMatch, hasDeviceMatch) conflict with transaction-derived qualification."
+        );
+        err.code = -32602;
+        err.reason = "CONFLICTING_CE3_SUMMARY_AND_TRANSACTIONS";
+        throw err;
       }
     }
 
-    const hasNetworkOrDevice = /\b(?:ip|device)=/i.test(logText);
-    const hasDeviceAndIp = /\bip=/i.test(logText) && /\bdevice=/i.test(logText);
-    const hasMarkers =
-      logText.includes(REVCLAMP_START_MARKER) && logText.includes(REVCLAMP_END_MARKER);
-    const strippedNotes = stripExistingRevClampBlock(logText);
-    const preservesMerchantNotes =
-      strippedNotes.ok && hasMarkers && strippedNotes.text.length > 0;
+    const ce3SummarySource = hasTransactionArgs
+      ? "transactions"
+      : hasSummaryArgs
+        ? "explicit"
+        : preset !== "custom"
+          ? "preset"
+          : "log_inferred";
+    const normalizedPresetKey =
+      preset === "ce3_24k_truncation_trap"
+        ? "utf16_overflow_19k"
+        : preset === "ce3_missing_device_binding_19k"
+          ? "missing_device_and_overwrite_risk"
+          : preset === "ce3_clean_compacted_14k"
+            ? "valid_ce3_non_destructive"
+            : preset;
+    const localPresetFixtures = {
+      valid_ce3_non_destructive: {
+        existingMerchantNotes: "Customer signed annual MSA #2025-884; ticket #9102 resolved.",
+        evidenceLogText: [
+          "Customer signed annual MSA #2025-884; ticket #9102 resolved.",
+          "--- BEGIN REVCLAMP CE3 EVIDENCE ---",
+          "Prior Charge 1: py_1Ox99a (2026-03-11, IP 198.51.100.42, Device dev_88a)",
+          "Prior Charge 2: py_1P211b (2026-05-19, IP 198.51.100.42, Device dev_88a)",
+          "90-Day Verified Usage Events: 412 API calls authenticated via workspace key.",
+          "--- END REVCLAMP CE3 EVIDENCE ---",
+        ].join("\n"),
+      },
+      utf16_overflow_19k: {
+        existingMerchantNotes: "Finance note: enterprise renewal disputed.",
+        evidenceLogText: `Finance note: enterprise renewal disputed.\n--- BEGIN REVCLAMP CE3 EVIDENCE ---\n${"E".repeat(19000)}\n--- END REVCLAMP CE3 EVIDENCE ---`,
+      },
+      missing_device_and_overwrite_risk: {
+        existingMerchantNotes: "VIP customer escalation note from account executive.",
+        evidenceLogText: "Raw replacement log that overwrote AE notes without markers.",
+      },
+    };
+    const basePreset =
+      normalizedPresetKey !== "custom" ? localPresetFixtures[normalizedPresetKey] : null;
+    const existingMerchantNotes =
+      typeof args.existingMerchantNotes === "string"
+        ? args.existingMerchantNotes
+        : basePreset?.existingMerchantNotes ?? "";
+    const logText =
+      typeof resolvedLogInput === "string"
+        ? resolvedLogInput
+        : basePreset
+          ? basePreset.evidenceLogText ?? ""
+          : existingMerchantNotes ||
+            localPresetFixtures.valid_ce3_non_destructive.evidenceLogText;
 
-    const ce3Qualification =
-      args.disputedTransaction || args.priorTransactions
-        ? evaluateLocalVisaCe3Qualification(
-            "fraudulent",
-            args.disputedTransaction,
-            args.priorTransactions
-          )
-        : null;
+    const inferredHasIp = /\bip(?:=|\s+\d)/i.test(logText);
+    const inferredHasDevice = /\bdevice(?:=|\s+[a-z0-9_])/i.test(logText);
+    const inferredPriorCount = inferredHasIp || inferredHasDevice ? 2 : 0;
+    const isMissingDevicePreset = normalizedPresetKey === "missing_device_and_overwrite_risk";
+    const defaultPriorMatchedCount = ce3Qualification
+      ? (ce3Qualification.matchedTransactionIds || []).length
+      : isMissingDevicePreset
+        ? 1
+        : normalizedPresetKey !== "custom"
+          ? 2
+          : inferredPriorCount;
+    const defaultHasIpMatch = ce3Qualification
+      ? (ce3Qualification.sharedIdentifiers || []).includes("ip_subnet")
+      : isMissingDevicePreset
+        ? false
+        : normalizedPresetKey !== "custom"
+          ? true
+          : inferredHasIp;
+    const defaultHasDeviceMatch = ce3Qualification
+      ? (ce3Qualification.sharedIdentifiers || []).includes("device_id")
+      : isMissingDevicePreset
+        ? false
+        : normalizedPresetKey !== "custom"
+          ? true
+          : inferredHasDevice;
+
+    const priorMatchedCount =
+      args.priorMatchedCount !== undefined
+        ? Number(args.priorMatchedCount)
+        : defaultPriorMatchedCount;
+    const hasIpMatch =
+      args.hasIpMatch !== undefined ? Boolean(args.hasIpMatch) : defaultHasIpMatch;
+    const hasDeviceMatch =
+      args.hasDeviceMatch !== undefined ? Boolean(args.hasDeviceMatch) : defaultHasDeviceMatch;
+    const ce3RubricPassed =
+      priorMatchedCount >= 2 &&
+      Boolean(hasIpMatch || hasDeviceMatch) &&
+      (!ce3Qualification || ce3Qualification.qualified);
+
+    const hasNetworkOrDevice = Boolean(hasIpMatch || hasDeviceMatch);
+    const hasDeviceAndIp = Boolean(hasIpMatch && hasDeviceMatch);
+    const strippedNotes = stripExistingRevClampBlock(logText);
+    const nonDestructiveMarkersPresent = Boolean(strippedNotes.ok && strippedNotes.hadBlock);
+    const malformedExistingMarkers = Boolean(!strippedNotes.ok);
+    const warnings = malformedExistingMarkers ? ["MALFORMED_EXISTING_MARKERS"] : [];
+    const trimmedExistingNotes = existingMerchantNotes.trim();
+    const outsideMarkerText = `${strippedNotes.prefix || ""}\n${strippedNotes.suffix || ""}`;
+    const preservesMerchantNotes = Boolean(
+      nonDestructiveMarkersPresent &&
+        strippedNotes.text.length > 0 &&
+        (trimmedExistingNotes === "" || outsideMarkerText.includes(trimmedExistingNotes))
+    );
+
+    const extractedNotesLen =
+      (strippedNotes.prefix?.length || 0) + (strippedNotes.suffix?.length || 0);
+    const fallbackNotes = existingMerchantNotes;
+    const capacityPrefix =
+      extractedNotesLen > 0 ? strippedNotes.prefix || "" : fallbackNotes;
+    const capacitySuffix = extractedNotesLen > 0 ? strippedNotes.suffix || "" : "";
+    const preSeparatorUnits = capacityPrefix.length > 0 ? 2 : 0;
+    const postSeparatorUnits = capacitySuffix.length > 0 ? 2 : 0;
+    const merchantNotesUtf16CodeUnits = capacityPrefix.length + capacitySuffix.length;
+    const fixedWrapperUtf16CodeUnits =
+      capacityPrefix.length +
+      preSeparatorUnits +
+      PRODUCTION_EMPTY_BLOCK_WRAPPER_CHARS +
+      postSeparatorUnits +
+      capacitySuffix.length;
+    const merchantLogAtCapacity = Boolean(
+      fixedWrapperUtf16CodeUnits >= MAX_ACCESS_ACTIVITY_LOG_CHARS
+    );
+    const stagingActionWhenAtCapacity = merchantLogAtCapacity
+      ? "SKIP_POST_PRESERVE_DRAFT"
+      : null;
+    if (merchantLogAtCapacity) {
+      warnings.push("MERCHANT_LOG_AT_CAPACITY");
+    }
 
     const utf16CodeUnits = logText.length;
+    const remainingUtf16Units = Math.max(0, MAX_ACCESS_ACTIVITY_LOG_CHARS - utf16CodeUnits);
+    const remainingCodeUnitsTo20k = Math.max(0, 20_000 - utf16CodeUnits);
+    const utf8Bytes = Buffer.byteLength(logText, "utf8");
     const within18kCeiling = utf16CodeUnits <= MAX_ACCESS_ACTIVITY_LOG_CHARS;
+    const within20kHardCeiling = utf16CodeUnits <= 20_000;
+    const exceeds20kHardCeiling = utf16CodeUnits > 20_000;
     let overallVerdict = "PASS_CE3_READY";
     if (!within18kCeiling) {
       overallVerdict = "FAIL_UTF16_OVERFLOW";
     } else if (
       !hasNetworkOrDevice ||
+      !ce3RubricPassed ||
       !preservesMerchantNotes ||
+      malformedExistingMarkers ||
+      merchantLogAtCapacity ||
       (ce3Qualification && !ce3Qualification.qualified)
     ) {
       overallVerdict = "WARN_INCOMPLETE_CE3_OR_OVERWRITE_RISK";
     }
+    const verdictClass =
+      overallVerdict === "PASS_CE3_READY"
+        ? "PASS"
+        : overallVerdict.startsWith("FAIL")
+          ? "FAIL"
+          : "WARN";
 
     return {
       ok: true,
       executionMode: "local_open_source_engine",
       ...(!hasCallerLog ? { sample: true } : {}),
       preset,
+      ce3SummarySource,
       utf16CodeUnits,
       maxAllowedUtf16CodeUnits: MAX_ACCESS_ACTIVITY_LOG_CHARS,
+      maxUtf16Ceiling: MAX_ACCESS_ACTIVITY_LOG_CHARS,
+      remainingUtf16Units,
+      remainingCodeUnitsTo18k: remainingUtf16Units,
+      remainingCodeUnitsTo20k,
       within18kCeiling,
+      withinCeiling: within18kCeiling,
+      within18kSafeBudget: within18kCeiling,
+      within20kHardCeiling,
+      exceeds20kHardCeiling,
+      utf8Bytes,
       hasNetworkOrDevice,
       hasDeviceAndIp,
+      nonDestructiveMarkersPresent,
+      malformedExistingMarkers,
+      warnings,
       preservesMerchantNotes,
+      merchantNotesPreserved: preservesMerchantNotes,
+      merchantNotesUtf16CodeUnits,
+      fixedWrapperUtf16CodeUnits,
+      merchantLogAtCapacity,
+      stagingActionWhenAtCapacity,
+      priorMatchedCount,
+      hasIpMatch,
+      hasDeviceMatch,
+      ce3RubricPassed,
       ...(ce3Qualification ? { ce3Qualification } : {}),
       overallVerdict,
+      verdictClass,
     };
   }
 
@@ -1741,15 +2108,46 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
       revclamp:
         '{"event":"revclamp.entitlement.revoke","tenantId":"tnt_sandbox_preview","accountId":"acct_sandbox_preview","customerId":"cus_basil_ai_team_01","leakReason":"UNPAID_GHOST_USAGE_CONFIRMED"}',
     };
-    const secret =
-      typeof args.secret === "string" && args.secret.trim().length > 0
-        ? args.secret.trim()
-        : "whsec_test_revclamp_sandbox_secret_2026";
+    const rawSecretsList =
+      Array.isArray(args.secrets) && args.secrets.length > 0
+        ? args.secrets
+        : typeof args.secret === "string" && args.secret.trim().length > 0
+          ? args.secret.split(",")
+          : ["whsec_test_revclamp_sandbox_secret_2026"];
+    if (rawSecretsList.length > 5) {
+      const err = new Error(
+        "PAYLOAD_OR_SECRET_TOO_LONG: at most 5 rotation secrets may be supplied."
+      );
+      err.code = -32602;
+      throw err;
+    }
+    const candidateSecrets = [];
+    for (const item of rawSecretsList) {
+      if (typeof item !== "string") {
+        const err = new Error("INVALID_SECRET: each secret must be a string.");
+        err.code = -32602;
+        throw err;
+      }
+      const trimmed = item.trim();
+      if (!trimmed) continue;
+      if (trimmed.length > 256) {
+        const err = new Error(
+          "PAYLOAD_OR_SECRET_TOO_LONG: secret must be <= 256 chars and rawPayload must be <= 16384 chars."
+        );
+        err.code = -32602;
+        throw err;
+      }
+      candidateSecrets.push(trimmed);
+    }
+    if (candidateSecrets.length === 0) {
+      candidateSecrets.push("whsec_test_revclamp_sandbox_secret_2026");
+    }
+    const secret = candidateSecrets[0];
     const rawPayload =
       typeof args.rawPayload === "string" && args.rawPayload.length > 0
         ? args.rawPayload
         : defaultPayloadByProvider[provider];
-    if (secret.length > 256 || rawPayload.length > 16_384) {
+    if (rawPayload.length > 16_384) {
       const err = new Error(
         "PAYLOAD_OR_SECRET_TOO_LONG: secret must be <= 256 chars and rawPayload must be <= 16384 chars."
       );
@@ -1808,13 +2206,28 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
             mode: "generate_only",
             signatureValid: null,
             generatedHeader: expectedB64,
+            matchedSecretIndex: null,
+            secretsEvaluatedCount: candidateSecrets.length,
           },
         };
       }
       const provided = args.signatureHeader.trim();
-      const valid =
-        Buffer.byteLength(provided) === Buffer.byteLength(expectedB64) &&
-        crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expectedB64));
+      let valid = false;
+      let matchedSecretIndex = null;
+      for (let sIdx = 0; sIdx < candidateSecrets.length; sIdx += 1) {
+        const candB64 = crypto
+          .createHmac("sha256", candidateSecrets[sIdx])
+          .update(rawPayload, "utf8")
+          .digest("base64");
+        if (
+          Buffer.byteLength(provided) === Buffer.byteLength(candB64) &&
+          crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(candB64))
+        ) {
+          valid = true;
+          matchedSecretIndex = sIdx;
+          break;
+        }
+      }
       return {
         ok: true,
         executionMode: "local_open_source_engine",
@@ -1823,6 +2236,8 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
           mode: "verify",
           signatureValid: valid,
           generatedHeader: expectedB64,
+          matchedSecretIndex,
+          secretsEvaluatedCount: candidateSecrets.length,
         },
       };
     }
@@ -1844,6 +2259,8 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
           generatedHeader,
           timestampSec: signingTimestampSec,
           toleranceSec,
+          matchedSecretIndex: null,
+          secretsEvaluatedCount: candidateSecrets.length,
         },
       };
     }
@@ -1876,17 +2293,25 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
     const timestampSkewSeconds = Math.abs(wallNowSec - effectiveTs);
     const withinWindow = timestampSkewSeconds <= toleranceSec;
     let signatureValid = false;
+    let matchedSecretIndex = null;
     if (parsedTs !== null && v1Candidates.length > 0 && withinWindow) {
-      const expectedForTs = crypto
-        .createHmac("sha256", secret)
-        .update(`${parsedTs}.${rawPayload}`, "utf8")
-        .digest("hex");
-      const expectedBuf = Buffer.from(expectedForTs, "utf8");
-      signatureValid = v1Candidates.some(
-        (cand) =>
-          cand.length === expectedForTs.length &&
-          crypto.timingSafeEqual(Buffer.from(cand, "utf8"), expectedBuf)
-      );
+      for (let sIdx = 0; sIdx < candidateSecrets.length; sIdx += 1) {
+        const expectedForTs = crypto
+          .createHmac("sha256", candidateSecrets[sIdx])
+          .update(`${parsedTs}.${rawPayload}`, "utf8")
+          .digest("hex");
+        const expectedBuf = Buffer.from(expectedForTs, "utf8");
+        const matched = v1Candidates.some(
+          (cand) =>
+            cand.length === expectedForTs.length &&
+            crypto.timingSafeEqual(Buffer.from(cand, "utf8"), expectedBuf)
+        );
+        if (matched) {
+          signatureValid = true;
+          matchedSecretIndex = sIdx;
+          break;
+        }
+      }
     }
 
     return {
@@ -1901,6 +2326,8 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
         timestampSkewSeconds,
         withinReplayWindow: withinWindow,
         toleranceSec,
+        matchedSecretIndex,
+        secretsEvaluatedCount: candidateSecrets.length,
       },
     };
   }
@@ -2723,7 +3150,7 @@ function toSafeLocalRpcId(rawId) {
   return null;
 }
 
-export function executeLocalMcpJsonRpc(rpcRequest, packageVersion = "1.20.8") {
+export function executeLocalMcpJsonRpc(rpcRequest, packageVersion = "1.20.9") {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
     return {
       jsonrpc: "2.0",
@@ -3102,12 +3529,13 @@ export function executeLocalMcpJsonRpc(rpcRequest, packageVersion = "1.20.8") {
         error: {
           code: errCode,
           message: err instanceof Error ? err.message : "Tool execution failed",
-          ...(errCode === -32602 && exampleCallMap[toolName]
+          ...(errCode === -32602 && (err?.reason || exampleCallMap[toolName])
             ? {
                 data: {
                   tool: toolName,
+                  error: err?.reason || "INVALID_TOOL_PARAMS",
                   reason: err?.reason || "INVALID_TOOL_PARAMS",
-                  exampleCall: exampleCallMap[toolName],
+                  ...(exampleCallMap[toolName] ? { exampleCall: exampleCallMap[toolName] } : {}),
                 },
               }
             : {}),
