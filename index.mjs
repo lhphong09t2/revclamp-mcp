@@ -33,10 +33,16 @@ export {
   executeLocalMcpJsonRpc,
 };
 
-export const PACKAGE_VERSION = "1.20.9";
+export const PACKAGE_VERSION = "1.20.10";
 export const DEFAULT_MCP_ENDPOINT = "https://api.revclamp.com/api/mcp";
 export const ALLOWED_MCP_ORIGINS = Object.freeze(
-  new Set(["https://api.revclamp.com", "https://revclamp.com"])
+  new Set([
+    "https://api.revclamp.com",
+    "https://revclamp.com",
+    "https://app.revclamp.com",
+    "http://127.0.0.1",
+    "http://localhost",
+  ])
 );
 export const MAX_PAYLOAD_BYTES = 32_768;
 export const MAX_STDIO_LINE_BYTES = MAX_PAYLOAD_BYTES;
@@ -371,13 +377,19 @@ export async function forwardMcpJsonRpc(
       rpcRequest?.params?.name === "revclamp_validate_eu_vat_vies" &&
       (rawViesMode === "FORMAT_ONLY" || rpcRequest?.params?.arguments?.demo === true);
 
+    const cleanKey = String(apiKey || "").trim();
+
     if (
       String(mode || "").toLowerCase() === "local" ||
       !hasExplicitRemote ||
       isLocalOnlyViesCall
     ) {
       if (isNotification) return null;
-      return executeLocalMcpJsonRpc({ ...rpcRequest, id: safeId }, PACKAGE_VERSION);
+      return executeLocalMcpJsonRpc(
+        { ...rpcRequest, id: safeId },
+        PACKAGE_VERSION,
+        { suppressCloudUpgradeHint: Boolean(cleanKey) }
+      );
     }
 
     const boundedTimeoutMs = Math.min(10_000, Math.max(100, Number(timeoutMs) || REQUEST_TIMEOUT_MS));
@@ -385,7 +397,6 @@ export async function forwardMcpJsonRpc(
       "content-type": "application/json",
       accept: "application/json",
     };
-    const cleanKey = String(apiKey || "").trim();
     if (cleanKey) {
       headers.authorization = `Bearer ${cleanKey}`;
     }
@@ -788,6 +799,9 @@ function printHelp() {
       "  revclamp-mcp --sim-replay [presetKey] [windowSec]    Simulate webhook replay & out-of-order state machine",
       "  revclamp-mcp --lint-evidence [preset]                Lint Stripe dispute evidence UTF-16 & CE 3.0 completeness",
       "  revclamp-mcp --verify-webhook [provider] [rawPayload] [signatureHeader]  Verify webhook HMAC via REVCLAMP_WEBHOOK_SECRET env var",
+      "  revclamp-mcp --init-workspace <email>                Provision a free Cloud Workspace (or reuse REVCLAMP_API_KEY) & send 6-digit OTP",
+      "  revclamp-mcp --resend-otp <email>                    Resend 6-digit OTP using existing REVCLAMP_API_KEY env var",
+      "  revclamp-mcp --verify-otp <email> <code>             Verify 6-digit OTP using REVCLAMP_API_KEY env var & print MCP config snippet",
       "  revclamp-mcp --call <tool_name> '<json_args>'        Invoke any RevClamp MCP tool directly",
       "",
       "Environment Variables:",
@@ -810,17 +824,468 @@ const KNOWN_CLI_FLAGS = new Set([
   "--sim-replay",
   "--lint-evidence",
   "--verify-webhook",
+  "--init-workspace",
+  "--resend-otp",
+  "--verify-otp",
   "--call",
   "--stdio",
   "--url",
   "--endpoint",
 ]);
 
+function resolveValidatedOnboardingOrigin(rawBaseUrl = "https://revclamp.com") {
+  const trimmed = String(rawBaseUrl || "https://revclamp.com").trim();
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { ok: false, errorCode: "INVALID_MCP_ENDPOINT_URL" };
+  }
+  if (parsed.username || parsed.password) {
+    return { ok: false, errorCode: "UNSAFE_MCP_ENDPOINT_CREDENTIALS" };
+  }
+  const baseOriginWithoutPort = `${parsed.protocol}//${parsed.hostname}`;
+  const isLoopbackHttp =
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+    ALLOWED_MCP_ORIGINS.has(baseOriginWithoutPort);
+  const isAllowedHttps =
+    parsed.protocol === "https:" && ALLOWED_MCP_ORIGINS.has(parsed.origin);
+  if (!isAllowedHttps && !isLoopbackHttp) {
+    return {
+      ok: false,
+      errorCode: "UNTRUSTED_MCP_ENDPOINT_ORIGIN",
+      origin: parsed.origin,
+    };
+  }
+  return { ok: true, origin: parsed.origin };
+}
+
+/**
+ * Executes CLI-to-Cloud workspace onboarding commands (--init-workspace, --resend-otp, --verify-otp)
+ * enforcing S1 (idempotent key reuse), S2 (partial-failure key preservation), and S3 (zero raw secret in argv).
+ *
+ * @param {object} params
+ * @returns {Promise<object>}
+ */
+export async function runMcpCliOnboardingCommand({
+  mode = "",
+  email = "",
+  otpCode = "",
+  argv = [],
+  env = process.env,
+  baseUrl = "",
+  fetchImpl,
+} = {}) {
+  const scanTokens = [
+    ...(Array.isArray(argv) ? argv : []),
+    email,
+    otpCode,
+  ].map((t) => String(t ?? "").trim());
+
+  for (const tok of scanTokens) {
+    if (
+      /^rg_(?:live|test)_/i.test(tok) ||
+      /(?:^|=)rg_(?:live|test)_/i.test(tok) ||
+      tok === "--api-key" ||
+      tok.startsWith("--api-key=")
+    ) {
+      return {
+        ok: false,
+        exitCode: 1,
+        errorCode: "RAW_API_KEY_IN_ARGV_FORBIDDEN",
+        message:
+          "Pass REVCLAMP_API_KEY via environment variable, never as a CLI argument.",
+      };
+    }
+  }
+
+  const effectiveEnv = env && typeof env === "object" ? env : process.env;
+  const resolvedBaseUrl =
+    baseUrl ||
+    effectiveEnv.REVCLAMP_API_URL ||
+    effectiveEnv.REVCLAMP_MCP_URL ||
+    effectiveEnv.REVCLAMP_WEB_URL ||
+    effectiveEnv.REVCLAMP_ONBOARDING_URL ||
+    "https://revclamp.com";
+  const originCheck = resolveValidatedOnboardingOrigin(resolvedBaseUrl);
+  if (!originCheck.ok) {
+    return {
+      ok: false,
+      exitCode: 1,
+      errorCode: originCheck.errorCode,
+      message: `Untrusted or invalid onboarding origin: ${String(resolvedBaseUrl)}`,
+    };
+  }
+
+  const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (
+    cleanEmail.length < 3 ||
+    cleanEmail.length > 254 ||
+    !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,63}$/.test(cleanEmail)
+  ) {
+    return {
+      ok: false,
+      exitCode: 1,
+      errorCode: "INVALID_EMAIL_ADDRESS",
+      message: "A valid email address (3..254 characters) is required.",
+    };
+  }
+
+  const normalizedMode = String(mode || "")
+    .trim()
+    .replace(/^--+/, "")
+    .toLowerCase();
+  const effectiveFetch = fetchImpl || globalThis.fetch;
+
+  const postOnboardingJson = async (pathname, payloadObj, apiKeyHeader = "") => {
+    const targetUrl = `${originCheck.origin}${pathname}`;
+    const headers = {
+      "content-type": "application/json",
+      accept: "application/json",
+    };
+    if (apiKeyHeader) {
+      headers.authorization = `Bearer ${apiKeyHeader}`;
+      headers["x-revclamp-tenant-key"] = apiKeyHeader;
+    }
+    try {
+      const res = await effectiveFetch(targetUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payloadObj),
+        redirect: "error",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      const status = Number(res?.status || 0);
+      const httpOk =
+        typeof res?.ok === "boolean" ? res.ok : status >= 200 && status < 300;
+      const rawText = await readBoundedResponseText(res, MAX_PAYLOAD_BYTES);
+      let body = null;
+      try {
+        body = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        body = null;
+      }
+      return {
+        httpOk,
+        status,
+        body,
+        errorCode:
+          body && typeof body === "object"
+            ? body.errorCode || body.error || null
+            : null,
+        message:
+          body && typeof body === "object" ? body.message || null : null,
+      };
+    } catch (err) {
+      if (err instanceof Error && err.message === "UPSTREAM_RESPONSE_TOO_LARGE") {
+        return {
+          httpOk: false,
+          status: 502,
+          body: null,
+          errorCode: "UPSTREAM_RESPONSE_TOO_LARGE",
+          message: "Upstream onboarding response exceeded 32,768-byte ceiling.",
+        };
+      }
+      return {
+        httpOk: false,
+        status: 0,
+        body: null,
+        errorCode: "ONBOARDING_NETWORK_ERROR",
+        message: err instanceof Error ? err.message : "Network error",
+      };
+    }
+  };
+
+  const envApiKey =
+    typeof effectiveEnv.REVCLAMP_API_KEY === "string"
+      ? effectiveEnv.REVCLAMP_API_KEY.trim()
+      : "";
+  const hasValidEnvKey = /^rg_live_[a-zA-Z0-9_-]{12,128}$/.test(envApiKey);
+
+  if (normalizedMode === "init-workspace" || normalizedMode === "init") {
+    let activeApiKey = "";
+    let tenantId = null;
+    let reusedExistingEnvKey = false;
+
+    const provisionFreshWorkspace = async () => {
+      const provRes = await postOnboardingJson("/api/dashboard/provision", {
+        tier: "free",
+        acquisitionSurface: "mcp_cli",
+        merchantEmail: cleanEmail,
+      });
+      const provisionedKey =
+        provRes.body && typeof provRes.body.apiKey === "string"
+          ? provRes.body.apiKey.trim()
+          : "";
+      if (!provRes.httpOk || !provisionedKey) {
+        return {
+          ok: false,
+          res: {
+            ok: false,
+            exitCode: 1,
+            stage: "PROVISION_FAILED",
+            errorCode: provRes.errorCode || "PROVISION_WORKSPACE_FAILED",
+            status: provRes.status,
+            message:
+              provRes.message || "Failed to provision free Cloud Workspace.",
+          },
+        };
+      }
+      return {
+        ok: true,
+        apiKey: provisionedKey,
+        tenantId: provRes.body.tenantId || null,
+      };
+    };
+
+    if (hasValidEnvKey) {
+      activeApiKey = envApiKey;
+      reusedExistingEnvKey = true;
+    } else {
+      const freshProv = await provisionFreshWorkspace();
+      if (!freshProv.ok) {
+        return freshProv.res;
+      }
+      activeApiKey = freshProv.apiKey;
+      tenantId = freshProv.tenantId;
+    }
+
+    let otpRes = await postOnboardingJson(
+      "/api/dashboard/send-otp",
+      {
+        email: cleanEmail,
+        purpose: "dashboard_login",
+        acquisitionSurface: "mcp_cli",
+      },
+      activeApiKey
+    );
+
+    if (
+      reusedExistingEnvKey &&
+      (otpRes.status === 401 || otpRes.errorCode === "UNAUTHORIZED_TENANT_KEY")
+    ) {
+      const freshProv = await provisionFreshWorkspace();
+      if (!freshProv.ok) {
+        return freshProv.res;
+      }
+      activeApiKey = freshProv.apiKey;
+      tenantId = freshProv.tenantId;
+      reusedExistingEnvKey = false;
+      otpRes = await postOnboardingJson(
+        "/api/dashboard/send-otp",
+        {
+          email: cleanEmail,
+          purpose: "dashboard_login",
+          acquisitionSurface: "mcp_cli",
+        },
+        activeApiKey
+      );
+    }
+
+    const cmdKeyToken = reusedExistingEnvKey
+      ? '"$REVCLAMP_API_KEY"'
+      : activeApiKey;
+
+    if (!otpRes.httpOk || otpRes.body?.ok === false) {
+      return {
+        ok: false,
+        exitCode: 1,
+        stage: "SEND_OTP_FAILED",
+        errorCode: otpRes.errorCode || "SEND_OTP_FAILED",
+        status: otpRes.status,
+        email: cleanEmail,
+        tenantId: otpRes.body?.tenantId || tenantId,
+        apiKey: activeApiKey,
+        reusedExistingEnvKey,
+        nextStepCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
+        verifyCommandHint: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
+      };
+    }
+
+    return {
+      ok: true,
+      exitCode: 0,
+      stage: "OTP_DISPATCHED",
+      email: cleanEmail,
+      tenantId: otpRes.body?.tenantId || tenantId,
+      apiKey: activeApiKey,
+      reusedExistingEnvKey,
+      nextStepCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
+      resendCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
+      upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
+    };
+  }
+
+  if (normalizedMode === "resend-otp" || normalizedMode === "resend") {
+    if (!envApiKey) {
+      return {
+        ok: false,
+        exitCode: 1,
+        errorCode: "MISSING_REVCLAMP_API_KEY_ENV",
+        message:
+          "Set REVCLAMP_API_KEY in the environment before running --resend-otp.",
+      };
+    }
+    if (!hasValidEnvKey) {
+      return {
+        ok: false,
+        exitCode: 1,
+        errorCode: "INVALID_REVCLAMP_API_KEY_ENV",
+        message:
+          "REVCLAMP_API_KEY must be a valid rg_live_ workspace key.",
+      };
+    }
+
+    const otpRes = await postOnboardingJson(
+      "/api/dashboard/send-otp",
+      {
+        email: cleanEmail,
+        purpose: "dashboard_login",
+        acquisitionSurface: "mcp_cli",
+      },
+      envApiKey
+    );
+
+    if (!otpRes.httpOk || otpRes.body?.ok === false) {
+      return {
+        ok: false,
+        exitCode: 1,
+        stage: "SEND_OTP_FAILED",
+        errorCode: otpRes.errorCode || "SEND_OTP_FAILED",
+        status: otpRes.status,
+        email: cleanEmail,
+        tenantId: otpRes.body?.tenantId || null,
+        reusedExistingEnvKey: true,
+        nextStepCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
+      };
+    }
+
+    return {
+      ok: true,
+      exitCode: 0,
+      stage: "OTP_RESENT",
+      email: cleanEmail,
+      tenantId: otpRes.body?.tenantId || null,
+      reusedExistingEnvKey: true,
+      nextStepCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
+      upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
+    };
+  }
+
+  if (normalizedMode === "verify-otp" || normalizedMode === "verify") {
+    if (!envApiKey) {
+      return {
+        ok: false,
+        exitCode: 1,
+        errorCode: "MISSING_REVCLAMP_API_KEY_ENV",
+        message:
+          "Set REVCLAMP_API_KEY in the environment before running --verify-otp.",
+      };
+    }
+    if (!hasValidEnvKey) {
+      return {
+        ok: false,
+        exitCode: 1,
+        errorCode: "INVALID_REVCLAMP_API_KEY_ENV",
+        message:
+          "REVCLAMP_API_KEY must be a valid rg_live_ workspace key.",
+      };
+    }
+
+    const cleanCode =
+      typeof otpCode === "string" || typeof otpCode === "number"
+        ? String(otpCode).trim()
+        : "";
+    if (!/^\d{6}$/.test(cleanCode)) {
+      return {
+        ok: false,
+        exitCode: 1,
+        errorCode: "INVALID_OTP_CODE_FORMAT",
+        message: "OTP code must be a 6-digit numeric code.",
+      };
+    }
+
+    const verifyRes = await postOnboardingJson(
+      "/api/dashboard/verify-otp",
+      {
+        email: cleanEmail,
+        otpCode: cleanCode,
+        code: cleanCode,
+        purpose: "dashboard_login",
+        acquisitionSurface: "mcp_cli",
+      },
+      envApiKey
+    );
+
+    if (
+      verifyRes.status === 200 &&
+      verifyRes.body?.ok === true &&
+      verifyRes.body?.verified === true
+    ) {
+      return {
+        ok: true,
+        exitCode: 0,
+        verified: true,
+        stage: "WORKSPACE_VERIFIED",
+        email: cleanEmail,
+        tenantId: verifyRes.body?.tenantId || null,
+        mcpServersConfig: {
+          mcpServers: {
+            revclamp: {
+              command: "npx",
+              args: ["-y", `revclamp-mcp@${PACKAGE_VERSION}`],
+              env: {
+                REVCLAMP_API_KEY: "<SET_FROM_ENV_RG_LIVE_KEY>",
+              },
+            },
+          },
+        },
+        upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
+      };
+    }
+
+    return {
+      ok: false,
+      exitCode: 1,
+      verified: false,
+      stage: "VERIFY_OTP_FAILED",
+      errorCode: verifyRes.errorCode || "OTP_VERIFICATION_FAILED",
+      status: verifyRes.status,
+      message: verifyRes.message || "OTP verification failed.",
+      nextStepCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
+    };
+  }
+
+  return {
+    ok: false,
+    exitCode: 1,
+    errorCode: "UNKNOWN_ONBOARDING_MODE",
+    message: `Unsupported onboarding mode: ${String(mode)}`,
+  };
+}
+
 export async function runCli(argv = process.argv.slice(2), options = {}) {
   const effectiveOptions = { ...options };
   const cleanedArgv = [];
   for (let i = 0; i < argv.length; i += 1) {
     const token = String(argv[i] ?? "");
+    if (
+      token === "--api-key" ||
+      token.startsWith("--api-key=") ||
+      /^rg_(?:live|test)_/i.test(token) ||
+      /(?:^|=)rg_(?:live|test)_/i.test(token)
+    ) {
+      const errOut = {
+        ok: false,
+        exitCode: 1,
+        errorCode: "RAW_API_KEY_IN_ARGV_FORBIDDEN",
+        message:
+          "Pass REVCLAMP_API_KEY via environment variable, never as a CLI argument.",
+      };
+      console.error(JSON.stringify(errOut));
+      return 1;
+    }
     if (token === "--secret" || token.startsWith("--secret=")) {
       console.error(
         "Error: passing webhook secrets via CLI flags (--secret) is forbidden; set REVCLAMP_WEBHOOK_SECRET in the environment."
@@ -1344,6 +1809,83 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
     );
     console.log(JSON.stringify(res, null, 2));
     return !res || res.error || res.result?.isError === true ? 1 : 0;
+  }
+
+  const initWorkspaceIdx = cleanedArgv.indexOf("--init-workspace");
+  if (initWorkspaceIdx !== -1) {
+    const rawEmailToken = String(cleanedArgv[initWorkspaceIdx + 1] ?? "").trim();
+    const emailArg = rawEmailToken.startsWith("-") ? "" : rawEmailToken;
+    const out = await runMcpCliOnboardingCommand({
+      mode: "init-workspace",
+      email: emailArg,
+      argv,
+      env: effectiveOptions.env || process.env,
+      baseUrl:
+        effectiveOptions.baseUrl ||
+        effectiveOptions.endpointUrl ||
+        effectiveOptions.apiUrl ||
+        "",
+      fetchImpl: effectiveOptions.fetchImpl,
+    });
+    if (out.ok) {
+      console.log(JSON.stringify(out, null, 2));
+      return 0;
+    }
+    console.error(JSON.stringify(out, null, 2));
+    return 1;
+  }
+
+  const resendOtpIdx = cleanedArgv.indexOf("--resend-otp");
+  if (resendOtpIdx !== -1) {
+    const rawEmailToken = String(cleanedArgv[resendOtpIdx + 1] ?? "").trim();
+    const emailArg = rawEmailToken.startsWith("-") ? "" : rawEmailToken;
+    const out = await runMcpCliOnboardingCommand({
+      mode: "resend-otp",
+      email: emailArg,
+      argv,
+      env: effectiveOptions.env || process.env,
+      baseUrl:
+        effectiveOptions.baseUrl ||
+        effectiveOptions.endpointUrl ||
+        effectiveOptions.apiUrl ||
+        "",
+      fetchImpl: effectiveOptions.fetchImpl,
+    });
+    if (out.ok) {
+      console.log(JSON.stringify(out, null, 2));
+      return 0;
+    }
+    console.error(JSON.stringify(out, null, 2));
+    return 1;
+  }
+
+  const verifyOtpIdx = cleanedArgv.indexOf("--verify-otp");
+  if (verifyOtpIdx !== -1) {
+    const rawEmailToken = String(cleanedArgv[verifyOtpIdx + 1] ?? "").trim();
+    const emailArg = rawEmailToken.startsWith("-") ? "" : rawEmailToken;
+    const rawCodeToken = emailArg
+      ? String(cleanedArgv[verifyOtpIdx + 2] ?? "").trim()
+      : "";
+    const otpCodeArg = rawCodeToken.startsWith("-") ? "" : rawCodeToken;
+    const out = await runMcpCliOnboardingCommand({
+      mode: "verify-otp",
+      email: emailArg,
+      otpCode: otpCodeArg,
+      argv,
+      env: effectiveOptions.env || process.env,
+      baseUrl:
+        effectiveOptions.baseUrl ||
+        effectiveOptions.endpointUrl ||
+        effectiveOptions.apiUrl ||
+        "",
+      fetchImpl: effectiveOptions.fetchImpl,
+    });
+    if (out.ok) {
+      console.log(JSON.stringify(out, null, 2));
+      return 0;
+    }
+    console.error(JSON.stringify(out, null, 2));
+    return 1;
   }
 
   const callIdx = cleanedArgv.indexOf("--call");

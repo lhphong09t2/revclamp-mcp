@@ -214,6 +214,7 @@ const REVCLAMP_START_MARKER = "--- BEGIN REVCLAMP CE3 EVIDENCE ---";
 const REVCLAMP_END_MARKER = "--- END REVCLAMP CE3 EVIDENCE ---";
 const REVCLAMP_BRACKET_START_MARKER = "[RevClamp Verified Product Usage Log]";
 const REVCLAMP_BRACKET_END_MARKER = "[/RevClamp Verified Product Usage Log]";
+const REVCLAMP_BRACKET_ALT_END_MARKER = "[End RevClamp Log]";
 const PRODUCTION_EMPTY_BLOCK_WRAPPER_CHARS =
   REVCLAMP_BRACKET_START_MARKER.length + 1 + REVCLAMP_BRACKET_END_MARKER.length;
 const MAX_ACCESS_ACTIVITY_LOG_CHARS = 18_000;
@@ -693,50 +694,107 @@ function sanitizeLogToken(raw, maxLen = 96) {
 
 function stripExistingRevClampBlock(rawNotes) {
   if (typeof rawNotes !== "string" || !rawNotes) {
-    return { ok: true, hadBlock: false, prefix: "", suffix: "", text: "" };
+    return {
+      ok: true,
+      hadBlock: false,
+      prefix: "",
+      suffix: "",
+      text: "",
+      blockUtf16CodeUnits: 0,
+    };
   }
   const hasCanonical =
     rawNotes.includes(REVCLAMP_START_MARKER) || rawNotes.includes(REVCLAMP_END_MARKER);
+  const hasBracketPrimaryEnd = rawNotes.includes(REVCLAMP_BRACKET_END_MARKER);
+  const hasBracketAltEnd = rawNotes.includes(REVCLAMP_BRACKET_ALT_END_MARKER);
   const hasBracket =
-    rawNotes.includes(REVCLAMP_BRACKET_START_MARKER) ||
-    rawNotes.includes(REVCLAMP_BRACKET_END_MARKER);
+    rawNotes.includes(REVCLAMP_BRACKET_START_MARKER) || hasBracketPrimaryEnd || hasBracketAltEnd;
   if (!hasCanonical && !hasBracket) {
-    return { ok: true, hadBlock: false, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
+    return {
+      ok: true,
+      hadBlock: false,
+      prefix: rawNotes,
+      suffix: "",
+      text: rawNotes.trim(),
+      blockUtf16CodeUnits: 0,
+    };
   }
-  if (hasCanonical && hasBracket) {
-    return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
+  if ((hasCanonical && hasBracket) || (hasBracketPrimaryEnd && hasBracketAltEnd)) {
+    return {
+      ok: false,
+      hadBlock: true,
+      prefix: rawNotes,
+      suffix: "",
+      text: rawNotes.trim(),
+      blockUtf16CodeUnits: 0,
+    };
   }
   const activeStart = hasCanonical ? REVCLAMP_START_MARKER : REVCLAMP_BRACKET_START_MARKER;
-  const activeEnd = hasCanonical ? REVCLAMP_END_MARKER : REVCLAMP_BRACKET_END_MARKER;
+  const activeEnd = hasCanonical
+    ? REVCLAMP_END_MARKER
+    : hasBracketAltEnd
+      ? REVCLAMP_BRACKET_ALT_END_MARKER
+      : REVCLAMP_BRACKET_END_MARKER;
   let cursor = 0;
   const prefixSegments = [];
   let trailingSegment = "";
+  let blockUtf16CodeUnits = 0;
   while (cursor < rawNotes.length) {
     const startIdx = rawNotes.indexOf(activeStart, cursor);
     if (startIdx === -1) {
       if (rawNotes.indexOf(activeEnd, cursor) !== -1) {
-        return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
+        return {
+          ok: false,
+          hadBlock: true,
+          prefix: rawNotes,
+          suffix: "",
+          text: rawNotes.trim(),
+          blockUtf16CodeUnits: 0,
+        };
       }
       trailingSegment = rawNotes.slice(cursor);
       break;
     }
     if (rawNotes.slice(cursor, startIdx).includes(activeEnd)) {
-      return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
+      return {
+        ok: false,
+        hadBlock: true,
+        prefix: rawNotes,
+        suffix: "",
+        text: rawNotes.trim(),
+        blockUtf16CodeUnits: 0,
+      };
     }
     const contentStart = startIdx + activeStart.length;
     const endIdx = rawNotes.indexOf(activeEnd, contentStart);
     if (endIdx === -1) {
-      return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
+      return {
+        ok: false,
+        hadBlock: true,
+        prefix: rawNotes,
+        suffix: "",
+        text: rawNotes.trim(),
+        blockUtf16CodeUnits: 0,
+      };
     }
     const nextStartIdx = rawNotes.indexOf(activeStart, contentStart);
     if (nextStartIdx !== -1 && nextStartIdx < endIdx) {
-      return { ok: false, hadBlock: true, prefix: rawNotes, suffix: "", text: rawNotes.trim() };
+      return {
+        ok: false,
+        hadBlock: true,
+        prefix: rawNotes,
+        suffix: "",
+        text: rawNotes.trim(),
+        blockUtf16CodeUnits: 0,
+      };
     }
     const beforeSegment = rawNotes.slice(cursor, startIdx).replace(/\n{1,2}$/, "");
     if (beforeSegment.length > 0) {
       prefixSegments.push(beforeSegment);
     }
-    cursor = endIdx + activeEnd.length;
+    const blockEndCursor = endIdx + activeEnd.length;
+    blockUtf16CodeUnits += blockEndCursor - startIdx;
+    cursor = blockEndCursor;
     if (rawNotes.slice(cursor, cursor + 2) === "\n\n") {
       cursor += 2;
     } else if (rawNotes[cursor] === "\n") {
@@ -752,6 +810,7 @@ function stripExistingRevClampBlock(rawNotes) {
     prefix,
     suffix,
     text: keptTrimmed.join("\n\n").trim(),
+    blockUtf16CodeUnits,
   };
 }
 
@@ -1372,7 +1431,34 @@ function evaluateLocalVisaCe3Qualification(disputeReason, disputedTransaction, p
   };
 }
 
-export function executeLocalMcpTool(toolName, rawArgs = {}) {
+export const LOCAL_STATELESS_CLOUD_UPGRADE_HINT = Object.freeze({
+  mode: "LOCAL_STATELESS_OPEN_CORE",
+  message:
+    "Running in stateless local mode. Provision a free or paid Cloud Workspace for 90-day event persistence, automated webhook revocation, and Slack/Email alerts.",
+  command: "npx --yes revclamp-mcp --init-workspace <work_email>",
+  cliActivateCommand: "npx -y revclamp-mcp@1.20.10 --init-workspace you@company.com",
+  upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
+});
+
+export function executeLocalMcpTool(toolName, rawArgs = {}, options = {}) {
+  const result = executeLocalMcpToolCore(toolName, rawArgs);
+  const suppressHint = Boolean(options?.suppressCloudUpgradeHint || options?.apiKey);
+  if (
+    !suppressHint &&
+    result &&
+    typeof result === "object" &&
+    result.ok !== false &&
+    !result.error
+  ) {
+    return {
+      ...result,
+      cloudUpgradeHint: LOCAL_STATELESS_CLOUD_UPGRADE_HINT,
+    };
+  }
+  return result;
+}
+
+function executeLocalMcpToolCore(toolName, rawArgs = {}) {
   const inputArgs =
     rawArgs === undefined
       ? {}
@@ -1988,11 +2074,23 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
     const malformedExistingMarkers = Boolean(!strippedNotes.ok);
     const warnings = malformedExistingMarkers ? ["MALFORMED_EXISTING_MARKERS"] : [];
     const trimmedExistingNotes = existingMerchantNotes.trim();
+    const normalizedTrimmedExisting = trimmedExistingNotes.replace(/\r?\n+/g, "\n");
     const outsideMarkerText = `${strippedNotes.prefix || ""}\n${strippedNotes.suffix || ""}`;
+    const outsideJoinedSingle = [strippedNotes.prefix || "", strippedNotes.suffix || ""]
+      .filter(Boolean)
+      .join("\n");
+    const outsideJoinedDouble = [strippedNotes.prefix || "", strippedNotes.suffix || ""]
+      .filter(Boolean)
+      .join("\n\n");
+    const outsideNormalizedNewlines = outsideJoinedSingle.replace(/\r?\n+/g, "\n");
     const preservesMerchantNotes = Boolean(
       nonDestructiveMarkersPresent &&
         strippedNotes.text.length > 0 &&
-        (trimmedExistingNotes === "" || outsideMarkerText.includes(trimmedExistingNotes))
+        (trimmedExistingNotes === "" ||
+          outsideMarkerText.includes(trimmedExistingNotes) ||
+          outsideJoinedSingle.includes(trimmedExistingNotes) ||
+          outsideJoinedDouble.includes(trimmedExistingNotes) ||
+          outsideNormalizedNewlines.includes(normalizedTrimmedExisting))
     );
 
     const extractedNotesLen =
@@ -2004,12 +2102,10 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
     const preSeparatorUnits = capacityPrefix.length > 0 ? 2 : 0;
     const postSeparatorUnits = capacitySuffix.length > 0 ? 2 : 0;
     const merchantNotesUtf16CodeUnits = capacityPrefix.length + capacitySuffix.length;
+    const wrapperOverheadUtf16CodeUnits =
+      preSeparatorUnits + PRODUCTION_EMPTY_BLOCK_WRAPPER_CHARS + postSeparatorUnits;
     const fixedWrapperUtf16CodeUnits =
-      capacityPrefix.length +
-      preSeparatorUnits +
-      PRODUCTION_EMPTY_BLOCK_WRAPPER_CHARS +
-      postSeparatorUnits +
-      capacitySuffix.length;
+      capacityPrefix.length + wrapperOverheadUtf16CodeUnits + capacitySuffix.length;
     const merchantLogAtCapacity = Boolean(
       fixedWrapperUtf16CodeUnits >= MAX_ACCESS_ACTIVITY_LOG_CHARS
     );
@@ -2027,6 +2123,20 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
     const within18kCeiling = utf16CodeUnits <= MAX_ACCESS_ACTIVITY_LOG_CHARS;
     const within20kHardCeiling = utf16CodeUnits <= 20_000;
     const exceeds20kHardCeiling = utf16CodeUnits > 20_000;
+    const segmentBreakdown = {
+      prefixUtf16CodeUnits: capacityPrefix.length,
+      preSeparatorUtf16CodeUnits: preSeparatorUnits,
+      revClampBlockUtf16CodeUnits: strippedNotes.blockUtf16CodeUnits || 0,
+      postSeparatorUtf16CodeUnits: postSeparatorUnits,
+      suffixUtf16CodeUnits: capacitySuffix.length,
+      wrapperOverheadUtf16CodeUnits,
+      totalMergedUtf16CodeUnits: utf16CodeUnits,
+      remainingSafeBudgetUtf16CodeUnits: remainingUtf16Units,
+      overBudgetByUtf16CodeUnits: Math.max(
+        0,
+        utf16CodeUnits - MAX_ACCESS_ACTIVITY_LOG_CHARS
+      ),
+    };
     let overallVerdict = "PASS_CE3_READY";
     if (!within18kCeiling) {
       overallVerdict = "FAIL_UTF16_OVERFLOW";
@@ -2074,6 +2184,7 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
       merchantNotesPreserved: preservesMerchantNotes,
       merchantNotesUtf16CodeUnits,
       fixedWrapperUtf16CodeUnits,
+      segmentBreakdown,
       merchantLogAtCapacity,
       stagingActionWhenAtCapacity,
       priorMatchedCount,
@@ -2898,7 +3009,9 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
         ? args.existingAccessActivityLog
         : typeof args.existingUncategorizedText === "string"
           ? args.existingUncategorizedText
-          : "";
+          : typeof args.existingMerchantNotes === "string"
+            ? args.existingMerchantNotes
+            : "";
     const strippedNotes = stripExistingRevClampBlock(rawExistingLog);
     if (!strippedNotes.ok) {
       const rawUtf8Bytes = Buffer.byteLength(rawExistingLog, "utf8");
@@ -2919,25 +3032,40 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
         },
       };
     }
-    const preservedMerchantNotes = strippedNotes.text;
+    const merchantPrefixLog = strippedNotes.prefix || "";
+    const merchantSuffixLog = strippedNotes.suffix || "";
+    const totalMerchantChars = merchantPrefixLog.length + merchantSuffixLog.length;
+    const preSeparator = merchantPrefixLog.length > 0 ? "\n\n" : "";
+    const postSeparator = merchantSuffixLog.length > 0 ? "\n\n" : "";
     const headerLine = isDemo
       ? `[DEMO SAMPLE - NOT FOR DISPUTE SUBMISSION | dispute=${cleanDisputeId} | customer=${cleanCustomerId} | submit=false]`
       : `[RevClamp Verified Product Usage Log | dispute=${cleanDisputeId} | customer=${cleanCustomerId} | submit=false]`;
 
-    const prefix = preservedMerchantNotes ? `${preservedMerchantNotes}\n\n` : "";
+    const wrapperOverheadUtf16CodeUnits =
+      preSeparator.length +
+      REVCLAMP_START_MARKER.length +
+      1 +
+      REVCLAMP_END_MARKER.length +
+      postSeparator.length;
+    const fixedWrapperChars =
+      merchantPrefixLog.length + wrapperOverheadUtf16CodeUnits + merchantSuffixLog.length;
     const fixedEnvelopeChars =
-      prefix.length +
+      merchantPrefixLog.length +
+      preSeparator.length +
       REVCLAMP_START_MARKER.length +
       1 +
       headerLine.length +
       1 +
-      REVCLAMP_END_MARKER.length;
+      REVCLAMP_END_MARKER.length +
+      postSeparator.length +
+      merchantSuffixLog.length;
     const fixedEnvelopeUtf8Bytes = Buffer.byteLength(
-      `${prefix}${REVCLAMP_START_MARKER}\n${headerLine}\n${REVCLAMP_END_MARKER}`,
+      `${merchantPrefixLog}${preSeparator}${REVCLAMP_START_MARKER}\n${headerLine}\n${REVCLAMP_END_MARKER}${postSeparator}${merchantSuffixLog}`,
       "utf8"
     );
 
     if (
+      fixedWrapperChars >= MAX_ACCESS_ACTIVITY_LOG_CHARS ||
       fixedEnvelopeChars > MAX_ACCESS_ACTIVITY_LOG_CHARS ||
       fixedEnvelopeUtf8Bytes > MAX_LOG_UTF8_BYTES
     ) {
@@ -2949,6 +3077,23 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
         skipped: true,
         reason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
         submit: false,
+        segmentBreakdown: {
+          prefixUtf16CodeUnits: merchantPrefixLog.length,
+          preSeparatorUtf16CodeUnits: preSeparator.length,
+          revClampBlockUtf16CodeUnits: 0,
+          postSeparatorUtf16CodeUnits: postSeparator.length,
+          suffixUtf16CodeUnits: merchantSuffixLog.length,
+          wrapperOverheadUtf16CodeUnits,
+          totalMergedUtf16CodeUnits: totalMerchantChars,
+          remainingSafeBudgetUtf16CodeUnits: Math.max(
+            0,
+            MAX_ACCESS_ACTIVITY_LOG_CHARS - totalMerchantChars
+          ),
+          overBudgetByUtf16CodeUnits: Math.max(
+            0,
+            fixedEnvelopeChars - MAX_ACCESS_ACTIVITY_LOG_CHARS
+          ),
+        },
         evidence: {},
       };
     }
@@ -2969,6 +3114,36 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
       currentUtf8Bytes += lineUtf8Bytes;
     }
 
+    if (packedLines.length === 0 && formattedLines.length > 0) {
+      return {
+        ok: true,
+        executionMode: "local_open_source_engine",
+        disputeId: cleanDisputeId,
+        customerId: cleanCustomerId,
+        skipped: true,
+        reason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
+        submit: false,
+        segmentBreakdown: {
+          prefixUtf16CodeUnits: merchantPrefixLog.length,
+          preSeparatorUtf16CodeUnits: preSeparator.length,
+          revClampBlockUtf16CodeUnits: 0,
+          postSeparatorUtf16CodeUnits: postSeparator.length,
+          suffixUtf16CodeUnits: merchantSuffixLog.length,
+          wrapperOverheadUtf16CodeUnits,
+          totalMergedUtf16CodeUnits: totalMerchantChars,
+          remainingSafeBudgetUtf16CodeUnits: Math.max(
+            0,
+            MAX_ACCESS_ACTIVITY_LOG_CHARS - totalMerchantChars
+          ),
+          overBudgetByUtf16CodeUnits: Math.max(
+            0,
+            fixedEnvelopeChars + 1 + formattedLines[0].length - MAX_ACCESS_ACTIVITY_LOG_CHARS
+          ),
+        },
+        evidence: {},
+      };
+    }
+
     const block = [
       REVCLAMP_START_MARKER,
       headerLine,
@@ -2976,7 +3151,7 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
       REVCLAMP_END_MARKER,
     ].join("\n");
 
-    const merged = `${prefix}${block}`;
+    const merged = `${merchantPrefixLog}${preSeparator}${block}${postSeparator}${merchantSuffixLog}`;
     const ce3Qualification = evaluateLocalVisaCe3Qualification(
       disputeReason,
       args.disputedTransaction,
@@ -2994,6 +3169,20 @@ export function executeLocalMcpTool(toolName, rawArgs = {}) {
       submit: false,
       utf16CodeUnits: merged.length,
       linesIncluded: packedLines.length,
+      segmentBreakdown: {
+        prefixUtf16CodeUnits: merchantPrefixLog.length,
+        preSeparatorUtf16CodeUnits: preSeparator.length,
+        revClampBlockUtf16CodeUnits: block.length,
+        postSeparatorUtf16CodeUnits: postSeparator.length,
+        suffixUtf16CodeUnits: merchantSuffixLog.length,
+        wrapperOverheadUtf16CodeUnits,
+        totalMergedUtf16CodeUnits: merged.length,
+        remainingSafeBudgetUtf16CodeUnits: Math.max(
+          0,
+          MAX_ACCESS_ACTIVITY_LOG_CHARS - merged.length
+        ),
+        overBudgetByUtf16CodeUnits: Math.max(0, merged.length - MAX_ACCESS_ACTIVITY_LOG_CHARS),
+      },
       evidence: {
         access_activity_log: merged,
       },
@@ -3150,7 +3339,11 @@ function toSafeLocalRpcId(rawId) {
   return null;
 }
 
-export function executeLocalMcpJsonRpc(rpcRequest, packageVersion = "1.20.9") {
+export function executeLocalMcpJsonRpc(
+  rpcRequest,
+  packageVersion = "1.20.10",
+  options = {}
+) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
     return {
       jsonrpc: "2.0",
@@ -3434,7 +3627,7 @@ export function executeLocalMcpJsonRpc(rpcRequest, packageVersion = "1.20.9") {
     }
 
     try {
-      const structuredContent = executeLocalMcpTool(toolName, effectiveToolArgs);
+      const structuredContent = executeLocalMcpTool(toolName, effectiveToolArgs, options);
       let responseObj = {
         jsonrpc: "2.0",
         id: safeId,
