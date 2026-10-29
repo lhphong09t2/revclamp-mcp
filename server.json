@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.revclamp/revclamp-mcp",
+  "name": "com.revclamp/revclamp-mcp",
   "title": "RevClamp MCP Server",
   "description": "Zero-take-rate Stripe 2025-03-31.basil, Visa CE 3.0 & EU/XI VIES VAT guardrails MCP server.",
   "repository": {
