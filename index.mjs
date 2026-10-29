@@ -33,7 +33,7 @@ export {
   executeLocalMcpJsonRpc,
 };
 
-export const PACKAGE_VERSION = "1.20.10";
+export const PACKAGE_VERSION = "1.20.11";
 export const DEFAULT_MCP_ENDPOINT = "https://api.revclamp.com/api/mcp";
 export const ALLOWED_MCP_ORIGINS = Object.freeze(
   new Set([

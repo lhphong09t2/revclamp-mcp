@@ -5,18 +5,18 @@
 **`revclamp-mcp`** is a standalone, zero-dependency **Open-Source Model Context Protocol (MCP) Server & CLI** (`index.mjs` + `local_engine.mjs`) implementing **9 deterministic B2B FinOps, Stripe `2025-03-31.basil`, Visa CE 3.0, EU/XI VIES VAT, Shopify Plus B2B Net-15/30/60, and Webhook Security tools** in pure Node.js.
 
 - **100% Local In-Process Execution (Default — Zero Network / Zero API Key Required):** All 9 MCP tools (`initialize`, `tools/list`, and `tools/call`) execute locally in-process inside [`local_engine.mjs`](./local_engine.mjs) using pure Node.js (`node:crypto` HMAC-SHA256 verification, integer-cent double-entry accounting, 72-hour webhook replay state machines, and `18,000` UTF-16 code unit CE 3.0 linting). Zero network calls are ever made unless `REVCLAMP_API_KEY` or `REVCLAMP_MCP_URL` is explicitly configured.
-- **Optional Hosted Cloud Workspace Sync (`REVCLAMP_API_KEY`):** When `REVCLAMP_API_KEY` (`rg_live_...`) is configured, `revclamp-mcp` connects to [**RevClamp Enterprise**](https://revclamp.com) (`https://api.revclamp.com/api/mcp`) to unlock the **90-day SQLite WAL usage & audit ledger**, **24/7 autonomous Stripe dispute & entitlement webhook outbox**, and **real-time EU Commission VIES SOAP gateway consultation numbers**.
+- **Optional Hosted Cloud Workspace Sync (`REVCLAMP_API_KEY`):** When `REVCLAMP_API_KEY` (`rg_live_...`) is configured, `revclamp-mcp` connects to [**RevClamp Enterprise**](https://revclamp.com) (`https://api.revclamp.com/api/mcp`) to unlock the **90-day durable transactional usage & audit ledger**, **24/7 autonomous Stripe dispute & entitlement webhook outbox**, and **real-time EU Commission VIES SOAP gateway consultation numbers**.
 
 ## Local Open-Core (`local_engine.mjs`) vs. Hosted Cloud (`REVCLAMP_API_KEY`)
 
 | Capability | Local Open-Core Default (Zero API Key) | Hosted Cloud (`REVCLAMP_API_KEY`) |
 | :--- | :--- | :--- |
 | **Execution & Network** | 100% in-process (`local_engine.mjs`), zero network calls | HTTPS JSON-RPC to `https://api.revclamp.com/api/mcp` (`redirect: "error"`) |
-| **Usage & Audit Storage** | Stateless evaluation of caller-supplied JSON snapshots | **Persistent 90-day SQLite WAL ledger** + Stripe historical backfill |
+| **Usage & Audit Storage** | Stateless evaluation of caller-supplied JSON snapshots | **Persistent 90-day durable transactional ledger** + Stripe historical backfill |
 | **Dispute & Entitlement Action** | Returns non-destructive `submit: false` draft & `revoke_entitlement` decision | **24/7 autonomous Stripe webhook outbox** (`disputes.update` & signed revoke webhooks) |
 | **EU & `XI` B2B VAT (`VIES`)** | Deterministic syntax & `GR -> EL` normalization (`FORMAT_ONLY` default, `valid: null`) | **Live EU Commission VIES SOAP consultation IDs** + circuit-breaker retry queue (`viesMode: "LIVE"` + `REVCLAMP_API_KEY`) |
 | **Monthly Event Tiers** | Unlimited local in-process evaluations (0 network cost) | **Free Sandbox** (`5,000` events/mo) · **Starter $19/mo** (`100k`) · **Growth $59/mo** (`1M`) · **Scale $199/mo** (`5M`) |
-| **Data Privacy (`INV-SAAS-04`)** | Nothing ever leaves your machine | Only explicit `tools/call` arguments are sent over TLS after local live-secret scrubbing (`scanMcpClientPayloadForSecrets` in `index.mjs` blocks `sk_live_`, non-test `whsec_`, `shpat_` locally) |
+| **Data Minimization & Privacy** | Nothing ever leaves your machine | Only explicit `tools/call` arguments are sent over TLS after local live-secret scrubbing (blocks `sk_live_`, non-test `whsec_`, and `shpat_` locally before any network request) |
 
 ## Open-Source MCP Tools Implemented in `local_engine.mjs` (9)
 
@@ -59,13 +59,13 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 
 ```bash
 # Run a <60s local CLI smoke check (verifies all 9 tool schemas & executes a local_engine.mjs sample audit with zero API key)
-npx -y github:lhphong09t2/revclamp-mcp#v1.20.10 --self-test
+npx -y github:lhphong09t2/revclamp-mcp#v1.20.11 --self-test
 
 # Provision a free Cloud Workspace (or reuse REVCLAMP_API_KEY) & send a 6-digit login OTP
-npx -y revclamp-mcp@1.20.10 --init-workspace you@company.com
+npx -y revclamp-mcp@1.20.11 --init-workspace you@company.com
 
 # Verify the 6-digit OTP using REVCLAMP_API_KEY from environment
-REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.10 --verify-otp you@company.com 123456
+REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.11 --verify-otp you@company.com 123456
 
 # List all 9 MCP tools and JSON schemas (runs locally in-process)
 node index.mjs --list-tools

@@ -12,7 +12,7 @@
  *     caller-supplied payloads. Never fabricates live consultation IDs or card-network
  *     dispute evidence unless `demo: true` is explicitly passed (`sample: true`).
  *   - Cloud Workspace Mode (`REVCLAMP_API_KEY` on https://api.revclamp.com/api/mcp):
- *     Unlocks the 90-day SQLite WAL usage ledger, 24/7 autonomous Stripe dispute &
+ *     Unlocks the 90-day durable transactional usage ledger, 24/7 autonomous Stripe dispute &
  *     entitlement webhook outbox, and live European Commission VIES consultation IDs.
  */
 
@@ -145,7 +145,7 @@ export const LOCAL_MCP_RESOURCES = Object.freeze([
     uri: "revclamp://docs/open-core-capabilities",
     name: "RevClamp Open-Core vs Hosted Cloud Capabilities",
     description:
-      "Reference summary of the 9 local deterministic MCP tools vs. hosted REVCLAMP_API_KEY capabilities (90-day SQLite WAL ledger, 24/7 Stripe webhook outbox, and live EU VIES consultation IDs).",
+      "Reference summary of the 9 local deterministic MCP tools vs. hosted REVCLAMP_API_KEY capabilities (90-day durable transactional ledger, 24/7 Stripe webhook outbox, and live EU VIES consultation IDs).",
     mimeType: "application/json",
   }),
 ]);
@@ -189,7 +189,7 @@ const EU_VIES_FORMAT_RULES = Object.freeze({
   DK: /^DK\d{8}$/,
   EE: /^EE\d{9}$/,
   EL: /^EL\d{9}$/,
-  ES: /^ES[A-Z0-9]\d{7}[A-Z0-9]$/,
+  ES: /^ES(?:[A-Z]\d{7}[A-Z0-9]|[0-9]\d{7}[A-Z])$/,
   FI: /^FI\d{8}$/,
   FR: /^FR[A-HJ-NP-Z0-9]{2}\d{9}$/,
   HR: /^HR\d{11}$/,
@@ -655,14 +655,20 @@ export function validateArgsAgainstSchema(schema, args) {
 function normalizeCountryCode(raw) {
   const clean = String(raw || "")
     .trim()
-    .toUpperCase();
-  return clean === "GR" ? "EL" : clean;
+    .toUpperCase()
+    .replace(/[\s.\-/:_]+/g, "");
+  if (clean === "GR") return "EL";
+  if (clean === "GBNIR") return "XI";
+  return clean;
 }
 
 function normalizeVatId(rawVat) {
-  const compact = String(rawVat || "")
+  let compact = String(rawVat || "")
     .toUpperCase()
-    .replace(/[\s.\-/:]+/g, "");
+    .replace(/[\s.\-/:_]+/g, "");
+  if (compact.startsWith("GBNIR")) {
+    compact = `XI${compact.slice(5)}`;
+  }
   if (compact.length < 4) {
     return { validFormat: false, memberState: "", vatNumber: "", fullVatId: compact };
   }
@@ -1008,14 +1014,37 @@ function evaluateLocalGhostUsage(subscriptionsEnv, usageEvent, dunningGracePerio
         reason: "UNMATCHED_CUSTOMER_ID",
       };
     }
+    const hasPositiveCustomerIdMatch = Boolean(evCustomerId && subCus && subCus === evCustomerId);
+    const hasPositiveEmailMatch = Boolean(evEmail && subEmail && subEmail === evEmail);
+    if (!hasPositiveCustomerIdMatch && !hasPositiveEmailMatch) {
+      return {
+        ok: true,
+        executionMode: "local_open_source_engine",
+        isGhostUsage: false,
+        decision: "HOLD_CUSTOMER_MISMATCH",
+        reason: subCus ? "UNMATCHED_CUSTOMER_ID" : "UNMATCHED_CUSTOMER_EMAIL",
+      };
+    }
     const st = sub.status.trim();
     if (ENTITLED_SUB_STATUSES.has(st)) {
+      const collectionPaused = Boolean(
+        sub.pause_collection && typeof sub.pause_collection === "object"
+      );
       return {
         ok: true,
         executionMode: "local_open_source_engine",
         isGhostUsage: false,
         decision: "ALLOW_ENTITLED",
         reason: "ACTIVE_SUBSCRIPTION_PRESENT",
+        ...(collectionPaused
+          ? {
+              collectionPaused: true,
+              pauseCollectionBehavior:
+                typeof sub.pause_collection.behavior === "string"
+                  ? sub.pause_collection.behavior
+                  : "void",
+            }
+          : {}),
       };
     }
     if (sub.items?.has_more === true) {
@@ -1152,7 +1181,36 @@ function parseStrictIpv4Octets(str) {
 
 function normalizeIpForCe3Correlation(ip) {
   if (typeof ip !== "string") return null;
-  const clean = ip.trim().replace(/^\[|\]$/g, "").replace(/%[^\s%\]]+$/, "").trim().toLowerCase();
+  let raw = ip.trim().toLowerCase();
+  if (!raw || raw.includes(",")) return null;
+  if (raw.startsWith("ipv4:")) {
+    raw = raw.slice(5).trim();
+  } else if (raw.startsWith("ipv6_64:")) {
+    const v6Match = raw.match(
+      /^ipv6_64:([0-9a-f]{1,4}):([0-9a-f]{1,4}):([0-9a-f]{1,4}):([0-9a-f]{1,4})$/
+    );
+    if (!v6Match) return null;
+    return `ipv6_64:${v6Match
+      .slice(1, 5)
+      .map((w) => Number.parseInt(w, 16).toString(16).padStart(4, "0"))
+      .join(":")}`;
+  }
+  const bracketPortMatch = raw.match(/^\[([^\]]+)\](?::(\d{1,5}))?$/);
+  if (bracketPortMatch) {
+    if (bracketPortMatch[2] !== undefined) {
+      const portNum = Number(bracketPortMatch[2]);
+      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return null;
+    }
+    raw = bracketPortMatch[1];
+  } else {
+    const v4PortMatch = raw.match(/^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/);
+    if (v4PortMatch) {
+      const portNum = Number(v4PortMatch[2]);
+      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return null;
+      raw = v4PortMatch[1];
+    }
+  }
+  const clean = raw.replace(/^\[|\]$/g, "").replace(/%[^\s%\]]+$/, "").trim();
   if (!clean) return null;
   const directV4 = parseStrictIpv4Octets(clean);
   if (directV4) return `ipv4:${directV4.join(".")}`;
@@ -1283,14 +1341,30 @@ function extractNormalizedCe3Identifiers(tx) {
 
 function extractPaymentCredential(tx) {
   if (!tx || typeof tx !== "object") return "";
-  const raw =
-    tx.card_fingerprint ||
-    tx.payment_method_fingerprint ||
-    tx.payment_method ||
-    tx.payment_method_details?.card?.fingerprint ||
-    tx.card?.fingerprint ||
-    "";
-  return sanitizeLogToken(raw, 96);
+  const fpCandidates = [
+    tx.card_fingerprint,
+    tx.payment_method_fingerprint,
+    tx.payment_method_details?.card?.fingerprint,
+    tx.payment_method && typeof tx.payment_method === "object"
+      ? tx.payment_method.card?.fingerprint
+      : "",
+    tx.card?.fingerprint,
+    tx.source?.card?.fingerprint,
+  ];
+  for (const cand of fpCandidates) {
+    if (typeof cand === "string" && cand.trim()) {
+      return sanitizeLogToken(cand.trim(), 96);
+    }
+  }
+  const pmId =
+    typeof tx.payment_method === "string"
+      ? tx.payment_method
+      : tx.payment_method &&
+          typeof tx.payment_method === "object" &&
+          typeof tx.payment_method.id === "string"
+        ? tx.payment_method.id
+        : "";
+  return sanitizeLogToken(pmId, 96);
 }
 
 function evaluateLocalVisaCe3Qualification(disputeReason, disputedTransaction, priorTransactions) {
@@ -1436,7 +1510,7 @@ export const LOCAL_STATELESS_CLOUD_UPGRADE_HINT = Object.freeze({
   message:
     "Running in stateless local mode. Provision a free or paid Cloud Workspace for 90-day event persistence, automated webhook revocation, and Slack/Email alerts.",
   command: "npx --yes revclamp-mcp --init-workspace <work_email>",
-  cliActivateCommand: "npx -y revclamp-mcp@1.20.10 --init-workspace you@company.com",
+  cliActivateCommand: "npx -y revclamp-mcp@1.20.11 --init-workspace you@company.com",
   upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
 });
 
@@ -2527,7 +2601,18 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       };
     }
 
-    if (viesMode === "MS_UNAVAILABLE" || viesMode === "GLOBAL_MAX_CONCURRENT_REQ") {
+    const TRANSIENT_SIM_MODES = new Set([
+      "MS_UNAVAILABLE",
+      "GLOBAL_MAX_CONCURRENT_REQ",
+      "MS_MAX_CONCURRENT_REQ",
+      "MS_MAX_CONCURRENT_REQ_TIME",
+      "GLOBAL_MAX_CONCURRENT_REQ_TIME",
+      "SERVICE_UNAVAILABLE",
+      "TIMEOUT",
+      "SERVER_BUSY",
+      "NETWORK_ERROR",
+    ]);
+    if (TRANSIENT_SIM_MODES.has(viesMode)) {
       return {
         ok: true,
         executionMode: "local_open_source_engine",
@@ -2545,7 +2630,25 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       };
     }
 
-    if (viesMode === "INVALID") {
+    if (viesMode === "INVALID_REQUESTER_INFO" || viesMode === "IP_BLOCKED") {
+      return {
+        ok: true,
+        executionMode: "local_open_source_engine",
+        sample: true,
+        valid: null,
+        formatValid: true,
+        status: "HOLD_UNVERIFIED_VIES_FAULT",
+        reason: `VIES_GATEWAY_FAULT_${viesMode}`,
+        sellerCountry,
+        normalizedVatId: norm.fullVatId,
+        memberState: norm.memberState,
+        reverseChargeEligible: false,
+        zeroRateAllowed: false,
+        consultationId: null,
+      };
+    }
+
+    if (viesMode === "INVALID" || viesMode === "VAT_BLOCKED" || viesMode === "INVALID_INPUT") {
       return {
         ok: true,
         executionMode: "local_open_source_engine",
@@ -2553,7 +2656,25 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: false,
         formatValid: true,
         status: "HOLD_INVALID_VAT",
-        reason: "VIES_DEFINITE_INVALID",
+        reason: viesMode === "INVALID" ? "VIES_DEFINITE_INVALID" : `VIES_${viesMode}`,
+        sellerCountry,
+        normalizedVatId: norm.fullVatId,
+        memberState: norm.memberState,
+        reverseChargeEligible: false,
+        zeroRateAllowed: false,
+        consultationId: null,
+      };
+    }
+
+    if (viesMode !== "VALID" && viesMode !== "VERIFIED") {
+      return {
+        ok: true,
+        executionMode: "local_open_source_engine",
+        sample: true,
+        valid: null,
+        formatValid: true,
+        status: "HOLD_UNVERIFIED_VIES_FAULT",
+        reason: "UNRECOGNIZED_VIES_SIMULATION_MODE",
         sellerCountry,
         normalizedVatId: norm.fullVatId,
         memberState: norm.memberState,
@@ -2670,20 +2791,21 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
 
     const effectiveTotalCents = Math.max(0, orderTotalCents - creditNotesCents);
     const hasExplicitDepositCents = args.requiredDepositCents !== undefined;
-    const requiredDepositCents = hasExplicitDepositCents
+    const rawRequiredDepositCents = hasExplicitDepositCents
       ? args.requiredDepositCents
       : Math.ceil((effectiveTotalCents * requiredDepositPercent) / 100);
     if (
-      !Number.isSafeInteger(requiredDepositCents) ||
-      requiredDepositCents < 0 ||
-      requiredDepositCents > effectiveTotalCents
+      !Number.isSafeInteger(rawRequiredDepositCents) ||
+      rawRequiredDepositCents < 0 ||
+      rawRequiredDepositCents > orderTotalCents
     ) {
       const err = new Error(
-        "INVALID_REQUIRED_DEPOSIT_CENTS: requiredDepositCents must be an integer between 0 and effectiveTotalCents."
+        "INVALID_REQUIRED_DEPOSIT_CENTS: requiredDepositCents must be an integer between 0 and totalOrderCents."
       );
       err.code = -32602;
       throw err;
     }
+    const requiredDepositCents = Math.min(rawRequiredDepositCents, effectiveTotalCents);
 
     const shortfallRawCents = Math.max(0, effectiveTotalCents - paidAmountCents);
     const overpaidCents = Math.max(0, paidAmountCents - effectiveTotalCents);
@@ -3341,7 +3463,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.10",
+  packageVersion = "1.20.11",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
@@ -3457,7 +3579,7 @@ export function executeLocalMcpJsonRpc(
               version: packageVersion,
               localExecution: "9 deterministic tools in local_engine.mjs (0 network calls by default)",
               cloudCapabilities: [
-                "90-day SQLite WAL usage & audit ledger",
+                "90-day durable transactional usage & audit ledger",
                 "24/7 autonomous Stripe dispute & entitlement webhook outbox",
                 "Live EU Commission VIES SOAP consultation numbers (viesMode: 'LIVE')",
               ],
