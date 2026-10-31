@@ -58,6 +58,24 @@ const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
       aliases: Object.freeze(["windowSec", "dedupWindowSec"]),
     }),
   ]),
+  revclamp_validate_eu_vat_vies: Object.freeze([
+    Object.freeze({
+      canonical: "sellerCountry",
+      aliases: Object.freeze(["sellerCountryCode", "seller_country", "seller_country_code"]),
+    }),
+    Object.freeze({
+      canonical: "buyerVatId",
+      aliases: Object.freeze(["vatId", "buyer_vat_id"]),
+    }),
+    Object.freeze({
+      canonical: "viesMode",
+      aliases: Object.freeze(["vies_mode"]),
+    }),
+    Object.freeze({
+      canonical: "supplyType",
+      aliases: Object.freeze(["supply_type"]),
+    }),
+  ]),
 });
 
 export function normalizeMcpToolArgs(toolName, rawArgs) {
@@ -210,6 +228,384 @@ const EU_VIES_FORMAT_RULES = Object.freeze({
   XI: /^XI(?:\d{9}|\d{12}|(?:GD|HA)\d{3})$/,
 });
 
+export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
+  AT: Object.freeze({
+    memberState: "AT",
+    countryNameEn: "Austria",
+    nativeCountryName: "Österreich",
+    taxIdAcronym: "UID",
+    nativeTaxIdName: "Umsatzsteuer-Identifikationsnummer",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Steuerschuldnerschaft des Leistungsempfängers – Art. 196 & Art. 226 Nr. 11a MwStSystRL (Directive 2006/112/EC, § 19 UStG) / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Steuerfreie innergemeinschaftliche Lieferung – Art. 138 Abs. 1 & Art. 226 Nr. 11 MwStSystRL (Directive 2006/112/EC, Art. 6 Abs. 1 UStG) / Intra-Community exempt supply of goods",
+  }),
+  BE: Object.freeze({
+    memberState: "BE",
+    countryNameEn: "Belgium",
+    nativeCountryName: "België / Belgique",
+    taxIdAcronym: "N° TVA / BTW-nr.",
+    nativeTaxIdName: "Numéro de TVA / Btw-identificatienummer",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Autoliquidation / Btw verlegd – Art. 196 & Art. 226(11a) Directive 2006/112/EC / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Livraison intracommunautaire exonérée / Vrijgestelde intracommunautaire levering – Art. 138(1) & Art. 226(11) Directive 2006/112/EC (Art. 39bis CTVA/WBTW) / Intra-Community exempt supply of goods",
+  }),
+  BG: Object.freeze({
+    memberState: "BG",
+    countryNameEn: "Bulgaria",
+    nativeCountryName: "България",
+    taxIdAcronym: "ДДС номер",
+    nativeTaxIdName: "Идентификационен номер по ДДС (ЗДДС)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Обратно начисляване – чл. 196 и чл. 226, т. 11а от Директива 2006/112/ЕО (чл. 82, ал. 2 ЗДДС) / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Освободена вътреобщностна доставка на стоки – чл. 138, пар. 1 и чл. 226, т. 11 от Директива 2006/112/ЕО (чл. 7 и чл. 53 ЗДДС) / Intra-Community exempt supply of goods",
+  }),
+  CY: Object.freeze({
+    memberState: "CY",
+    countryNameEn: "Cyprus",
+    nativeCountryName: "Κύπρος",
+    taxIdAcronym: "ΑΦΜ / ΦΠΑ",
+    nativeTaxIdName: "Αριθμός Εγγραφής ΦΠΑ",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Αντίστροφη επιβάρυνση – Άρθρα 196 & 226(11α) Οδηγίας 2006/112/ΕΚ / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Απαλλασσόμενη ενδοκοινοτική παράδοση αγαθών – Άρθρα 138(1) & 226(11) Οδηγίας 2006/112/ΕΚ / Intra-Community exempt supply of goods",
+  }),
+  CZ: Object.freeze({
+    memberState: "CZ",
+    countryNameEn: "Czechia",
+    nativeCountryName: "Česká republika",
+    taxIdAcronym: "DIČ",
+    nativeTaxIdName: "Daňové identifikační číslo",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Daň odvede zákazník – čl. 196 a čl. 226 bod 11a směrnice 2006/112/ES / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Osvobozené dodání zboží do jiného členského státu – čl. 138 odst. 1 a čl. 226 bod 11 směrnice 2006/112/ES (§ 64 ZDPH) / Intra-Community exempt supply of goods",
+  }),
+  DE: Object.freeze({
+    memberState: "DE",
+    countryNameEn: "Germany",
+    nativeCountryName: "Deutschland",
+    taxIdAcronym: "USt-IdNr.",
+    nativeTaxIdName: "Umsatzsteuer-Identifikationsnummer",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Steuerschuldnerschaft des Leistungsempfängers – Art. 196 & Art. 226 Nr. 11a MwStSystRL (Directive 2006/112/EC, § 13b UStG) / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Steuerfreie innergemeinschaftliche Lieferung – Art. 138 Abs. 1 & Art. 226 Nr. 11 MwStSystRL (Directive 2006/112/EC, § 4 Nr. 1b i.V.m. § 6a UStG) / Intra-Community exempt supply of goods",
+  }),
+  DK: Object.freeze({
+    memberState: "DK",
+    countryNameEn: "Denmark",
+    nativeCountryName: "Danmark",
+    taxIdAcronym: "CVR / SE-nr.",
+    nativeTaxIdName: "Momsregistreringsnummer (CVR/SE)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Omvendt betalingspligt – Art. 196 & Art. 226, nr. 11a, i direktiv 2006/112/EF / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Momsfri EU-vareleverance – Art. 138, stk. 1, og Art. 226, nr. 11, i direktiv 2006/112/EF (ML § 34, stk. 1, nr. 1) / Intra-Community exempt supply of goods",
+  }),
+  EE: Object.freeze({
+    memberState: "EE",
+    countryNameEn: "Estonia",
+    nativeCountryName: "Eesti",
+    taxIdAcronym: "KMKR",
+    nativeTaxIdName: "Käibemaksukohustuslase registreerimisnumber",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Pöördmaksustamine – direktiivi 2006/112/EÜ art 196 ja art 226 p 11a / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Ühendusesisene kauba käive (0% KM) – direktiivi 2006/112/EÜ art 138 lg 1 ja art 226 p 11 (KMS § 15 lg 3 p 2) / Intra-Community exempt supply of goods",
+  }),
+  EL: Object.freeze({
+    memberState: "EL",
+    countryNameEn: "Greece",
+    nativeCountryName: "Ελλάδα",
+    taxIdAcronym: "ΑΦΜ",
+    nativeTaxIdName: "Αριθμός Φορολογικού Μητρώου (ΦΠΑ)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Αντίστροφη επιβάρυνση – Άρθρα 196 & 226(11α) Οδηγίας 2006/112/ΕΚ / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Απαλλασσόμενη ενδοκοινοτική παράδοση αγαθών – Άρθρα 138(1) & 226(11) Οδηγίας 2006/112/ΕΚ (Άρθρο 28 Κώδικα ΦΠΑ) / Intra-Community exempt supply of goods",
+  }),
+  ES: Object.freeze({
+    memberState: "ES",
+    countryNameEn: "Spain",
+    nativeCountryName: "España",
+    taxIdAcronym: "NIF-IVA",
+    nativeTaxIdName: "Número de Identificación Fiscal (ROI / NIF-IVA)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Inversión del sujeto pasivo – Art. 196 y Art. 226.11 bis Directiva 2006/112/CE (Art. 84 LIVA) / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Entrega intracomunitaria exenta de bienes – Art. 138.1 y Art. 226.11 Directiva 2006/112/CE (Art. 25 LIVA) / Intra-Community exempt supply of goods",
+  }),
+  FI: Object.freeze({
+    memberState: "FI",
+    countryNameEn: "Finland",
+    nativeCountryName: "Suomi",
+    taxIdAcronym: "ALV-nro",
+    nativeTaxIdName: "Arvonlisäverotunniste (Y-tunnus)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Käännetty verovelvollisuus – direktiivin 2006/112/EY 196 art. ja 226 art. 11a kohta / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Veroton yhteisömyynti – direktiivin 2006/112/EY 138 art. 1 kohta ja 226 art. 11 kohta (AVL 72 a §) / Intra-Community exempt supply of goods",
+  }),
+  FR: Object.freeze({
+    memberState: "FR",
+    countryNameEn: "France",
+    nativeCountryName: "France",
+    taxIdAcronym: "N° TVA",
+    nativeTaxIdName: "Numéro de TVA intracommunautaire",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Autoliquidation – Art. 196 et Art. 226, point 11 bis, de la Directive 2006/112/CE (CGI art. 283-2) / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Exonération de TVA – Livraison intracommunautaire de biens – Art. 138, par. 1, et Art. 226, point 11, Directive 2006/112/CE (CGI art. 262 ter I) / Intra-Community exempt supply of goods",
+  }),
+  HR: Object.freeze({
+    memberState: "HR",
+    countryNameEn: "Croatia",
+    nativeCountryName: "Hrvatska",
+    taxIdAcronym: "PDV ID / OIB",
+    nativeTaxIdName: "PDV identifikacijski broj (OIB)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Prijenos porezne obveze – čl. 196. i čl. 226. t. 11.a Direktive 2006/112/EZ / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Oslobođena isporuka dobara unutar EU – čl. 138. st. 1. i čl. 226. t. 11. Direktive 2006/112/EZ (čl. 41. st. 1. Zakona o PDV-u) / Intra-Community exempt supply of goods",
+  }),
+  HU: Object.freeze({
+    memberState: "HU",
+    countryNameEn: "Hungary",
+    nativeCountryName: "Magyarország",
+    taxIdAcronym: "Közösségi adószám",
+    nativeTaxIdName: "Közösségi adószám (EU ÁFA)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Fordított adózás – a 2006/112/EK irányelv 196. cikke és 226. cikkének 11a. pontja / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Adómentes Közösségen belüli termékértékesítés – a 2006/112/EK irányelv 138. cikk (1) bek. és 226. cikk 11. pontja (Áfa tv. 89. §) / Intra-Community exempt supply of goods",
+  }),
+  IE: Object.freeze({
+    memberState: "IE",
+    countryNameEn: "Ireland",
+    nativeCountryName: "Éire / Ireland",
+    taxIdAcronym: "VAT Reg No",
+    nativeTaxIdName: "Value Added Tax Registration Number",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Reverse charge – Art. 196 & Art. 226(11a) Council Directive 2006/112/EC (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Zero-rated intra-Community supply of goods – Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+  }),
+  IT: Object.freeze({
+    memberState: "IT",
+    countryNameEn: "Italy",
+    nativeCountryName: "Italia",
+    taxIdAcronym: "P.IVA",
+    nativeTaxIdName: "Partita IVA intracomunitaria (VIES)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Inversione contabile – Art. 196 e Art. 226, punto 11-bis, Direttiva 2006/112/CE (Art. 17 DPR 633/72) / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Cessione intracomunitaria non imponibile di beni – Art. 138, par. 1, e Art. 226, punto 11, Direttiva 2006/112/CE (Art. 41 D.L. 331/1993) / Intra-Community exempt supply of goods",
+  }),
+  LT: Object.freeze({
+    memberState: "LT",
+    countryNameEn: "Lithuania",
+    nativeCountryName: "Lietuva",
+    taxIdAcronym: "PVM kodas",
+    nativeTaxIdName: "Pridėtinės vertės mokesčio mokėtojo kodas",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Atvirkštinis apmokestinimas – Direktyvos 2006/112/EB 196 str. ir 226 str. 11a p. / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "PVM neapmokestinamas prekių tiekimas į kitą ES valstybę narę – Direktyvos 2006/112/EB 138 str. 1 d. ir 226 str. 11 p. (PVMĮ 49 str.) / Intra-Community exempt supply of goods",
+  }),
+  LU: Object.freeze({
+    memberState: "LU",
+    countryNameEn: "Luxembourg",
+    nativeCountryName: "Lëtzebuerg / Luxembourg",
+    taxIdAcronym: "N° TVA",
+    nativeTaxIdName: "Numéro d'identification à la TVA",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Autoliquidation – Art. 196 et Art. 226, point 11 bis, Directive 2006/112/CE / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Livraison intracommunautaire de biens exonérée – Art. 138, par. 1, et Art. 226, point 11, Directive 2006/112/CE (Art. 43 LTVA) / Intra-Community exempt supply of goods",
+  }),
+  LV: Object.freeze({
+    memberState: "LV",
+    countryNameEn: "Latvia",
+    nativeCountryName: "Latvija",
+    taxIdAcronym: "PVN Nr.",
+    nativeTaxIdName: "Pievienotās vērtības nodokļa reģistrācijas numurs",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Nodokļa apgrieztā maksāšana – Direktīvas 2006/112/EK 196. pants un 226. panta 11.a punkts / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Ar 0% PVN likmi apliekama preču piegāde ES ietvaros – Direktīvas 2006/112/EK 138. panta 1. punkts un 226. panta 11. punkts (PVN likuma 43. pants) / Intra-Community exempt supply of goods",
+  }),
+  MT: Object.freeze({
+    memberState: "MT",
+    countryNameEn: "Malta",
+    nativeCountryName: "Malta",
+    taxIdAcronym: "VAT Reg. No.",
+    nativeTaxIdName: "Value Added Tax Registration Number",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Reverse charge – Art. 196 & Art. 226(11a) Council Directive 2006/112/EC (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Exempt intra-Community supply of goods – Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+  }),
+  NL: Object.freeze({
+    memberState: "NL",
+    countryNameEn: "Netherlands",
+    nativeCountryName: "Nederland",
+    taxIdAcronym: "Btw-id",
+    nativeTaxIdName: "Btw-identificatienummer",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Btw verlegd – Art. 196 & Art. 226 lid 11 bis Richtlijn 2006/112/EG / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Vrijgestelde intracommunautaire levering van goederen (0% btw) – Art. 138 lid 1 & Art. 226 lid 11 Richtlijn 2006/112/EG (Art. 9 lid 2 sub b Wet OB 1968 juncto Tabel II onderdeel a post 6) / Intra-Community exempt supply of goods",
+  }),
+  PL: Object.freeze({
+    memberState: "PL",
+    countryNameEn: "Poland",
+    nativeCountryName: "Polska",
+    taxIdAcronym: "NIP (VAT-UE)",
+    nativeTaxIdName: "Numer Identyfikacji Podatkowej (NIP UE)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Odwrotne obciążenie – art. 196 i art. 226 pkt 11a dyrektywy 2006/112/WE / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Wewnątrzwspólnotowa dostawa towarów (0% VAT) – art. 138 ust. 1 i art. 226 pkt 11 dyrektywy 2006/112/WE (art. 42 ust. 1 ustawy o VAT) / Intra-Community exempt supply of goods",
+  }),
+  PT: Object.freeze({
+    memberState: "PT",
+    countryNameEn: "Portugal",
+    nativeCountryName: "Portugal",
+    taxIdAcronym: "NIF / NIPC",
+    nativeTaxIdName: "Número de Identificação Fiscal (IVA)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Autoliquidação – Art. 196.º e Art. 226.º, n.º 11-A, da Diretiva 2006/112/CE / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Transmissão intracomunitária de bens isenta de IVA – Art. 138.º, n.º 1, e Art. 226.º, n.º 11, da Diretiva 2006/112/CE (Art. 14.º do RITI) / Intra-Community exempt supply of goods",
+  }),
+  RO: Object.freeze({
+    memberState: "RO",
+    countryNameEn: "Romania",
+    nativeCountryName: "România",
+    taxIdAcronym: "CIF / Cod TVA",
+    nativeTaxIdName: "Cod de înregistrare în scopuri de TVA",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Taxare inversă – Art. 196 și Art. 226 pct. 11a din Directiva 2006/112/CE / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Livrare intracomunitară de bunuri scutită de TVA – Art. 138 alin. (1) și Art. 226 pct. 11 din Directiva 2006/112/CE (Art. 294 alin. (2) Codul Fiscal) / Intra-Community exempt supply of goods",
+  }),
+  SE: Object.freeze({
+    memberState: "SE",
+    countryNameEn: "Sweden",
+    nativeCountryName: "Sverige",
+    taxIdAcronym: "Momsnr",
+    nativeTaxIdName: "Momsregistreringsnummer (SE-nummer)",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Omvänd betalningsskyldighet – Art. 196 & Art. 226.11a i direktiv 2006/112/EG / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Undantagen unionsintern leverans av varor – Art. 138.1 & Art. 226.11 i direktiv 2006/112/EG (10 kap. 42 § ML) / Intra-Community exempt supply of goods",
+  }),
+  SI: Object.freeze({
+    memberState: "SI",
+    countryNameEn: "Slovenia",
+    nativeCountryName: "Slovenija",
+    taxIdAcronym: "ID za DDV",
+    nativeTaxIdName: "Identifikacijska številka za DDV",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Obrnjena davčna obveznost – člen 196 in člen 226(11a) Direktive 2006/112/ES / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Oproščena dobava blaga znotraj Unije – člen 138(1) in člen 226(11) Direktive 2006/112/ES (46. člen ZDDV-1) / Intra-Community exempt supply of goods",
+  }),
+  SK: Object.freeze({
+    memberState: "SK",
+    countryNameEn: "Slovakia",
+    nativeCountryName: "Slovensko",
+    taxIdAcronym: "IČ DPH",
+    nativeTaxIdName: "Identifikačné číslo pre daň z pridanej hodnoty",
+    directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
+    directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "Prenesenie daňovej povinnosti – čl. 196 a čl. 226 bod 11a smernice 2006/112/ES / Reverse charge (B2B services)",
+    statutoryGoodsExemptionClause:
+      "Oslobodené dodanie tovaru do iného členského štátu – čl. 138 ods. 1 a čl. 226 bod 11 smernice 2006/112/ES (§ 43 zákona o DPH) / Intra-Community exempt supply of goods",
+  }),
+  XI: Object.freeze({
+    memberState: "XI",
+    countryNameEn: "Northern Ireland (Windsor Framework)",
+    nativeCountryName: "Northern Ireland (Windsor Framework)",
+    taxIdAcronym: "XI VAT No",
+    nativeTaxIdName: "Northern Ireland Protocol / Windsor Framework VAT Number (Goods Only)",
+    goodsOnlyProtocol: true,
+    directiveArticle:
+      "Windsor Framework (Goods Only — Services Not Covered by XI VIES) / Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    directiveGoodsArticle:
+      "Windsor Framework (Goods Only) / Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    statutoryReverseChargeClause:
+      "N/A for B2B services under XI VIES (Windsor Framework applies to goods only under Art. 138(1) & Art. 226(11) Directive 2006/112/EC; UK/GB place-of-supply rules govern services)",
+    statutoryGoodsExemptionClause:
+      "Zero-rated intra-community supply of goods under Windsor Framework (Northern Ireland Protocol) – Art. 138(1) & Art. 226(11) Directive 2006/112/EC",
+  }),
+});
+
+export function getEuViesStatutoryTerminology(rawCode) {
+  const code = normalizeCountryCode(rawCode || "");
+  if (!code || !Object.prototype.hasOwnProperty.call(EU_VIES_STATUTORY_TERMINOLOGY_MAP, code)) {
+    return null;
+  }
+  return EU_VIES_STATUTORY_TERMINOLOGY_MAP[code];
+}
+
 const REVCLAMP_START_MARKER = "--- BEGIN REVCLAMP CE3 EVIDENCE ---";
 const REVCLAMP_END_MARKER = "--- END REVCLAMP CE3 EVIDENCE ---";
 const REVCLAMP_BRACKET_START_MARKER = "[RevClamp Verified Product Usage Log]";
@@ -357,6 +753,13 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
       properties: {
         sellerCountry: { type: "string", default: "DE" },
         buyerVatId: { type: "string" },
+        supplyType: {
+          type: "string",
+          enum: ["GOODS", "SERVICES"],
+          default: "GOODS",
+          description:
+            "Cross-border transaction supply category: 'GOODS' (Directive 2006/112/EC Art. 138(1) intra-Community supply, default; permitted for Northern Ireland XI under Windsor Framework) or 'SERVICES' (Directive 2006/112/EC Art. 196 B2B reverse charge; excluded from EU VIES for Northern Ireland XI).",
+        },
         viesMode: {
           type: "string",
           enum: [
@@ -1510,7 +1913,7 @@ export const LOCAL_STATELESS_CLOUD_UPGRADE_HINT = Object.freeze({
   message:
     "Running in stateless local mode. Provision a free or paid Cloud Workspace for 90-day event persistence, automated webhook revocation, and Slack/Email alerts.",
   command: "npx --yes revclamp-mcp --init-workspace <work_email>",
-  cliActivateCommand: "npx -y revclamp-mcp@1.20.11 --init-workspace you@company.com",
+  cliActivateCommand: "npx -y revclamp-mcp@1.20.12 --init-workspace you@company.com",
   upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
 });
 
@@ -2521,11 +2924,10 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     if (
       args.consultationNumber !== undefined &&
       (typeof args.consultationNumber !== "string" ||
-        args.consultationNumber.trim().length === 0 ||
-        args.consultationNumber.trim().length > 64)
+        !/^[A-Za-z0-9_-]{1,64}$/.test(args.consultationNumber.trim()))
     ) {
       const err = new Error(
-        "Invalid params: consultationNumber must be a non-empty string up to 64 chars"
+        "Invalid params: consultationNumber must be 1..64 alphanumeric, underscore, or hyphen characters [A-Za-z0-9_-]"
       );
       err.code = -32602;
       throw err;
@@ -2538,9 +2940,57 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
+    if (
+      args.supplyType !== undefined &&
+      (typeof args.supplyType !== "string" ||
+        !["GOODS", "SERVICES"].includes(args.supplyType.trim().toUpperCase()))
+    ) {
+      const err = new Error("Invalid params: supplyType must be 'GOODS' or 'SERVICES'");
+      err.code = -32602;
+      throw err;
+    }
+    const supplyType =
+      args.supplyType === undefined ? "GOODS" : args.supplyType.trim().toUpperCase();
     const norm = normalizeVatId(args.buyerVatId || "");
     const viesMode = String(args.viesMode || "FORMAT_ONLY").toUpperCase();
     const isDemo = args.demo === true;
+
+    if (
+      norm.validFormat &&
+      sellerCountry !== norm.memberState &&
+      supplyType === "SERVICES" &&
+      (sellerCountry === "XI" || norm.memberState === "XI")
+    ) {
+      const statutoryTerminology = getEuViesStatutoryTerminology(norm.memberState);
+      const sellerStatutoryTerminology = getEuViesStatutoryTerminology(sellerCountry);
+      return {
+        ok: true,
+        executionMode: "local_open_source_engine",
+        ...(isDemo ? { sample: true, simulatedViesLookup: true } : {}),
+        valid: null,
+        formatValid: true,
+        supplyType,
+        status: "HOLD_XI_SERVICES_OUTSIDE_EU_VIES",
+        action: "APPLY_UK_OR_NON_EU_SERVICES_VAT_RULES",
+        reason: "WINDSOR_FRAMEWORK_XI_B2B_SERVICES_EXCLUDED_FROM_VIES",
+        sellerCountry,
+        sellerStatutoryTerminology,
+        normalizedVatId: norm.fullVatId,
+        memberState: norm.memberState,
+        statutoryTerminology,
+        crossBorderSupply: true,
+        domesticSameMemberState: false,
+        reverseChargeEligible: false,
+        zeroRateAllowed: false,
+        statutoryReverseChargeClause: null,
+        sellerStatutoryReverseChargeClause: null,
+        statutoryGoodsExemptionClause: null,
+        sellerStatutoryGoodsExemptionClause: null,
+        applicableStatutoryClause: null,
+        sellerApplicableStatutoryClause: null,
+        consultationId: null,
+      };
+    }
 
     if (viesMode === "LIVE") {
       const err = new Error(
@@ -2562,9 +3012,10 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       return {
         ok: true,
         executionMode: "local_open_source_engine",
-        ...(isDemo ? { sample: true } : {}),
+        ...(isDemo ? { sample: true, simulatedViesLookup: true } : {}),
         valid: false,
         formatValid: false,
+        supplyType,
         status: "HOLD_INVALID_VAT",
         reason: "INVALID_EU_VAT_FORMAT",
         sellerCountry,
@@ -2576,6 +3027,12 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     }
 
     const crossBorder = sellerCountry !== norm.memberState;
+    const statutoryTerminology = getEuViesStatutoryTerminology(norm.memberState);
+    const sellerStatutoryTerminology = getEuViesStatutoryTerminology(sellerCountry);
+    const callerConsultationId =
+      typeof args.consultationNumber === "string" && args.consultationNumber.trim().length > 0
+        ? args.consultationNumber.trim().slice(0, 64)
+        : null;
 
     if (!isDemo || viesMode === "FORMAT_ONLY") {
       return {
@@ -2583,14 +3040,25 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         executionMode: "local_open_source_engine",
         valid: null,
         formatValid: true,
+        supplyType,
         status: "FORMAT_VALID_UNVERIFIED",
+        action: crossBorder ? "FORMAT_VALID_UNVERIFIED" : "APPLY_DOMESTIC_STANDARD_VAT",
         reason: "LOCAL_FORMAT_CHECK_ONLY_NO_LIVE_VIES_CONSULTATION",
         sellerCountry,
+        sellerStatutoryTerminology,
         normalizedVatId: norm.fullVatId,
         memberState: norm.memberState,
+        statutoryTerminology,
         crossBorderSupply: crossBorder,
+        domesticSameMemberState: !crossBorder,
         reverseChargeEligible: false,
         zeroRateAllowed: false,
+        statutoryReverseChargeClause: null,
+        sellerStatutoryReverseChargeClause: null,
+        statutoryGoodsExemptionClause: null,
+        sellerStatutoryGoodsExemptionClause: null,
+        applicableStatutoryClause: null,
+        sellerApplicableStatutoryClause: null,
         consultationId: null,
         limitations: ["NO_LIVE_VIES_CONSULTATION_NUMBER"],
         upgrade: {
@@ -2617,13 +3085,18 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
+        simulatedViesLookup: true,
         valid: null,
         formatValid: true,
+        supplyType,
         status: "PENDING_ASYNC_RETRY",
         reason: `VIES_SOFT_FAULT_${viesMode}`,
         sellerCountry,
+        sellerStatutoryTerminology,
         normalizedVatId: norm.fullVatId,
         memberState: norm.memberState,
+        statutoryTerminology,
+        domesticSameMemberState: !crossBorder,
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
@@ -2635,13 +3108,18 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
+        simulatedViesLookup: true,
         valid: null,
         formatValid: true,
+        supplyType,
         status: "HOLD_UNVERIFIED_VIES_FAULT",
         reason: `VIES_GATEWAY_FAULT_${viesMode}`,
         sellerCountry,
+        sellerStatutoryTerminology,
         normalizedVatId: norm.fullVatId,
         memberState: norm.memberState,
+        statutoryTerminology,
+        domesticSameMemberState: !crossBorder,
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
@@ -2653,13 +3131,18 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
+        simulatedViesLookup: true,
         valid: false,
         formatValid: true,
+        supplyType,
         status: "HOLD_INVALID_VAT",
         reason: viesMode === "INVALID" ? "VIES_DEFINITE_INVALID" : `VIES_${viesMode}`,
         sellerCountry,
+        sellerStatutoryTerminology,
         normalizedVatId: norm.fullVatId,
         memberState: norm.memberState,
+        statutoryTerminology,
+        domesticSameMemberState: !crossBorder,
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
@@ -2671,33 +3154,72 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
+        simulatedViesLookup: true,
         valid: null,
         formatValid: true,
+        supplyType,
         status: "HOLD_UNVERIFIED_VIES_FAULT",
         reason: "UNRECOGNIZED_VIES_SIMULATION_MODE",
         sellerCountry,
+        sellerStatutoryTerminology,
         normalizedVatId: norm.fullVatId,
         memberState: norm.memberState,
+        statutoryTerminology,
+        domesticSameMemberState: !crossBorder,
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
       };
     }
 
+    const applicableStatutoryClause = crossBorder
+      ? supplyType === "GOODS"
+        ? statutoryTerminology?.statutoryGoodsExemptionClause || null
+        : statutoryTerminology?.statutoryReverseChargeClause || null
+      : null;
+    const sellerApplicableStatutoryClause = crossBorder
+      ? supplyType === "GOODS"
+        ? sellerStatutoryTerminology?.statutoryGoodsExemptionClause || null
+        : sellerStatutoryTerminology?.statutoryReverseChargeClause || null
+      : null;
+
     return {
       ok: true,
       executionMode: "local_open_source_engine",
       sample: true,
+      simulatedViesLookup: true,
       valid: true,
       formatValid: true,
+      supplyType,
       status: crossBorder ? "VERIFIED_ZERO_RATED" : "DOMESTIC_TAXABLE_SUPPLY",
+      action: crossBorder ? "ALLOW_ZERO_RATED_REVERSE_CHARGE" : "APPLY_DOMESTIC_STANDARD_VAT",
       reason: crossBorder ? "VALID_CROSS_BORDER_REVERSE_CHARGE" : "SAME_MEMBER_STATE_DOMESTIC",
       sellerCountry,
+      sellerStatutoryTerminology,
       normalizedVatId: norm.fullVatId,
       memberState: norm.memberState,
+      statutoryTerminology,
+      domesticSameMemberState: !crossBorder,
       reverseChargeEligible: crossBorder,
       zeroRateAllowed: crossBorder,
-      consultationId: "DEMO_SAMPLE_NOT_FOR_TAX_AUDIT",
+      statutoryReverseChargeClause: crossBorder
+        ? statutoryTerminology?.statutoryReverseChargeClause || null
+        : null,
+      sellerStatutoryReverseChargeClause: crossBorder
+        ? sellerStatutoryTerminology?.statutoryReverseChargeClause || null
+        : null,
+      statutoryGoodsExemptionClause: crossBorder
+        ? statutoryTerminology?.statutoryGoodsExemptionClause || null
+        : null,
+      sellerStatutoryGoodsExemptionClause: crossBorder
+        ? sellerStatutoryTerminology?.statutoryGoodsExemptionClause || null
+        : null,
+      applicableStatutoryClause,
+      sellerApplicableStatutoryClause,
+      consultationId: callerConsultationId || "DEMO_SAMPLE_NOT_FOR_TAX_AUDIT",
+      consultationIdSource: callerConsultationId
+        ? "CALLER_SUPPLIED_UNVERIFIED"
+        : "DEMO_SAMPLE_DEFAULT",
     };
   }
 
@@ -3463,7 +3985,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.11",
+  packageVersion = "1.20.12",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {

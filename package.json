@@ -1,7 +1,7 @@
 {
   "name": "revclamp-mcp",
   "mcpName": "com.revclamp/revclamp-mcp",
-  "version": "1.20.11",
+  "version": "1.20.12",
   "description": "Model Context Protocol (MCP) server and CLI for Stripe 2025-03-31.basil entitlement checks, Visa CE 3.0 dispute staging (submit: false), EU/XI VIES VAT validation, Shopify Plus B2B Net-15/30/60 reconciliation, webhook HMAC-SHA256 verification, 0% take-rate ROI calculation, 72-hour webhook replay & out-of-order state-machine simulation, and Stripe dispute evidence 18,000 UTF-16 code unit & CE 3.0 completeness linting.",
   "type": "module",
   "main": "./index.mjs",
@@ -46,6 +46,6 @@
     "node": ">=20.0.0"
   },
   "revclamp": {
-    "engineSha256": "806f9291517805e75ce55636ad1e704e30c1b2a840bd1162c87ba7e92bd9a053"
+    "engineSha256": "c67f214211284a479fbe10857dfef984b45e3c3403c37d5d834dcd5a5b326b60"
   }
 }
