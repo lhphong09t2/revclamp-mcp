@@ -1913,7 +1913,7 @@ export const LOCAL_STATELESS_CLOUD_UPGRADE_HINT = Object.freeze({
   message:
     "Running in stateless local mode. Provision a free or paid Cloud Workspace for 90-day event persistence, automated webhook revocation, and Slack/Email alerts.",
   command: "npx --yes revclamp-mcp --init-workspace <work_email>",
-  cliActivateCommand: "npx -y revclamp-mcp@1.20.12 --init-workspace you@company.com",
+  cliActivateCommand: "npx -y revclamp-mcp@1.20.13 --init-workspace you@company.com",
   upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
 });
 
@@ -2954,15 +2954,34 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     const norm = normalizeVatId(args.buyerVatId || "");
     const viesMode = String(args.viesMode || "FORMAT_ONLY").toUpperCase();
     const isDemo = args.demo === true;
+    const crossBorder = Boolean(norm.validFormat && sellerCountry !== norm.memberState);
+    const goodsOnlyProtocol = Boolean(
+      crossBorder && (sellerCountry === "XI" || norm.memberState === "XI")
+    );
+    const xiServicesNotice =
+      EU_VIES_STATUTORY_TERMINOLOGY_MAP.XI.statutoryReverseChargeClause;
+    const rawBuyerTerminology = norm.validFormat
+      ? getEuViesStatutoryTerminology(norm.memberState)
+      : null;
+    const rawSellerTerminology = getEuViesStatutoryTerminology(sellerCountry);
+    const statutoryTerminology = rawBuyerTerminology
+      ? goodsOnlyProtocol
+        ? {
+            ...rawBuyerTerminology,
+            statutoryReverseChargeClause:
+              norm.memberState === "XI"
+                ? xiServicesNotice
+                : `${rawBuyerTerminology.statutoryReverseChargeClause} [Windsor Framework XI: N/A for B2B services; VIES applies to goods only under Art. 138(1)]`,
+          }
+        : rawBuyerTerminology
+      : null;
+    const sellerStatutoryTerminology = rawSellerTerminology
+      ? goodsOnlyProtocol
+        ? { ...rawSellerTerminology, statutoryReverseChargeClause: xiServicesNotice }
+        : rawSellerTerminology
+      : null;
 
-    if (
-      norm.validFormat &&
-      sellerCountry !== norm.memberState &&
-      supplyType === "SERVICES" &&
-      (sellerCountry === "XI" || norm.memberState === "XI")
-    ) {
-      const statutoryTerminology = getEuViesStatutoryTerminology(norm.memberState);
-      const sellerStatutoryTerminology = getEuViesStatutoryTerminology(sellerCountry);
+    if (goodsOnlyProtocol && supplyType === "SERVICES") {
       return {
         ok: true,
         executionMode: "local_open_source_engine",
@@ -2970,6 +2989,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: null,
         formatValid: true,
         supplyType,
+        goodsOnlyProtocol: true,
         status: "HOLD_XI_SERVICES_OUTSIDE_EU_VIES",
         action: "APPLY_UK_OR_NON_EU_SERVICES_VAT_RULES",
         reason: "WINDSOR_FRAMEWORK_XI_B2B_SERVICES_EXCLUDED_FROM_VIES",
@@ -3016,6 +3036,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: false,
         formatValid: false,
         supplyType,
+        goodsOnlyProtocol: false,
         status: "HOLD_INVALID_VAT",
         reason: "INVALID_EU_VAT_FORMAT",
         sellerCountry,
@@ -3026,9 +3047,6 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       };
     }
 
-    const crossBorder = sellerCountry !== norm.memberState;
-    const statutoryTerminology = getEuViesStatutoryTerminology(norm.memberState);
-    const sellerStatutoryTerminology = getEuViesStatutoryTerminology(sellerCountry);
     const callerConsultationId =
       typeof args.consultationNumber === "string" && args.consultationNumber.trim().length > 0
         ? args.consultationNumber.trim().slice(0, 64)
@@ -3041,6 +3059,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: null,
         formatValid: true,
         supplyType,
+        goodsOnlyProtocol,
         status: "FORMAT_VALID_UNVERIFIED",
         action: crossBorder ? "FORMAT_VALID_UNVERIFIED" : "APPLY_DOMESTIC_STANDARD_VAT",
         reason: "LOCAL_FORMAT_CHECK_ONLY_NO_LIVE_VIES_CONSULTATION",
@@ -3089,6 +3108,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: null,
         formatValid: true,
         supplyType,
+        goodsOnlyProtocol,
         status: "PENDING_ASYNC_RETRY",
         reason: `VIES_SOFT_FAULT_${viesMode}`,
         sellerCountry,
@@ -3112,6 +3132,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: null,
         formatValid: true,
         supplyType,
+        goodsOnlyProtocol,
         status: "HOLD_UNVERIFIED_VIES_FAULT",
         reason: `VIES_GATEWAY_FAULT_${viesMode}`,
         sellerCountry,
@@ -3135,6 +3156,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: false,
         formatValid: true,
         supplyType,
+        goodsOnlyProtocol,
         status: "HOLD_INVALID_VAT",
         reason: viesMode === "INVALID" ? "VIES_DEFINITE_INVALID" : `VIES_${viesMode}`,
         sellerCountry,
@@ -3158,6 +3180,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         valid: null,
         formatValid: true,
         supplyType,
+        goodsOnlyProtocol,
         status: "HOLD_UNVERIFIED_VIES_FAULT",
         reason: "UNRECOGNIZED_VIES_SIMULATION_MODE",
         sellerCountry,
@@ -3191,6 +3214,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       valid: true,
       formatValid: true,
       supplyType,
+      goodsOnlyProtocol,
       status: crossBorder ? "VERIFIED_ZERO_RATED" : "DOMESTIC_TAXABLE_SUPPLY",
       action: crossBorder ? "ALLOW_ZERO_RATED_REVERSE_CHARGE" : "APPLY_DOMESTIC_STANDARD_VAT",
       reason: crossBorder ? "VALID_CROSS_BORDER_REVERSE_CHARGE" : "SAME_MEMBER_STATE_DOMESTIC",
@@ -3985,7 +4009,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.12",
+  packageVersion = "1.20.13",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
