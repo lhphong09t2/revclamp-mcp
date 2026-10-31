@@ -237,6 +237,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Umsatzsteuer-Identifikationsnummer",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "ebInterface 6.1 (B2G) / Peppol BIS Billing 3.0 (EN 16931 BT-118=K/AE, Art. 6 Abs. 1 & § 19 UStG)",
     statutoryReverseChargeClause:
       "Steuerschuldnerschaft des Leistungsempfängers – Art. 196 & Art. 226 Nr. 11a MwStSystRL (Directive 2006/112/EC, § 19 UStG) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -250,6 +256,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Numéro de TVA / Btw-identificatienummer",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Peppol BIS Billing 3.0 (B2B e-Invoicing Mandate Jan 2026, EN 16931 BT-118=K/AE, Art. 39bis CTVA/WBTW)",
     statutoryReverseChargeClause:
       "Autoliquidation / Btw verlegd – Art. 196 & Art. 226(11a) Directive 2006/112/EC / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -263,6 +275,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Идентификационен номер по ДДС (ЗДДС)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "EN 16931 / Peppol BIS Billing 3.0 (BT-118=K VATEX-EU-IC [Goods] / BT-118=AE VATEX-EU-AE [Services], чл. 53 & чл. 82 ЗДДС)",
     statutoryReverseChargeClause:
       "Обратно начисляване – чл. 196 и чл. 226, т. 11а от Директива 2006/112/ЕО (чл. 82, ал. 2 ЗДДС) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -276,6 +294,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Αριθμός Εγγραφής ΦΠΑ",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "EN 16931 / Peppol BIS Billing 3.0 (BT-118=K VATEX-EU-IC [Goods] / BT-118=AE VATEX-EU-AE [Services]) & VIES Return",
     statutoryReverseChargeClause:
       "Αντίστροφη επιβάρυνση – Άρθρα 196 & 226(11α) Οδηγίας 2006/112/ΕΚ / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -289,6 +313,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Daňové identifikační číslo",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "ISDOC 6.0.2 (Voluntary B2B) / EN 16931 Peppol BIS 3.0 (BT-118=K/AE, § 64 & § 9 odst. 1 ZDPH)",
     statutoryReverseChargeClause:
       "Daň odvede zákazník – čl. 196 a čl. 226 bod 11a směrnice 2006/112/ES / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -302,6 +332,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Umsatzsteuer-Identifikationsnummer",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "E-Rechnung (XRechnung 3.0 / ZUGFeRD 2.3, EN 16931 BT-118=K/AE) & GoBD (§ 14b Abs. 1 UStG / BEG IV 8-Year Archive, § 18e UStG BZSt Qualifizierte Bestätigung, § 17a UStDV Gelangensbestätigung)",
     statutoryReverseChargeClause:
       "Steuerschuldnerschaft des Leistungsempfängers – Art. 196 & Art. 226 Nr. 11a MwStSystRL (Directive 2006/112/EC, § 13b UStG) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -315,6 +351,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Momsregistreringsnummer (CVR/SE)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "NemHandel OIOUBL / Peppol BIS Billing 3.0 (EN 16931 BT-118=K/AE, ML § 34 stk. 1 nr. 1 & § 46)",
     statutoryReverseChargeClause:
       "Omvendt betalingspligt – Art. 196 & Art. 226, nr. 11a, i direktiv 2006/112/EF / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -328,6 +370,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Käibemaksukohustuslase registreerimisnumber",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "e-Arve / EN 16931 Peppol BIS Billing 3.0 (BT-118=K/AE, KMS § 15 lg 3 p 2 & § 10)",
     statutoryReverseChargeClause:
       "Pöördmaksustamine – direktiivi 2006/112/EÜ art 196 ja art 226 p 11a / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -341,6 +389,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Αριθμός Φορολογικού Μητρώου (ΦΠΑ)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "AADE myDATA (Ηλεκτρονικά Βιβλία, EN 16931 BT-118=K/AE, Άρθρο 28 & Άρθρο 14 Κώδικα ΦΠΑ)",
     statutoryReverseChargeClause:
       "Αντίστροφη επιβάρυνση – Άρθρα 196 & 226(11α) Οδηγίας 2006/112/ΕΚ / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -354,6 +408,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Número de Identificación Fiscal (ROI / NIF-IVA)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "AEAT SII (CausaExencion E5 Art. 25 LIVA [Goods] / No Sujeta Art. 69.Uno.1º LIVA [Services]) / Veri*factu RD 1007/2023 (Non-SII Taxpayers)",
     statutoryReverseChargeClause:
       "Inversión del sujeto pasivo – Art. 196 y Art. 226.11 bis Directiva 2006/112/CE (Art. 84 LIVA) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -367,6 +427,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Arvonlisäverotunniste (Y-tunnus)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Finvoice 3.0 / Peppol BIS Billing 3.0 (EN 16931 BT-118=K/AE, AVL 72 a § & 65 §)",
     statutoryReverseChargeClause:
       "Käännetty verovelvollisuus – direktiivin 2006/112/EY 196 art. ja 226 art. 11a kohta / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -380,6 +446,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Numéro de TVA intracommunautaire",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Factur-X / PPF & Plateformes Agréées (EN 16931 BT-118=K/AE, CGI art. 262 ter I & art. 283-2) & Piste d'Audit Fiable (PAF — CGI art. 289 VII)",
     statutoryReverseChargeClause:
       "Autoliquidation – Art. 196 et Art. 226, point 11 bis, de la Directive 2006/112/CE (CGI art. 283-2) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -393,6 +465,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "PDV identifikacijski broj (OIB)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Porezna uprava Fiskalizacija 2.0 / eRačun (EN 16931 BT-118=K/AE, čl. 41. st. 1. & čl. 17. st. 1. Zakona o PDV-u)",
     statutoryReverseChargeClause:
       "Prijenos porezne obveze – čl. 196. i čl. 226. t. 11.a Direktive 2006/112/EZ / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -406,6 +484,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Közösségi adószám (EU ÁFA)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "NAV Online Számla RTIR v3.0 XML & EN 16931 (BT-118=K/AE, Áfa tv. 89. § & 37. § (1))",
     statutoryReverseChargeClause:
       "Fordított adózás – a 2006/112/EK irányelv 196. cikke és 226. cikkének 11a. pontja / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -419,6 +503,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Value Added Tax Registration Number",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Peppol BIS Billing 3.0 / EN 16931 (BT-118=K VATEX-EU-IC [Goods] / BT-118=AE VATEX-EU-AE [Services], VATCA 2010)",
     statutoryReverseChargeClause:
       "Reverse charge – Art. 196 & Art. 226(11a) Council Directive 2006/112/EC (B2B services)",
     statutoryGoodsExemptionClause:
@@ -432,6 +522,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Partita IVA intracomunitaria (VIES)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Sistema di Interscambio (SdI) FatturaPA XML v1.9 (Natura N3.2 non imponibili Art. 41 D.L. 331/1993 [Goods] / Natura N2.1 non soggette Art. 7-ter & dicitura Inversione contabile Art. 21 co. 6-bis lett. a DPR 633/72 [Services])",
     statutoryReverseChargeClause:
       "Inversione contabile – Art. 196 e Art. 226, punto 11-bis, Direttiva 2006/112/CE (Art. 17 DPR 633/72) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -445,6 +541,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Pridėtinės vertės mokesčio mokėtojo kodas",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "i.SAF / SABIS EN 16931 Peppol BIS 3.0 (BT-118=K/AE, PVMĮ 49 str. & 13 str.)",
     statutoryReverseChargeClause:
       "Atvirkštinis apmokestinimas – Direktyvos 2006/112/EB 196 str. ir 226 str. 11a p. / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -458,6 +560,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Numéro d'identification à la TVA",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Peppol BIS Billing 3.0 / EN 16931 (BT-118=K/AE, Art. 43 & Art. 17 LTVA)",
     statutoryReverseChargeClause:
       "Autoliquidation – Art. 196 et Art. 226, point 11 bis, Directive 2006/112/CE / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -471,6 +579,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Pievienotās vērtības nodokļa reģistrācijas numurs",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "e-Rēķins / EN 16931 Peppol BIS Billing 3.0 (BT-118=K/AE, PVN likuma 43. pants & 19. pants)",
     statutoryReverseChargeClause:
       "Nodokļa apgrieztā maksāšana – Direktīvas 2006/112/EK 196. pants un 226. panta 11.a punkts / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -484,6 +598,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Value Added Tax Registration Number",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Peppol BIS Billing 3.0 / EN 16931 (BT-118=K VATEX-EU-IC [Goods] / BT-118=AE VATEX-EU-AE [Services], Value Added Tax Act Cap. 406)",
     statutoryReverseChargeClause:
       "Reverse charge – Art. 196 & Art. 226(11a) Council Directive 2006/112/EC (B2B services)",
     statutoryGoodsExemptionClause:
@@ -497,8 +617,14 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Btw-identificatienummer",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Peppol BIS Billing 3.0 / NLCIUS (EN 16931 BT-118=K/AE, Wet OB 1968 Art. 9 lid 2 sub b & Art. 12 lid 3 & ICP Opgaaf)",
     statutoryReverseChargeClause:
-      "Btw verlegd – Art. 196 & Art. 226 lid 11 bis Richtlijn 2006/112/EG / Reverse charge (B2B services)",
+      "Btw verlegd – Art. 196 & Art. 226 lid 11 bis Richtlijn 2006/112/EG (Art. 12 lid 3 Wet OB 1968) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
       "Vrijgestelde intracommunautaire levering van goederen (0% btw) – Art. 138 lid 1 & Art. 226 lid 11 Richtlijn 2006/112/EG (Art. 9 lid 2 sub b Wet OB 1968 juncto Tabel II onderdeel a post 6) / Intra-Community exempt supply of goods",
   }),
@@ -510,6 +636,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Numer Identyfikacji Podatkowej (NIP UE)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "KSeF FA(3) e-Faktura (WDT P_13_6_2 0% Art. 42 ustawy o VAT [Goods] / NP II P_13_9 & P_18=1 Odwrotne obciążenie Art. 28b, Art. 106e ust. 1 pkt 18 & Art. 17 ust. 1 pkt 4 [Services])",
     statutoryReverseChargeClause:
       "Odwrotne obciążenie – art. 196 i art. 226 pkt 11a dyrektywy 2006/112/WE / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -523,6 +655,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Número de Identificação Fiscal (IVA)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "AT SAF-T (PT) & ATCUD Certified Billing (EN 16931 BT-118=K/AE, Art. 14.º RITI & Art. 6.º n.º 6 CIVA)",
     statutoryReverseChargeClause:
       "Autoliquidação – Art. 196.º e Art. 226.º, n.º 11-A, da Diretiva 2006/112/CE / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -536,6 +674,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Cod de înregistrare în scopuri de TVA",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "ANAF RO e-Factura (CIUS-RO / UBL 2.1 EN 16931 BT-118=K/AE, Art. 294 alin. (2) & Art. 278 alin. (2) Codul Fiscal)",
     statutoryReverseChargeClause:
       "Taxare inversă – Art. 196 și Art. 226 pct. 11a din Directiva 2006/112/CE / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -549,10 +693,16 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Momsregistreringsnummer (SE-nummer)",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "Peppol BIS Billing 3.0 / Svefaktura (EN 16931 BT-118=K/AE, Mervärdesskattelag 2023:200 10 kap. 42 §, 6 kap. 33 § & 17 kap. 24 § p. 11 ML)",
     statutoryReverseChargeClause:
-      "Omvänd betalningsskyldighet – Art. 196 & Art. 226.11a i direktiv 2006/112/EG / Reverse charge (B2B services)",
+      "Omvänd betalningsskyldighet – Art. 196 & Art. 226.11a i direktiv 2006/112/EG (6 kap. 33 § & 17 kap. 24 § p. 11 ML (2023:200)) / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
-      "Undantagen unionsintern leverans av varor – Art. 138.1 & Art. 226.11 i direktiv 2006/112/EG (10 kap. 42 § ML) / Intra-Community exempt supply of goods",
+      "Undantagen unionsintern leverans av varor – Art. 138.1 & Art. 226.11 i direktiv 2006/112/EG (10 kap. 42 § ML / Mervärdesskattelag 2023:200) / Intra-Community exempt supply of goods",
   }),
   SI: Object.freeze({
     memberState: "SI",
@@ -562,6 +712,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Identifikacijska številka za DDV",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "e-SLOG 2.0 / EN 16931 Peppol BIS 3.0 (BT-118=K/AE, 46. člen & 25. člen ZDDV-1)",
     statutoryReverseChargeClause:
       "Obrnjena davčna obveznost – člen 196 in člen 226(11a) Direktive 2006/112/ES / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -575,6 +731,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
     nativeTaxIdName: "Identifikačné číslo pre daň z pridanej hodnoty",
     directiveArticle: "Art. 196 & Art. 226(11a) Council Directive 2006/112/EC",
     directiveGoodsArticle: "Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "AE",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "VATEX-EU-AE",
+    eInvoicingMandateStandard:
+      "IS EFA / EN 16931 Peppol BIS 3.0 (BT-118=K/AE, § 43 & § 15 ods. 1 zákona o DPH)",
     statutoryReverseChargeClause:
       "Prenesenie daňovej povinnosti – čl. 196 a čl. 226 bod 11a smernice 2006/112/ES / Reverse charge (B2B services)",
     statutoryGoodsExemptionClause:
@@ -591,6 +753,12 @@ export const EU_VIES_STATUTORY_TERMINOLOGY_MAP = Object.freeze({
       "Windsor Framework (Goods Only — Services Not Covered by XI VIES) / Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
     directiveGoodsArticle:
       "Windsor Framework (Goods Only) / Art. 138(1) & Art. 226(11) Council Directive 2006/112/EC",
+    en16931GoodsCategoryCode: "K",
+    en16931ServicesCategoryCode: "N/A (Windsor Framework Goods-Only)",
+    vatexGoodsCode: "VATEX-EU-IC",
+    vatexServicesCode: "N/A",
+    eInvoicingMandateStandard:
+      "UK HMRC Windsor Framework / Northern Ireland Protocol (VATA 1994 Sch 9ZA — NI (UK) XI Prefix Applies to Cross-Border Goods Only [EN 16931 Code K]; B2B Services Governed by UK Place-of-Supply Rules)",
     statutoryReverseChargeClause:
       "N/A for B2B services under XI VIES (Windsor Framework applies to goods only under Art. 138(1) & Art. 226(11) Directive 2006/112/EC; UK/GB place-of-supply rules govern services)",
     statutoryGoodsExemptionClause:
@@ -1913,7 +2081,7 @@ export const LOCAL_STATELESS_CLOUD_UPGRADE_HINT = Object.freeze({
   message:
     "Running in stateless local mode. Provision a free or paid Cloud Workspace for 90-day event persistence, automated webhook revocation, and Slack/Email alerts.",
   command: "npx --yes revclamp-mcp --init-workspace <work_email>",
-  cliActivateCommand: "npx -y revclamp-mcp@1.20.13 --init-workspace you@company.com",
+  cliActivateCommand: "npx -y revclamp-mcp@1.20.14 --init-workspace you@company.com",
   upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
 });
 
@@ -4009,7 +4177,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.13",
+  packageVersion = "1.20.14",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
