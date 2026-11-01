@@ -2099,7 +2099,7 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
       "Running in stateless local mode. Run `npx --yes revclamp-mcp@latest --init-workspace` (zero email required) to provision a free Cloud Workspace (5,000 free monthly events, 90-day audit ledger, live EU VIES SOAP numbers, and 24/7 webhook outbox).",
     command: "npx --yes revclamp-mcp --init-workspace <work_email>",
     zeroEmailInitCommand: "npx --yes revclamp-mcp@latest --init-workspace",
-    cliActivateCommand: "npx -y revclamp-mcp@1.20.17 --init-workspace you@company.com",
+    cliActivateCommand: "npx -y revclamp-mcp@1.20.18 --init-workspace you@company.com",
     freeTierQuota: "5,000 free monthly events",
     interactiveWebToolUrl,
     consoleUpgradeUrl:
@@ -2306,6 +2306,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       const allowedSubStatuses = new Set([
         "active",
         "trialing",
+        "incomplete",
         "past_due",
         "paused",
         "canceled",
@@ -2469,6 +2470,17 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         ? args.events
         : defaultPresets[preset] || defaultPresets.out_of_order_stale_update_after_cancel;
 
+    const REPLAY_STATUS_RESTRICTIVENESS = {
+      canceled: 5,
+      expired: 5,
+      unpaid: 4,
+      paused: 3,
+      past_due: 2,
+      cancel_at_period_end: 2,
+      active: 1,
+      trialing: 1,
+      incomplete: 1,
+    };
     const seenIds = new Map();
     let watermarkCreatedSec = 0;
     let finalStatus = "unknown";
@@ -2476,7 +2488,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     const trace = [];
 
     for (const ev of events) {
-      const evId = String((ev.eventId !== undefined ? ev.eventId : ev.id) || "");
+      const evId = String((ev.eventId !== undefined ? ev.eventId : ev.id) || "").trim();
       const createdSec = Number((ev.createdSec !== undefined ? ev.createdSec : ev.created) || 0);
       const resolvedArrivedVal =
         ev.arrivedAtSec !== undefined ? ev.arrivedAtSec : ev.arrived_at_sec;
@@ -2488,7 +2500,9 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           : ev.status !== undefined
             ? ev.status
             : ev.target_status) || ""
-      );
+      )
+        .trim()
+        .toLowerCase();
       const normStatusVal = rawStatusVal === "cancelled" ? "canceled" : rawStatusVal;
       naiveFinalStatus = normStatusVal || naiveFinalStatus;
 
@@ -2499,24 +2513,50 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           }
         }
       } else if (evalClockSec - createdSec > windowSec) {
-        trace.push({ id: evId, decision: "EXPIRED_OUTSIDE_72H_DEDUP_WINDOW", statusAfter: finalStatus });
+        trace.push({
+          id: evId,
+          decision: "EXPIRED_OUTSIDE_72H_DEDUP_WINDOW",
+          canonicalDecision: "EXPIRED_OUTSIDE_72H_DEDUP_WINDOW",
+          statusAfter: finalStatus,
+        });
         continue;
       }
 
       if (seenIds.has(evId)) {
-        trace.push({ id: evId, decision: "IGNORED_DUPLICATE_72H", statusAfter: finalStatus });
+        trace.push({
+          id: evId,
+          decision: "IGNORED_DUPLICATE_72H",
+          canonicalDecision: "DUPLICATE_EVENT_IDEMPOTENT_NOOP",
+          statusAfter: finalStatus,
+        });
         continue;
       }
       seenIds.set(evId, evalClockSec);
 
-      if (createdSec < watermarkCreatedSec) {
-        trace.push({ id: evId, decision: "IGNORED_STALE_OUT_OF_ORDER", statusAfter: finalStatus });
+      const isSameSecondLessRestrictive =
+        createdSec === watermarkCreatedSec &&
+        watermarkCreatedSec > 0 &&
+        (REPLAY_STATUS_RESTRICTIVENESS[normStatusVal] || 0) <
+          (REPLAY_STATUS_RESTRICTIVENESS[finalStatus] || 0);
+
+      if (createdSec < watermarkCreatedSec || isSameSecondLessRestrictive) {
+        trace.push({
+          id: evId,
+          decision: "IGNORED_STALE_OUT_OF_ORDER",
+          canonicalDecision: "STALE_OUT_OF_ORDER_TRANSITION_IGNORED",
+          statusAfter: finalStatus,
+        });
         continue;
       }
 
       watermarkCreatedSec = createdSec;
       finalStatus = normStatusVal || finalStatus;
-      trace.push({ id: evId, decision: "APPLIED_MONOTONIC", statusAfter: finalStatus });
+      trace.push({
+        id: evId,
+        decision: "APPLIED_MONOTONIC",
+        canonicalDecision: "APPLIED_MONOTONIC_STATE_TRANSITION",
+        statusAfter: finalStatus,
+      });
     }
 
     return {
@@ -4202,7 +4242,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.17",
+  packageVersion = "1.20.18",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
