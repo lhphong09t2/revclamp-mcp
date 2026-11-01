@@ -2099,7 +2099,7 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
       "Running in stateless local mode. Run `npx --yes revclamp-mcp@latest --init-workspace` (zero email required) to provision a free Cloud Workspace (5,000 free monthly events, 90-day audit ledger, live EU VIES SOAP numbers, and 24/7 webhook outbox).",
     command: "npx --yes revclamp-mcp --init-workspace <work_email>",
     zeroEmailInitCommand: "npx --yes revclamp-mcp@latest --init-workspace",
-    cliActivateCommand: "npx -y revclamp-mcp@1.20.18 --init-workspace you@company.com",
+    cliActivateCommand: "npx -y revclamp-mcp@1.20.19 --init-workspace you@company.com",
     freeTierQuota: "5,000 free monthly events",
     interactiveWebToolUrl,
     consoleUpgradeUrl:
@@ -2484,16 +2484,50 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     const seenIds = new Map();
     let watermarkCreatedSec = 0;
     let finalStatus = "unknown";
+    let finalTier = "free";
+    let hasExplicitFreeTier = false;
+    let finalPeriodEndSec = null;
     let naiveFinalStatus = "unknown";
+    let naiveFinalTier = "free";
+    let naiveHasExplicitFreeTier = false;
+    let naiveDuplicateSideEffectsCount = 0;
+    let appliedCount = 0;
+    let duplicateDroppedCount = 0;
+    let staleOutOfOrderDroppedCount = 0;
+    let expiredWindowDroppedCount = 0;
+    const resolveOmittedReplayTier = (
+      currentTier,
+      currentStatus,
+      explicitFreeLocked,
+      incomingStatus
+    ) => {
+      if (currentTier !== "free") return currentTier;
+      if (explicitFreeLocked) return "free";
+      if (
+        currentStatus === "unknown" ||
+        currentStatus === "unprovisioned" ||
+        incomingStatus === "active" ||
+        incomingStatus === "trialing"
+      ) {
+        return "growth_59";
+      }
+      return "free";
+    };
     const trace = [];
+    const steps = [];
 
-    for (const ev of events) {
+    for (let idx = 0; idx < events.length; idx += 1) {
+      const ev = events[idx];
       const evId = String((ev.eventId !== undefined ? ev.eventId : ev.id) || "").trim();
+      const evType = String(
+        (ev.eventType !== undefined ? ev.eventType : ev.type) || "customer.subscription.updated"
+      ).trim();
       const createdSec = Number((ev.createdSec !== undefined ? ev.createdSec : ev.created) || 0);
       const resolvedArrivedVal =
         ev.arrivedAtSec !== undefined ? ev.arrivedAtSec : ev.arrived_at_sec;
       const hasArrivedAt = resolvedArrivedVal !== undefined && resolvedArrivedVal !== null;
       const evalClockSec = hasArrivedAt ? Number(resolvedArrivedVal) : effectiveNowSec;
+      const ageSeconds = evalClockSec - createdSec;
       const rawStatusVal = String(
         (ev.subscriptionStatus !== undefined
           ? ev.subscriptionStatus
@@ -2504,7 +2538,49 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         .trim()
         .toLowerCase();
       const normStatusVal = rawStatusVal === "cancelled" ? "canceled" : rawStatusVal;
+      const isEvTerminal =
+        normStatusVal === "canceled" ||
+        normStatusVal === "unpaid" ||
+        normStatusVal === "paused" ||
+        normStatusVal === "expired";
+      const explicitTierProvided = ev.tier !== undefined && ev.tier !== null;
+      const normTierVal = isEvTerminal
+        ? "free"
+        : explicitTierProvided
+          ? String(ev.tier).trim().toLowerCase()
+          : "growth_59";
+      const currentPeriodEndSec =
+        ev.currentPeriodEndSec !== undefined && ev.currentPeriodEndSec !== null
+          ? Number(ev.currentPeriodEndSec)
+          : null;
+
+      const prevNaiveStatus = naiveFinalStatus;
       naiveFinalStatus = normStatusVal || naiveFinalStatus;
+      if (isEvTerminal) {
+        naiveFinalTier = "free";
+        naiveHasExplicitFreeTier = false;
+      } else if (explicitTierProvided) {
+        naiveFinalTier = normTierVal;
+        naiveHasExplicitFreeTier = normTierVal === "free";
+      } else {
+        naiveFinalTier = resolveOmittedReplayTier(
+          naiveFinalTier,
+          prevNaiveStatus,
+          naiveHasExplicitFreeTier,
+          normStatusVal
+        );
+      }
+
+      const effectiveIncomingTier = isEvTerminal
+        ? "free"
+        : explicitTierProvided
+          ? normTierVal
+          : resolveOmittedReplayTier(
+              finalTier,
+              finalStatus,
+              hasExplicitFreeTier,
+              normStatusVal
+            );
 
       if (hasArrivedAt) {
         for (const [k, seenAt] of seenIds.entries()) {
@@ -2513,21 +2589,56 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           }
         }
       } else if (evalClockSec - createdSec > windowSec) {
+        expiredWindowDroppedCount += 1;
         trace.push({
           id: evId,
           decision: "EXPIRED_OUTSIDE_72H_DEDUP_WINDOW",
           canonicalDecision: "EXPIRED_OUTSIDE_72H_DEDUP_WINDOW",
           statusAfter: finalStatus,
         });
+        steps.push({
+          stepIndex: idx + 1,
+          eventId: evId,
+          eventType: evType,
+          createdSec,
+          ageSeconds,
+          incomingStatus: normStatusVal,
+          incomingTier: effectiveIncomingTier,
+          decision: "EXPIRED_OUTSIDE_72H_DEDUP_WINDOW",
+          applied: false,
+          stateAfterStep: {
+            billingStatus: finalStatus,
+            tier: finalTier,
+            lastAppliedCreatedSec: watermarkCreatedSec,
+          },
+        });
         continue;
       }
 
       if (seenIds.has(evId)) {
+        duplicateDroppedCount += 1;
+        naiveDuplicateSideEffectsCount += 1;
         trace.push({
           id: evId,
           decision: "IGNORED_DUPLICATE_72H",
           canonicalDecision: "DUPLICATE_EVENT_IDEMPOTENT_NOOP",
           statusAfter: finalStatus,
+        });
+        steps.push({
+          stepIndex: idx + 1,
+          eventId: evId,
+          eventType: evType,
+          createdSec,
+          ageSeconds,
+          incomingStatus: normStatusVal,
+          incomingTier: effectiveIncomingTier,
+          decision: "DUPLICATE_EVENT_IDEMPOTENT_NOOP",
+          applied: false,
+          stateAfterStep: {
+            billingStatus: finalStatus,
+            tier: finalTier,
+            lastAppliedCreatedSec: watermarkCreatedSec,
+          },
         });
         continue;
       }
@@ -2540,35 +2651,131 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           (REPLAY_STATUS_RESTRICTIVENESS[finalStatus] || 0);
 
       if (createdSec < watermarkCreatedSec || isSameSecondLessRestrictive) {
+        staleOutOfOrderDroppedCount += 1;
         trace.push({
           id: evId,
           decision: "IGNORED_STALE_OUT_OF_ORDER",
           canonicalDecision: "STALE_OUT_OF_ORDER_TRANSITION_IGNORED",
           statusAfter: finalStatus,
         });
+        steps.push({
+          stepIndex: idx + 1,
+          eventId: evId,
+          eventType: evType,
+          createdSec,
+          ageSeconds,
+          incomingStatus: normStatusVal,
+          incomingTier: effectiveIncomingTier,
+          decision: "STALE_OUT_OF_ORDER_TRANSITION_IGNORED",
+          applied: false,
+          stateAfterStep: {
+            billingStatus: finalStatus,
+            tier: finalTier,
+            lastAppliedCreatedSec: watermarkCreatedSec,
+          },
+        });
         continue;
       }
 
+      const prevFinalStatus = finalStatus;
       watermarkCreatedSec = createdSec;
       finalStatus = normStatusVal || finalStatus;
+      const isFinalTerminal =
+        finalStatus === "canceled" ||
+        finalStatus === "unpaid" ||
+        finalStatus === "paused" ||
+        finalStatus === "expired";
+      if (isFinalTerminal) {
+        finalTier = "free";
+        hasExplicitFreeTier = false;
+      } else if (explicitTierProvided) {
+        finalTier = normTierVal;
+        hasExplicitFreeTier = normTierVal === "free";
+      } else {
+        finalTier = resolveOmittedReplayTier(
+          finalTier,
+          prevFinalStatus,
+          hasExplicitFreeTier,
+          finalStatus
+        );
+      }
+      if (currentPeriodEndSec !== null) {
+        finalPeriodEndSec = currentPeriodEndSec;
+      }
+      appliedCount += 1;
       trace.push({
         id: evId,
         decision: "APPLIED_MONOTONIC",
         canonicalDecision: "APPLIED_MONOTONIC_STATE_TRANSITION",
         statusAfter: finalStatus,
       });
+      steps.push({
+        stepIndex: idx + 1,
+        eventId: evId,
+        eventType: evType,
+        createdSec,
+        ageSeconds,
+        incomingStatus: normStatusVal,
+        incomingTier: effectiveIncomingTier,
+        decision: "APPLIED_MONOTONIC_STATE_TRANSITION",
+        applied: true,
+        stateAfterStep: {
+          billingStatus: finalStatus,
+          tier: finalTier,
+          lastAppliedCreatedSec: watermarkCreatedSec,
+        },
+      });
+    }
+
+    const isEntitledActive =
+      finalStatus === "active" ||
+      finalStatus === "trialing" ||
+      finalStatus === "past_due" ||
+      (finalStatus === "cancel_at_period_end" &&
+        (finalPeriodEndSec === null || finalPeriodEndSec > effectiveNowSec));
+    const finalEntitlementDecision = isEntitledActive
+      ? "ALLOW"
+      : "BLOCK_REVOKED_OR_EXPIRED";
+
+    let naiveHandlerBug = "NONE_MONOTONIC_IN_ORDER";
+    if (
+      (finalStatus === "canceled" || finalStatus === "unpaid" || finalStatus === "expired") &&
+      (naiveFinalStatus === "active" || naiveFinalStatus === "trialing")
+    ) {
+      naiveHandlerBug = "RESURRECTED_CANCELED_SUBSCRIPTION";
+    } else if (naiveDuplicateSideEffectsCount > 0) {
+      naiveHandlerBug = "DUPLICATE_BILLING_OR_ENTITLEMENT_SIDE_EFFECT";
+    } else if (expiredWindowDroppedCount > 0 && naiveFinalStatus !== finalStatus) {
+      naiveHandlerBug = "APPLIED_EXPIRED_REPLAY_OUTSIDE_72H_WINDOW";
+    } else if (naiveFinalStatus !== finalStatus || naiveFinalTier !== finalTier) {
+      naiveHandlerBug = "OUT_OF_ORDER_STATE_CORRUPTION";
     }
 
     return {
       ok: true,
       executionMode: "local_open_source_engine",
       scenarioPreset: preset,
+      nowSec: effectiveNowSec,
       idempotencyWindowSec: windowSec,
+      totalEventsEvaluated: events.length,
+      appliedCount,
+      duplicateDroppedCount,
+      staleOutOfOrderDroppedCount,
+      expiredWindowDroppedCount,
       finalStatus,
+      finalTier,
+      finalPeriodEndSec,
+      lastAppliedCreatedSec: watermarkCreatedSec,
+      finalEntitlementDecision,
       naiveFinalStatus,
+      naiveFinalTier,
+      naiveHandlerBug,
       preventedStateCorruption:
-        finalStatus !== naiveFinalStatus || trace.some((t) => t.decision !== "APPLIED_MONOTONIC"),
+        finalStatus !== naiveFinalStatus ||
+        finalTier !== naiveFinalTier ||
+        trace.some((t) => t.decision !== "APPLIED_MONOTONIC"),
       trace,
+      steps,
     };
   }
 
@@ -4242,7 +4449,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.18",
+  packageVersion = "1.20.19",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
