@@ -40,7 +40,7 @@ export {
   executeLocalMcpJsonRpc,
 };
 
-export const PACKAGE_VERSION = "1.20.16";
+export const PACKAGE_VERSION = "1.20.17";
 export const DEFAULT_MCP_ENDPOINT = "https://api.revclamp.com/api/mcp";
 export const ALLOWED_MCP_ORIGINS = Object.freeze(
   new Set([
@@ -1180,17 +1180,18 @@ export async function runMcpCliOnboardingCommand({
       ? effectiveEnv.REVCLAMP_API_KEY.trim()
       : "";
   const allowDefaultHomeCreds = !fetchImpl && effectiveEnv === process.env;
-  const savedCreds = !rawEnvApiKey
-    ? readSavedWorkspaceCredentials(effectiveEnv, {
-        allowDefaultHome: allowDefaultHomeCreds,
-      })
-    : null;
+  const savedCreds = readSavedWorkspaceCredentials(effectiveEnv, {
+    allowDefaultHome: allowDefaultHomeCreds,
+  });
+  const savedCredsMatchesEnvKey = Boolean(
+    savedCreds?.apiKey && (!rawEnvApiKey || savedCreds.apiKey === rawEnvApiKey)
+  );
   const envApiKey = rawEnvApiKey || savedCreds?.apiKey || "";
   const hasValidEnvKey = /^rg_live_[a-zA-Z0-9_-]{12,128}$/.test(envApiKey);
 
   if (normalizedMode === "init-workspace" || normalizedMode === "init") {
     let activeApiKey = "";
-    let tenantId = savedCreds?.tenantId || null;
+    let tenantId = savedCredsMatchesEnvKey ? savedCreds?.tenantId || null : null;
     let reusedExistingEnvKey = false;
     let reusedSavedCredentials = false;
 
@@ -1245,16 +1246,24 @@ export async function runMcpCliOnboardingCommand({
     }
 
     if (isZeroEmailInit) {
+      const savedCredsMatchesActiveKey = Boolean(
+        savedCreds?.apiKey && savedCreds.apiKey === activeApiKey
+      );
       const saveRes = writeSavedWorkspaceCredentials(
         {
           apiKey: activeApiKey,
           tenantId,
           origin: originCheck.origin,
-          email: savedCreds?.email || null,
+          email: savedCredsMatchesActiveKey ? savedCreds?.email || null : null,
         },
         effectiveEnv,
         { allowDefaultHome: allowDefaultHomeCreds }
       );
+      const optionalBindEmailCmdPrefix = reusedExistingEnvKey
+        ? 'REVCLAMP_API_KEY="$REVCLAMP_API_KEY" '
+        : saveRes.saved || reusedSavedCredentials
+          ? ""
+          : `REVCLAMP_API_KEY=${activeApiKey} `;
       return {
         ok: true,
         exitCode: 0,
@@ -1265,6 +1274,11 @@ export async function runMcpCliOnboardingCommand({
         apiKeyPreview: maskApiKeyPreview(activeApiKey),
         reusedExistingEnvKey,
         reusedSavedCredentials,
+        credentialSource: reusedExistingEnvKey
+          ? "env"
+          : reusedSavedCredentials
+            ? "credentials_file"
+            : "provisioned",
         credentialsSaved: saveRes.saved,
         credentialsFilePath: saveRes.filePath || null,
         freeTierQuota: "5,000 free monthly events",
@@ -1279,7 +1293,7 @@ export async function runMcpCliOnboardingCommand({
             },
           },
         },
-        optionalBindEmailCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --init-workspace <work_email>`,
+        optionalBindEmailCommand: `${optionalBindEmailCmdPrefix}npx -y revclamp-mcp@${PACKAGE_VERSION} --init-workspace <work_email>`,
         upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
         consoleUpgradeUrl:
           "https://revclamp.com/dashboard?plan=starter_19&method=visa&source=mcp_cli",
@@ -1319,12 +1333,15 @@ export async function runMcpCliOnboardingCommand({
       );
     }
 
+    const savedCredsMatchesActiveKey = Boolean(
+      savedCreds?.apiKey && savedCreds.apiKey === activeApiKey
+    );
     writeSavedWorkspaceCredentials(
       {
         apiKey: activeApiKey,
         tenantId: otpRes.body?.tenantId || tenantId,
         origin: originCheck.origin,
-        email: reusedSavedCredentials && savedCreds?.email ? savedCreds.email : null,
+        email: savedCredsMatchesActiveKey && savedCreds?.email ? savedCreds.email : null,
       },
       effectiveEnv,
       { allowDefaultHome: allowDefaultHomeCreds }
@@ -1346,6 +1363,7 @@ export async function runMcpCliOnboardingCommand({
         apiKey: activeApiKey,
         apiKeyPreview: maskApiKeyPreview(activeApiKey),
         reusedExistingEnvKey,
+        reusedSavedCredentials,
         nextStepCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
         verifyCommandHint: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
       };
@@ -1360,6 +1378,7 @@ export async function runMcpCliOnboardingCommand({
       apiKey: activeApiKey,
       apiKeyPreview: maskApiKeyPreview(activeApiKey),
       reusedExistingEnvKey,
+      reusedSavedCredentials,
       nextStepCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
       resendCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
       upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
@@ -1386,6 +1405,10 @@ export async function runMcpCliOnboardingCommand({
       };
     }
 
+    const isFromEnv = Boolean(rawEnvApiKey);
+    const isFromSaved = Boolean(!rawEnvApiKey && savedCreds?.apiKey);
+    const cmdPrefix = isFromEnv ? 'REVCLAMP_API_KEY="$REVCLAMP_API_KEY" ' : "";
+
     const otpRes = await postOnboardingJson(
       "/api/dashboard/send-otp",
       {
@@ -1404,9 +1427,13 @@ export async function runMcpCliOnboardingCommand({
         errorCode: otpRes.errorCode || "SEND_OTP_FAILED",
         status: otpRes.status,
         email: cleanEmail,
-        tenantId: otpRes.body?.tenantId || null,
-        reusedExistingEnvKey: true,
-        nextStepCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
+        tenantId:
+          otpRes.body?.tenantId ||
+          (savedCredsMatchesEnvKey ? savedCreds?.tenantId : null) ||
+          null,
+        reusedExistingEnvKey: isFromEnv,
+        reusedSavedCredentials: isFromSaved,
+        nextStepCommand: `${cmdPrefix}npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
       };
     }
 
@@ -1415,9 +1442,13 @@ export async function runMcpCliOnboardingCommand({
       exitCode: 0,
       stage: "OTP_RESENT",
       email: cleanEmail,
-      tenantId: otpRes.body?.tenantId || null,
-      reusedExistingEnvKey: true,
-      nextStepCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
+      tenantId:
+        otpRes.body?.tenantId ||
+        (savedCredsMatchesEnvKey ? savedCreds?.tenantId : null) ||
+        null,
+      reusedExistingEnvKey: isFromEnv,
+      reusedSavedCredentials: isFromSaved,
+      nextStepCommand: `${cmdPrefix}npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
       upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
     };
   }
@@ -1455,6 +1486,10 @@ export async function runMcpCliOnboardingCommand({
       };
     }
 
+    const isFromEnv = Boolean(rawEnvApiKey);
+    const isFromSaved = Boolean(!rawEnvApiKey && savedCreds?.apiKey);
+    const cmdPrefix = isFromEnv ? 'REVCLAMP_API_KEY="$REVCLAMP_API_KEY" ' : "";
+
     const verifyRes = await postOnboardingJson(
       "/api/dashboard/verify-otp",
       {
@@ -1472,13 +1507,33 @@ export async function runMcpCliOnboardingCommand({
       verifyRes.body?.ok === true &&
       verifyRes.body?.verified === true
     ) {
+      const verifiedTenantId =
+        verifyRes.body?.tenantId ||
+        (savedCreds?.apiKey === envApiKey ? savedCreds?.tenantId : null) ||
+        null;
+      const verifiedEmail = verifyRes.body?.email || cleanEmail;
+      const saveRes = writeSavedWorkspaceCredentials(
+        {
+          apiKey: envApiKey,
+          tenantId: verifiedTenantId,
+          origin: originCheck.origin,
+          email: verifiedEmail,
+        },
+        effectiveEnv,
+        { allowDefaultHome: allowDefaultHomeCreds }
+      );
       return {
         ok: true,
         exitCode: 0,
         verified: true,
         stage: "WORKSPACE_VERIFIED",
-        email: cleanEmail,
-        tenantId: verifyRes.body?.tenantId || null,
+        email: verifiedEmail,
+        tenantId: verifiedTenantId,
+        reusedExistingEnvKey: isFromEnv,
+        reusedSavedCredentials: isFromSaved,
+        credentialsSaved: saveRes.saved,
+        credentialsFilePath: saveRes.filePath || null,
+        credentialsSavedPath: saveRes.filePath || null,
         mcpServersConfig: {
           mcpServers: {
             revclamp: {
@@ -1502,7 +1557,9 @@ export async function runMcpCliOnboardingCommand({
       errorCode: verifyRes.errorCode || "OTP_VERIFICATION_FAILED",
       status: verifyRes.status,
       message: verifyRes.message || "OTP verification failed.",
-      nextStepCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
+      reusedExistingEnvKey: isFromEnv,
+      reusedSavedCredentials: isFromSaved,
+      nextStepCommand: `${cmdPrefix}npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
     };
   }
 

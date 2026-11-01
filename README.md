@@ -61,14 +61,14 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 
 ```bash
 # Run a <60s local CLI smoke check (verifies all 9 tool schemas & executes a local_engine.mjs sample audit with zero API key)
-npx -y github:lhphong09t2/revclamp-mcp#v1.20.16 --self-test
+npx -y github:lhphong09t2/revclamp-mcp#v1.20.17 --self-test
 
 # Provision a free Cloud Workspace instantly (zero email required; saves to ~/.revclamp/credentials.json) or bind a work email via 6-digit OTP
-npx -y revclamp-mcp@1.20.16 --init-workspace
-npx -y revclamp-mcp@1.20.16 --init-workspace you@company.com
+npx -y revclamp-mcp@1.20.17 --init-workspace
+npx -y revclamp-mcp@1.20.17 --init-workspace you@company.com
 
 # Verify the 6-digit OTP using REVCLAMP_API_KEY from environment
-REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.16 --verify-otp you@company.com 123456
+REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.17 --verify-otp you@company.com 123456
 
 # List all 9 MCP tools and JSON schemas (runs locally in-process)
 node index.mjs --list-tools
