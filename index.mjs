@@ -16,10 +16,15 @@
  *   - Hard 32,768-byte request/response payload cap
  */
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   LOCAL_MCP_TOOLS,
   MCP_PROTOCOL_VERSION,
+  MCP_TOOL_TO_WEB_SLUG_MAP,
+  buildLocalCloudUpgradeHint,
   normalizeMcpToolArgs,
   executeLocalMcpTool,
   executeLocalMcpJsonRpc,
@@ -28,12 +33,14 @@ import {
 export {
   LOCAL_MCP_TOOLS,
   MCP_PROTOCOL_VERSION,
+  MCP_TOOL_TO_WEB_SLUG_MAP,
+  buildLocalCloudUpgradeHint,
   normalizeMcpToolArgs,
   executeLocalMcpTool,
   executeLocalMcpJsonRpc,
 };
 
-export const PACKAGE_VERSION = "1.20.15";
+export const PACKAGE_VERSION = "1.20.16";
 export const DEFAULT_MCP_ENDPOINT = "https://api.revclamp.com/api/mcp";
 export const ALLOWED_MCP_ORIGINS = Object.freeze(
   new Set([
@@ -47,6 +54,160 @@ export const ALLOWED_MCP_ORIGINS = Object.freeze(
 export const MAX_PAYLOAD_BYTES = 32_768;
 export const MAX_STDIO_LINE_BYTES = MAX_PAYLOAD_BYTES;
 export const REQUEST_TIMEOUT_MS = 10_000;
+
+export function maskApiKeyPreview(rawKey = "") {
+  const key = String(rawKey || "").trim();
+  if (key.length < 16) return "rg_live_...****";
+  return `${key.slice(0, 12)}...${key.slice(-4)}`;
+}
+
+export function isCiEnvironment(env = process.env) {
+  const ci = String(env?.CI || "").trim().toLowerCase();
+  const gha = String(env?.GITHUB_ACTIONS || "").trim().toLowerCase();
+  return ci === "true" || ci === "1" || gha === "true" || gha === "1";
+}
+
+export function resolveCredentialsFilePath(env = process.env) {
+  if (
+    env &&
+    typeof env.REVCLAMP_CREDENTIALS_PATH === "string" &&
+    env.REVCLAMP_CREDENTIALS_PATH.trim().length > 0
+  ) {
+    return path.resolve(env.REVCLAMP_CREDENTIALS_PATH.trim());
+  }
+  return path.join(os.homedir(), ".revclamp", "credentials.json");
+}
+
+export function readSavedWorkspaceCredentials(
+  env = process.env,
+  { allowDefaultHome = true } = {}
+) {
+  const hasExplicitPath = Boolean(
+    env &&
+      typeof env.REVCLAMP_CREDENTIALS_PATH === "string" &&
+      env.REVCLAMP_CREDENTIALS_PATH.trim().length > 0
+  );
+  if (!hasExplicitPath && (!allowDefaultHome || process.env.NODE_TEST_CONTEXT)) {
+    return null;
+  }
+  const filePath = resolveCredentialsFilePath(env);
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const st = fs.lstatSync(filePath);
+    if (!st.isFile() || st.isSymbolicLink() || st.size > 16_384) {
+      return null;
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const apiKey = typeof parsed.apiKey === "string" ? parsed.apiKey.trim() : "";
+    if (!/^rg_live_[a-zA-Z0-9_-]{12,128}$/.test(apiKey)) {
+      return null;
+    }
+    return {
+      apiKey,
+      tenantId: typeof parsed.tenantId === "string" ? parsed.tenantId.trim() : null,
+      origin: typeof parsed.origin === "string" ? parsed.origin.trim() : null,
+      email: typeof parsed.email === "string" ? parsed.email.trim() : null,
+      updatedAtIso:
+        typeof parsed.updatedAtIso === "string" ? parsed.updatedAtIso.trim() : null,
+      filePath,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeSavedWorkspaceCredentials(
+  { apiKey, tenantId = null, origin = "https://revclamp.com", email = null } = {},
+  env = process.env,
+  { allowDefaultHome = true } = {}
+) {
+  const cleanKey = typeof apiKey === "string" ? apiKey.trim() : "";
+  if (!/^rg_live_[a-zA-Z0-9_-]{12,128}$/.test(cleanKey)) {
+    return { saved: false, skippedReason: "INVALID_API_KEY", filePath: null };
+  }
+  if (String(env?.REVCLAMP_NO_SAVE_CREDENTIALS || "").trim() === "1") {
+    return { saved: false, skippedReason: "EXPLICIT_NO_SAVE", filePath: null };
+  }
+  const hasExplicitPath = Boolean(
+    env &&
+      typeof env.REVCLAMP_CREDENTIALS_PATH === "string" &&
+      env.REVCLAMP_CREDENTIALS_PATH.trim().length > 0
+  );
+  if (!hasExplicitPath) {
+    if (isCiEnvironment(env)) {
+      return {
+        saved: false,
+        skippedReason: "CI_ENVIRONMENT_NO_IMPLICIT_HOME_WRITE",
+        filePath: null,
+      };
+    }
+    if (!allowDefaultHome || process.env.NODE_TEST_CONTEXT) {
+      return {
+        saved: false,
+        skippedReason: "TEST_CONTEXT_NO_IMPLICIT_HOME_WRITE",
+        filePath: null,
+      };
+    }
+  }
+  const filePath = resolveCredentialsFilePath(env);
+  const dirPath = path.dirname(filePath);
+  let tmpPath = "";
+  try {
+    fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+    const dirStat = fs.lstatSync(dirPath);
+    if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) {
+      return {
+        saved: false,
+        skippedReason: "UNSAFE_CREDENTIALS_DIRECTORY",
+        filePath: null,
+      };
+    }
+    try {
+      fs.chmodSync(dirPath, 0o700);
+    } catch {}
+    if (fs.existsSync(filePath)) {
+      const fileStat = fs.lstatSync(filePath);
+      if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
+        return {
+          saved: false,
+          skippedReason: "UNSAFE_CREDENTIALS_FILE",
+          filePath: null,
+        };
+      }
+    }
+    const payload = {
+      schemaVersion: 1,
+      apiKey: cleanKey,
+      apiKeyPreview: maskApiKeyPreview(cleanKey),
+      tenantId: tenantId || null,
+      origin: origin || "https://revclamp.com",
+      email: email || null,
+      updatedAtIso: new Date().toISOString(),
+    };
+    tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    try {
+      fs.chmodSync(tmpPath, 0o600);
+    } catch {}
+    fs.renameSync(tmpPath, filePath);
+    return { saved: true, skippedReason: null, filePath };
+  } catch {
+    if (tmpPath) {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {}
+    }
+    return { saved: false, skippedReason: "FS_WRITE_ERROR", filePath: null };
+  }
+}
 
 const LIVE_SECRET_GUARD_RE =
   /(?:[sr]k_live_[A-Za-z0-9_-]{4,}|whsec_live_[A-Za-z0-9_-]{4,}|whsec_(?!test_|synth_|sandbox_|demo_|sample_|mock_|example_|fake_|dummy_)[A-Za-z0-9_-]{10,}|shpss_live_[A-Za-z0-9_-]{4,}|shpss_[0-9a-fA-F]{16,}|shp(?:at|ua|ca|pa)_[A-Za-z0-9_-]{8,}|lsq_[A-Za-z0-9_-]{4,}|r[gc]_live_[A-Za-z0-9_-]{4,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
@@ -216,25 +377,37 @@ export async function forwardMcpJsonRpc(
     endpointUrl,
     endpoint,
     apiUrl,
-    apiKey = process.env.REVCLAMP_API_KEY || "",
+    apiKey = "",
+    env = process.env,
     timeoutMs = REQUEST_TIMEOUT_MS,
     fetchImpl,
     mode = process.env.REVCLAMP_MCP_MODE || "",
   } = {}
 ) {
+  const effectiveEnv = env && typeof env === "object" ? env : process.env;
+  const savedCred =
+    !apiKey && !effectiveEnv.REVCLAMP_API_KEY
+      ? readSavedWorkspaceCredentials(effectiveEnv, {
+          allowDefaultHome: !fetchImpl && effectiveEnv === process.env,
+        })
+      : null;
+  const resolvedApiKey = String(
+    apiKey || effectiveEnv.REVCLAMP_API_KEY || savedCred?.apiKey || ""
+  ).trim();
   const effectiveFetch = fetchImpl || globalThis.fetch;
   const hasExplicitRemote =
     Boolean(fetchImpl) ||
     Boolean(endpointUrl) ||
     Boolean(endpoint) ||
     Boolean(apiUrl) ||
-    Boolean(String(apiKey || "").trim()) ||
-    Boolean(process.env.REVCLAMP_MCP_URL) ||
+    Boolean(resolvedApiKey) ||
+    Boolean(effectiveEnv.REVCLAMP_MCP_URL || process.env.REVCLAMP_MCP_URL) ||
     String(mode || "").toLowerCase() === "remote";
   const resolvedEndpointUrl =
     endpointUrl ||
     endpoint ||
     apiUrl ||
+    effectiveEnv.REVCLAMP_MCP_URL ||
     process.env.REVCLAMP_MCP_URL ||
     DEFAULT_MCP_ENDPOINT;
 
@@ -377,7 +550,7 @@ export async function forwardMcpJsonRpc(
       rpcRequest?.params?.name === "revclamp_validate_eu_vat_vies" &&
       (rawViesMode === "FORMAT_ONLY" || rpcRequest?.params?.arguments?.demo === true);
 
-    const cleanKey = String(apiKey || "").trim();
+    const cleanKey = resolvedApiKey;
 
     if (
       String(mode || "").toLowerCase() === "local" ||
@@ -918,11 +1091,20 @@ export async function runMcpCliOnboardingCommand({
     };
   }
 
+  const normalizedMode = String(mode || "")
+    .trim()
+    .replace(/^--+/, "")
+    .toLowerCase();
   const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const isZeroEmailInit =
+    (normalizedMode === "init-workspace" || normalizedMode === "init") &&
+    cleanEmail === "";
+
   if (
-    cleanEmail.length < 3 ||
-    cleanEmail.length > 254 ||
-    !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,63}$/.test(cleanEmail)
+    !isZeroEmailInit &&
+    (cleanEmail.length < 3 ||
+      cleanEmail.length > 254 ||
+      !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,63}$/.test(cleanEmail))
   ) {
     return {
       ok: false,
@@ -932,10 +1114,6 @@ export async function runMcpCliOnboardingCommand({
     };
   }
 
-  const normalizedMode = String(mode || "")
-    .trim()
-    .replace(/^--+/, "")
-    .toLowerCase();
   const effectiveFetch = fetchImpl || globalThis.fetch;
 
   const postOnboardingJson = async (pathname, payloadObj, apiKeyHeader = "") => {
@@ -997,23 +1175,37 @@ export async function runMcpCliOnboardingCommand({
     }
   };
 
-  const envApiKey =
+  const rawEnvApiKey =
     typeof effectiveEnv.REVCLAMP_API_KEY === "string"
       ? effectiveEnv.REVCLAMP_API_KEY.trim()
       : "";
+  const allowDefaultHomeCreds = !fetchImpl && effectiveEnv === process.env;
+  const savedCreds = !rawEnvApiKey
+    ? readSavedWorkspaceCredentials(effectiveEnv, {
+        allowDefaultHome: allowDefaultHomeCreds,
+      })
+    : null;
+  const envApiKey = rawEnvApiKey || savedCreds?.apiKey || "";
   const hasValidEnvKey = /^rg_live_[a-zA-Z0-9_-]{12,128}$/.test(envApiKey);
 
   if (normalizedMode === "init-workspace" || normalizedMode === "init") {
     let activeApiKey = "";
-    let tenantId = null;
+    let tenantId = savedCreds?.tenantId || null;
     let reusedExistingEnvKey = false;
+    let reusedSavedCredentials = false;
 
     const provisionFreshWorkspace = async () => {
-      const provRes = await postOnboardingJson("/api/dashboard/provision", {
+      const provPayload = {
         tier: "free",
         acquisitionSurface: "mcp_cli",
-        merchantEmail: cleanEmail,
-      });
+      };
+      if (cleanEmail) {
+        provPayload.merchantEmail = cleanEmail;
+      }
+      const provRes = await postOnboardingJson(
+        "/api/dashboard/provision",
+        provPayload
+      );
       const provisionedKey =
         provRes.body && typeof provRes.body.apiKey === "string"
           ? provRes.body.apiKey.trim()
@@ -1041,7 +1233,8 @@ export async function runMcpCliOnboardingCommand({
 
     if (hasValidEnvKey) {
       activeApiKey = envApiKey;
-      reusedExistingEnvKey = true;
+      reusedExistingEnvKey = Boolean(rawEnvApiKey);
+      reusedSavedCredentials = Boolean(!rawEnvApiKey && savedCreds?.apiKey);
     } else {
       const freshProv = await provisionFreshWorkspace();
       if (!freshProv.ok) {
@@ -1049,6 +1242,48 @@ export async function runMcpCliOnboardingCommand({
       }
       activeApiKey = freshProv.apiKey;
       tenantId = freshProv.tenantId;
+    }
+
+    if (isZeroEmailInit) {
+      const saveRes = writeSavedWorkspaceCredentials(
+        {
+          apiKey: activeApiKey,
+          tenantId,
+          origin: originCheck.origin,
+          email: savedCreds?.email || null,
+        },
+        effectiveEnv,
+        { allowDefaultHome: allowDefaultHomeCreds }
+      );
+      return {
+        ok: true,
+        exitCode: 0,
+        stage: "WORKSPACE_PROVISIONED_INSTANT",
+        email: null,
+        tenantId,
+        apiKey: activeApiKey,
+        apiKeyPreview: maskApiKeyPreview(activeApiKey),
+        reusedExistingEnvKey,
+        reusedSavedCredentials,
+        credentialsSaved: saveRes.saved,
+        credentialsFilePath: saveRes.filePath || null,
+        freeTierQuota: "5,000 free monthly events",
+        mcpServersConfig: {
+          mcpServers: {
+            revclamp: {
+              command: "npx",
+              args: ["-y", `revclamp-mcp@${PACKAGE_VERSION}`],
+              env: {
+                REVCLAMP_API_KEY: "<SET_FROM_ENV_RG_LIVE_KEY>",
+              },
+            },
+          },
+        },
+        optionalBindEmailCommand: `REVCLAMP_API_KEY="$REVCLAMP_API_KEY" npx -y revclamp-mcp@${PACKAGE_VERSION} --init-workspace <work_email>`,
+        upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
+        consoleUpgradeUrl:
+          "https://revclamp.com/dashboard?plan=starter_19&method=visa&source=mcp_cli",
+      };
     }
 
     let otpRes = await postOnboardingJson(
@@ -1062,7 +1297,7 @@ export async function runMcpCliOnboardingCommand({
     );
 
     if (
-      reusedExistingEnvKey &&
+      (reusedExistingEnvKey || reusedSavedCredentials) &&
       (otpRes.status === 401 || otpRes.errorCode === "UNAUTHORIZED_TENANT_KEY")
     ) {
       const freshProv = await provisionFreshWorkspace();
@@ -1072,6 +1307,7 @@ export async function runMcpCliOnboardingCommand({
       activeApiKey = freshProv.apiKey;
       tenantId = freshProv.tenantId;
       reusedExistingEnvKey = false;
+      reusedSavedCredentials = false;
       otpRes = await postOnboardingJson(
         "/api/dashboard/send-otp",
         {
@@ -1082,6 +1318,17 @@ export async function runMcpCliOnboardingCommand({
         activeApiKey
       );
     }
+
+    writeSavedWorkspaceCredentials(
+      {
+        apiKey: activeApiKey,
+        tenantId: otpRes.body?.tenantId || tenantId,
+        origin: originCheck.origin,
+        email: reusedSavedCredentials && savedCreds?.email ? savedCreds.email : null,
+      },
+      effectiveEnv,
+      { allowDefaultHome: allowDefaultHomeCreds }
+    );
 
     const cmdKeyToken = reusedExistingEnvKey
       ? '"$REVCLAMP_API_KEY"'
@@ -1097,6 +1344,7 @@ export async function runMcpCliOnboardingCommand({
         email: cleanEmail,
         tenantId: otpRes.body?.tenantId || tenantId,
         apiKey: activeApiKey,
+        apiKeyPreview: maskApiKeyPreview(activeApiKey),
         reusedExistingEnvKey,
         nextStepCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
         verifyCommandHint: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
@@ -1110,6 +1358,7 @@ export async function runMcpCliOnboardingCommand({
       email: cleanEmail,
       tenantId: otpRes.body?.tenantId || tenantId,
       apiKey: activeApiKey,
+      apiKeyPreview: maskApiKeyPreview(activeApiKey),
       reusedExistingEnvKey,
       nextStepCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --verify-otp ${cleanEmail} <6-digit-code>`,
       resendCommand: `REVCLAMP_API_KEY=${cmdKeyToken} npx -y revclamp-mcp@${PACKAGE_VERSION} --resend-otp ${cleanEmail}`,
