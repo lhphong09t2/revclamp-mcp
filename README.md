@@ -2,6 +2,8 @@
 
 [![RevClamp Enterprise — B2B Revenue & Compliance Guardrails](https://revclamp.com/assets/revclamp-product-banner.png)](https://revclamp.com)
 
+[![mcptry](https://mcptry.com/badge/com.revclamp/revclamp-mcp.svg)](https://mcptry.com/servers/com.revclamp/revclamp-mcp)
+
 **`revclamp-mcp`** is a standalone, zero-dependency **Open-Source Model Context Protocol (MCP) Server & CLI** (`index.mjs` + `local_engine.mjs`) implementing **9 deterministic B2B FinOps, Stripe `2025-03-31.basil`, Visa CE 3.0, EU/XI VIES VAT, Shopify Plus B2B Net-15/30/60, and Webhook Security tools** in pure Node.js.
 
 - **100% Local In-Process Execution (Default — Zero Network / Zero API Key Required):** All 9 MCP tools (`initialize`, `tools/list`, and `tools/call`) execute locally in-process inside [`local_engine.mjs`](./local_engine.mjs) using pure Node.js (`node:crypto` HMAC-SHA256 verification, integer-cent double-entry accounting, 72-hour webhook replay state machines, and `18,000` UTF-16 code unit CE 3.0 linting). Zero network calls are ever made unless `REVCLAMP_API_KEY` or `REVCLAMP_MCP_URL` is explicitly configured.
@@ -59,13 +61,13 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 
 ```bash
 # Run a <60s local CLI smoke check (verifies all 9 tool schemas & executes a local_engine.mjs sample audit with zero API key)
-npx -y github:lhphong09t2/revclamp-mcp#v1.20.14 --self-test
+npx -y github:lhphong09t2/revclamp-mcp#v1.20.15 --self-test
 
 # Provision a free Cloud Workspace (or reuse REVCLAMP_API_KEY) & send a 6-digit login OTP
-npx -y revclamp-mcp@1.20.14 --init-workspace you@company.com
+npx -y revclamp-mcp@1.20.15 --init-workspace you@company.com
 
 # Verify the 6-digit OTP using REVCLAMP_API_KEY from environment
-REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.14 --verify-otp you@company.com 123456
+REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.15 --verify-otp you@company.com 123456
 
 # List all 9 MCP tools and JSON schemas (runs locally in-process)
 node index.mjs --list-tools

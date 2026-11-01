@@ -2081,7 +2081,7 @@ export const LOCAL_STATELESS_CLOUD_UPGRADE_HINT = Object.freeze({
   message:
     "Running in stateless local mode. Provision a free or paid Cloud Workspace for 90-day event persistence, automated webhook revocation, and Slack/Email alerts.",
   command: "npx --yes revclamp-mcp --init-workspace <work_email>",
-  cliActivateCommand: "npx -y revclamp-mcp@1.20.14 --init-workspace you@company.com",
+  cliActivateCommand: "npx -y revclamp-mcp@1.20.15 --init-workspace you@company.com",
   upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
 });
 
@@ -4177,7 +4177,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.14",
+  packageVersion = "1.20.15",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {

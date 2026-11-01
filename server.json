@@ -7,13 +7,30 @@
     "url": "https://github.com/lhphong09t2/revclamp-mcp",
     "source": "github"
   },
-  "version": "1.20.14",
+  "websiteUrl": "https://revclamp.com/mcp",
+  "icons": [
+    {
+      "src": "https://revclamp.com/apple-touch-icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "180x180"
+      ]
+    },
+    {
+      "src": "https://revclamp.com/favicon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "32x32"
+      ]
+    }
+  ],
+  "version": "1.20.15",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "revclamp-mcp",
-      "version": "1.20.14",
+      "version": "1.20.15",
       "transport": {
         "type": "stdio"
       },
