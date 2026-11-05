@@ -1255,6 +1255,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         advertiserId: targetItem.advertiserId,
         creativeId: targetItem.creativeId,
         includeAdCopy: Boolean(input?.includeAdCopy),
+        fallbackPreviewUrl: targetItem.previewUrl,
         fetchImpl: hooks.fetchImpl,
         nowFn: nowMs,
         sleepFn,
@@ -1281,6 +1282,14 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
           ) {
             rateLimitedInEnrich = true;
           }
+        }
+      } else if (detailRes.ok && detailRes.untrustedAdContent) {
+        targetItem.untrustedAdContent = detailRes.untrustedAdContent;
+        if (
+          detailRes.untrustedAdContent.extractionStatus === 'UPSTREAM_RATE_LIMITED' ||
+          detailRes.untrustedAdContent.contentJsFetchStatus === 'UPSTREAM_RATE_LIMITED'
+        ) {
+          rateLimitedInEnrich = true;
         }
       }
     }

@@ -1928,7 +1928,7 @@ export async function resolveAdvertiserEntities(options = {}) {
   const endpointUrl = options.endpointUrl || GOOGLE_ADS_RPC_ENDPOINTS.SearchSuggestions;
   const rpcRes = await executeGoogleAdsRpcPost(
     endpointUrl,
-    { '1': searchQueryStr, '2': 10, '3': 10 },
+    { '1': searchQueryStr, '2': 50, '3': 10 },
     options
   );
 
@@ -2291,8 +2291,20 @@ function isAllowedLandingHostname(hostname) {
   return true;
 }
 
+const VAST_CDATA_WRAPPER_SUFFIX_RE =
+  /(?:\]\]>|\]\]%3E|%5D%5D%3E|%5D%5D%253E|<\/[A-Za-z0-9_:-]+>|%3C\/[A-Za-z0-9_:-]+%3E|%3C%2F[A-Za-z0-9_:-]+%3E|%253C%2F[A-Za-z0-9_:-]+%253E).*$/i;
+
+function stripVastXmlCdataArtifacts(rawStr) {
+  if (typeof rawStr !== 'string' || !rawStr) return '';
+  return rawStr
+    .replace(/^(?:<!\[CDATA\[|%3C!%5BCDATA%5B)+/i, '')
+    .replace(VAST_CDATA_WRAPPER_SUFFIX_RE, '')
+    .replace(/[\]>]+$/, '')
+    .trim();
+}
+
 function normalizeCandidateLandingUrl(rawUrl) {
-  const cleaned = sanitizeUntrustedAdText(rawUrl, 2048);
+  const cleaned = stripVastXmlCdataArtifacts(sanitizeUntrustedAdText(rawUrl, 2048));
   if (!cleaned) return null;
   try {
     const parsed = new URL(cleaned);
@@ -2363,7 +2375,7 @@ function unwrapCandidateUrlOrAdUrlParam(rawUrl) {
   const adUrlMatch = decodedRaw.match(/[?&]adurl=([^"'\s&\\]+)/i);
   if (adUrlMatch && adUrlMatch[1]) {
     try {
-      const target = decodeURIComponent(adUrlMatch[1]);
+      const target = decodeURIComponent(stripVastXmlCdataArtifacts(adUrlMatch[1]));
       const normalizedTarget = normalizeCandidateLandingUrl(target);
       if (normalizedTarget) return normalizedTarget;
     } catch {
@@ -2583,7 +2595,9 @@ export function extractStaticAdCopyFromContentJs(rawJsText) {
       const adUrlParamMatch = surface.match(/[?&]adurl=(https?%3A%2F%2F[^"'\s&\\]+)/i);
       if (adUrlParamMatch && adUrlParamMatch[1]) {
         try {
-          landingPageUrl = normalizeCandidateLandingUrl(decodeURIComponent(adUrlParamMatch[1]));
+          landingPageUrl = normalizeCandidateLandingUrl(
+            decodeURIComponent(stripVastXmlCdataArtifacts(adUrlParamMatch[1]))
+          );
           if (landingPageUrl) break;
         } catch {
           landingPageUrl = null;
@@ -3558,17 +3572,33 @@ export async function getCreativeDetailsById(options = {}) {
     };
   }
 
+  const nowFn = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
+  const fallbackPreviewUrl =
+    typeof options.fallbackPreviewUrl === 'string' && options.fallbackPreviewUrl.trim()
+      ? options.fallbackPreviewUrl.trim()
+      : null;
+
   if (canary.status === 'EMPTY_RESULT') {
+    let fallbackUntrustedAdContent = null;
+    if (
+      options.includeAdCopy === true &&
+      fallbackPreviewUrl &&
+      (!options.deadlineAtMs || nowFn() + 200 < options.deadlineAtMs)
+    ) {
+      fallbackUntrustedAdContent = await fetchAndExtractStaticAdCopy(fallbackPreviewUrl, options);
+    }
     return {
       ok: true,
       status: 'EMPTY_RESULT',
       detail: null,
+      ...(fallbackUntrustedAdContent ? { untrustedAdContent: fallbackUntrustedAdContent } : {}),
       rpcAttempts: rpcRes.attempts,
     };
   }
 
   const detailObj = rpcRes.data['1'];
   const { previewUrl, archiveImageUrls } = extractCreativeAssetUrls(detailObj?.['5'] ?? detailObj);
+  const effectivePreviewUrl = previewUrl || fallbackPreviewUrl;
   const rawRegions = Array.isArray(detailObj?.['17']) ? detailObj['17'] : [];
   const regionalPresence = rawRegions
     .filter((r) => r && typeof r === 'object')
@@ -3588,15 +3618,14 @@ export async function getCreativeDetailsById(options = {}) {
   let untrustedAdContent = extractStaticAdCopyFromContentJs(
     JSON.stringify(detailObj?.['5'] ?? detailObj)
   );
-  const nowFn = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
   if (
     !untrustedAdContent.headline &&
     !untrustedAdContent.bodyText &&
     options.includeAdCopy === true &&
-    previewUrl &&
+    effectivePreviewUrl &&
     (!options.deadlineAtMs || nowFn() + 200 < options.deadlineAtMs)
   ) {
-    const fetchedCopy = await fetchAndExtractStaticAdCopy(previewUrl, options);
+    const fetchedCopy = await fetchAndExtractStaticAdCopy(effectivePreviewUrl, options);
     if (fetchedCopy.extractionStatus === 'EXTRACTED') {
       untrustedAdContent = {
         ...fetchedCopy,
