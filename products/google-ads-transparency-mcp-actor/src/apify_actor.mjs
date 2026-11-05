@@ -310,6 +310,19 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       env?.APIFY_API_BASE_URL,
       env?.APIFY_API_PUBLIC_BASE_URL
     );
+    let pricingInfoChargeEvents = null;
+    const rawPricingInfoEnv = env?.APIFY_ACTOR_PRICING_INFO || env?.ACTOR_PRICING_INFO;
+    if (rawPricingInfoEnv) {
+      try {
+        const parsedPricing = JSON.parse(String(rawPricingInfoEnv));
+        const eventsObj = parsedPricing?.pricingPerEvent?.actorChargeEvents;
+        if (eventsObj && typeof eventsObj === 'object') {
+          pricingInfoChargeEvents = eventsObj;
+        }
+      } catch {
+        pricingInfoChargeEvents = null;
+      }
+    }
     const rawMaxChargeStr =
       env?.ACTOR_MAX_TOTAL_CHARGE_USD !== undefined && env?.ACTOR_MAX_TOTAL_CHARGE_USD !== null
         ? String(env.ACTOR_MAX_TOTAL_CHARGE_USD).trim()
@@ -320,17 +333,30 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       .trim()
       .toLowerCase();
     const includeStartFee = includeStartFeeFlag !== '0' && includeStartFeeFlag !== 'false';
+    const pricingInfoStartFeeUsd = Number(
+      pricingInfoChargeEvents?.['apify-actor-start']?.eventPriceUsd
+    );
     const explicitStartFeeUsd =
       env?.ACTOR_START_FEE_USD !== undefined &&
       env?.ACTOR_START_FEE_USD !== null &&
       String(env.ACTOR_START_FEE_USD).trim() !== ''
         ? Number(env.ACTOR_START_FEE_USD)
-        : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
+        : Number.isFinite(pricingInfoStartFeeUsd) && pricingInfoStartFeeUsd >= 0
+          ? pricingInfoStartFeeUsd
+          : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
     const startFeeMicros =
       includeStartFee && Number.isFinite(explicitStartFeeUsd) && explicitStartFeeUsd >= 0
         ? Math.round(explicitStartFeeUsd * 1_000_000)
         : 0;
-    const unitPriceMicros = Math.round(ACTOR_PRICING_CONTRACT.priceUsdc * 1_000_000);
+    const pricingInfoUnitPriceUsd = Number(
+      pricingInfoChargeEvents?.ad_transparency_creative_retrieved?.eventPriceUsd ??
+        pricingInfoChargeEvents?.['ad-creative-scraped']?.eventPriceUsd
+    );
+    const resolvedUnitPriceUsdc =
+      Number.isFinite(pricingInfoUnitPriceUsd) && pricingInfoUnitPriceUsd > 0
+        ? pricingInfoUnitPriceUsd
+        : ACTOR_PRICING_CONTRACT.priceUsdc;
+    const unitPriceMicros = Math.round(resolvedUnitPriceUsdc * 1_000_000);
     const maxBudgetMicros = hasMaxChargeUsd ? Math.round(maxTotalChargeUsdRaw * 1_000_000) : 0;
     const maxPayableEvents = hasMaxChargeUsd
       ? Math.floor(Math.max(0, maxBudgetMicros - startFeeMicros) / unitPriceMicros)
@@ -472,6 +498,37 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       const chargeUrl = `${apiBase}/v2/actor-runs/${encodeURIComponent(runId)}/charge`;
       const allowUnbilledAtHome = env?.ADPULSE_ALLOW_UNBILLED_AT_HOME === '1';
       let unbilledOwnerTestLatched = false;
+      let latchedPlatformEventName = null;
+      const resolvePlatformEventName = (rawEventName) => {
+        if (latchedPlatformEventName) {
+          return latchedPlatformEventName;
+        }
+        const candidate = String(rawEventName || ACTOR_PRICING_CONTRACT.eventName);
+        if (pricingInfoChargeEvents) {
+          if (Object.prototype.hasOwnProperty.call(pricingInfoChargeEvents, candidate)) {
+            return candidate;
+          }
+          if (
+            candidate === 'ad-creative-scraped' ||
+            candidate === 'ad_transparency_creative_retrieved'
+          ) {
+            if (
+              Object.prototype.hasOwnProperty.call(
+                pricingInfoChargeEvents,
+                'ad_transparency_creative_retrieved'
+              )
+            ) {
+              return 'ad_transparency_creative_retrieved';
+            }
+            if (
+              Object.prototype.hasOwnProperty.call(pricingInfoChargeEvents, 'ad-creative-scraped')
+            ) {
+              return 'ad-creative-scraped';
+            }
+          }
+        }
+        return candidate;
+      };
       hooks.chargeEvent = async (receipt) => {
         const requestedCount = Math.max(0, Number(receipt?.count) || 0);
         if (unbilledOwnerTestLatched) {
@@ -506,10 +563,9 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
           };
         }
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 600);
-        try {
-          const res = await fetchImpl(chargeUrl, {
+        const primaryEventName = resolvePlatformEventName(receipt?.eventName);
+        const postChargeRequest = async (eventNameToPost, signal) =>
+          fetchImpl(chargeUrl, {
             method: 'POST',
             headers: {
               authorization: `Bearer ${token}`,
@@ -517,11 +573,33 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
               'idempotency-key': receipt.idempotencyKey,
             },
             body: JSON.stringify({
-              eventName: receipt.eventName,
+              eventName: eventNameToPost,
               count: countToCharge,
             }),
-            signal: controller.signal,
+            signal,
           });
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 600);
+        try {
+          let res = await postChargeRequest(primaryEventName, controller.signal);
+          if (
+            res.status === 404 &&
+            !pricingInfoChargeEvents &&
+            !latchedPlatformEventName &&
+            (primaryEventName === 'ad-creative-scraped' ||
+              primaryEventName === 'ad_transparency_creative_retrieved')
+          ) {
+            const aliasEventName =
+              primaryEventName === 'ad-creative-scraped'
+                ? 'ad_transparency_creative_retrieved'
+                : 'ad-creative-scraped';
+            const fallbackRes = await postChargeRequest(aliasEventName, controller.signal);
+            if (fallbackRes.status >= 200 && fallbackRes.status < 300) {
+              latchedPlatformEventName = aliasEventName;
+              res = fallbackRes;
+            }
+          }
           if (res.status === 402) {
             // Platform enforced spending ceiling (HTTP 402 Payment Required): latch so no further charge POSTs occur
             adapterChargeLimitLatched = true;
@@ -553,7 +631,16 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             }
           }
           if (res.status < 200 || res.status >= 300) {
-            throw new Error(`Apify Pay-per-Event charge HTTP ${res.status}`);
+            let errSuffix = '';
+            try {
+              const errText = await res.text();
+              if (errText && errText.trim()) {
+                errSuffix = ` (${errText.trim().slice(0, 160)})`;
+              }
+            } catch {
+              errSuffix = '';
+            }
+            throw new Error(`Apify Pay-per-Event charge HTTP ${res.status}${errSuffix}`);
           }
           const rawText = await res.text();
           const parsed = rawText && rawText.trim() ? JSON.parse(rawText) : {};
