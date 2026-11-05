@@ -23,7 +23,7 @@
   "manifest": {
     "name": "unified-ats-jobs-mcp",
     "title": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "minMemoryMbytes": 256,
     "maxMemoryMbytes": 512,
     "trademarkNotice": "Independent hiring intelligence tool by RevClamp. Greenhouse, Workday, Ashby, Lever, and SmartRecruiters are trademarks of their respective owners; this tool is not affiliated with or endorsed by them."

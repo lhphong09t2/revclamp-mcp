@@ -1,26 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="rc-title">
   <title id="rc-title">RevClamp TalentPulse</title>
   <defs>
-    <linearGradient id="rc-fill" gradientUnits="userSpaceOnUse" x1="32" y1="6" x2="32" y2="58">
-      <stop offset="0" stop-color="#111C38"/>
-      <stop offset="1" stop-color="#0B1020"/>
+    <linearGradient id="rc-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111C38"/>
+      <stop offset="100%" stop-color="#090E1D"/>
     </linearGradient>
-    <linearGradient id="rc-edge" gradientUnits="userSpaceOnUse" x1="11" y1="6" x2="53" y2="58">
-      <stop offset="0" stop-color="#10B981"/>
-      <stop offset="1" stop-color="#06B6D4"/>
+    <linearGradient id="rc-edge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#10B981"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="#0B1020"/>
-  <path d="M32 6L53 13.5V31C53 44 44.5 52.5 32 58C19.5 52.5 11 44 11 31V13.5Z" fill="url(#rc-fill)" stroke="url(#rc-edge)" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M38.5 36.5L44.5 42.5" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" fill="none"/>
-  <circle cx="30.5" cy="28.5" r="12.5" fill="#0B1020"/>
-  <path d="M30.5 17.5V39.5M19.5 28.5H41.5" stroke="#06B6D4" stroke-opacity="0.35" stroke-width="1.2" fill="none"/>
-  <circle cx="30.5" cy="28.5" r="6" stroke="#06B6D4" stroke-opacity="0.5" stroke-width="1.2" fill="none"/>
-  <path d="M30.5 28.5V17.5A11 11 0 0 1 40.03 23Z" fill="#10B981" fill-opacity="0.38"/>
-  <path d="M30.5 28.5V17.5" stroke="#10B981" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-  <circle cx="34" cy="22.4" r="4" fill="#F59E0B" fill-opacity="0.25"/>
-  <circle cx="34" cy="22.4" r="2.4" fill="#F59E0B"/>
-  <circle cx="25.5" cy="33" r="4.2" fill="#10B981"/>
-  <path d="M23.4 33.2L24.9 34.7L27.7 31.4" stroke="#0B1020" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="30.5" cy="28.5" r="12.5" stroke="#F8FAFC" stroke-width="2.5" fill="none"/>
+  <rect width="64" height="64" fill="#0B1020"/>
+  <path d="M32 10L50 16.5V31C50 42.5 42.5 49.5 32 54C21.5 49.5 14 42.5 14 31V16.5Z" fill="url(#rc-fill)" stroke="url(#rc-edge)" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M32 12.8L47.4 18.4V30.8C47.4 40.4 41 46.7 32 50.8C23 46.7 16.6 40.4 16.6 30.8V18.4Z" fill="none" stroke="#F59E0B" stroke-opacity="0.45" stroke-width="0.9" stroke-linejoin="round"/>
+  <path d="M28 24.2V21.8C28 20.8 28.8 20 29.8 20H34.2C35.2 20 36 20.8 36 21.8V24.2" fill="none" stroke="#F8FAFC" stroke-width="1.8" stroke-linecap="round"/>
+  <rect x="21.5" y="24.2" width="21" height="14.6" rx="2.8" fill="#0B1020" stroke="#F8FAFC" stroke-width="1.8"/>
+  <path d="M24.2 31.6H27.4L29.2 28L32 34.8L34.2 29.8L35.8 31.6H39.8" fill="none" stroke="#10B981" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="16.4" r="1.5" fill="#F59E0B"/>
+  <circle cx="20.4" cy="19.7" r="1.5" fill="#06B6D4"/>
+  <circle cx="43.6" cy="19.7" r="1.5" fill="#06B6D4"/>
+  <circle cx="25" cy="42.2" r="1.5" fill="#10B981"/>
+  <circle cx="39" cy="42.2" r="1.5" fill="#10B981"/>
 </svg>
