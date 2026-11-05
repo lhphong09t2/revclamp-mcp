@@ -21,7 +21,7 @@
   ],
   "manifest": {
     "name": "google-ads-transparency-mcp-actor",
-    "version": "1.0.1",
+    "version": "1.0.0",
     "title": "RevClamp AdPulse - For Google Ads Transparency Center (MCP & Apify Actor)",
     "websiteUrl": "https://revclamp.com",
     "description": "Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates without browser or proxy overhead. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC."
