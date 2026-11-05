@@ -43,15 +43,15 @@
           "companySlug": { "type": "string", "title": "Company Slug" },
           "companyName": { "type": "string", "title": "Company Name" },
           "title": { "type": "string", "title": "Job Title" },
-          "department": { "type": "string", "title": "Department" },
+          "department": { "type": ["string", "null"], "title": "Department" },
           "locationRaw": { "type": "string", "title": "Location" },
           "workplaceType": { "type": "string", "title": "Workplace Type" },
-          "countryIso2": { "type": "string", "title": "Country (ISO-2)" },
-          "employmentType": { "type": "string", "title": "Employment Type" },
-          "seniorityLevel": { "type": "string", "title": "Seniority Level" },
-          "postedAtIso": { "type": "string", "title": "Posted At (ISO)" },
-          "daysOpen": { "type": "integer", "title": "Days Open" },
-          "applyUrl": { "type": "string", "title": "Apply URL" }
+          "countryIso2": { "type": ["string", "null"], "title": "Country (ISO-2)" },
+          "employmentType": { "type": ["string", "null"], "title": "Employment Type" },
+          "seniorityLevel": { "type": ["string", "null"], "title": "Seniority Level" },
+          "postedAtIso": { "type": ["string", "null"], "title": "Posted At (ISO)" },
+          "daysOpen": { "type": ["integer", "null"], "title": "Days Open" },
+          "applyUrl": { "type": ["string", "null"], "title": "Apply URL" }
         }
       },
       "views": {
