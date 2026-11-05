@@ -2099,7 +2099,7 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
       "Running in stateless local mode. Run `npx --yes revclamp-mcp@latest --init-workspace` (zero email required) to provision a free Cloud Workspace (5,000 free monthly events, 90-day audit ledger, live EU VIES SOAP numbers, and 24/7 webhook outbox).",
     command: "npx --yes revclamp-mcp --init-workspace <work_email>",
     zeroEmailInitCommand: "npx --yes revclamp-mcp@latest --init-workspace",
-    cliActivateCommand: "npx -y revclamp-mcp@1.20.19 --init-workspace you@company.com",
+    cliActivateCommand: "npx -y revclamp-mcp@1.20.20 --init-workspace you@company.com",
     freeTierQuota: "5,000 free monthly events",
     interactiveWebToolUrl,
     consoleUpgradeUrl:
@@ -4449,7 +4449,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.19",
+  packageVersion = "1.20.20",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
@@ -4516,6 +4516,18 @@ export function executeLocalMcpJsonRpc(
         serverInfo: {
           name: "revclamp-mcp",
           version: packageVersion,
+          icons: [
+            {
+              src: "https://revclamp.com/apple-touch-icon.png",
+              mimeType: "image/png",
+              sizes: ["180x180"],
+            },
+            {
+              src: "https://revclamp.com/favicon.png",
+              mimeType: "image/png",
+              sizes: ["32x32"],
+            },
+          ],
         },
       },
     };
