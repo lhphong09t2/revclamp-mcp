@@ -1,6 +1,6 @@
 # RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed
 
-[![RevClamp TalentPulse](https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/unified-ats-jobs-mcp/assets/icon.svg)](https://revclamp.com)
+[![RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed](https://revclamp.com/assets/revclamp-product-banner.png)](https://revclamp.com)
 
 Extract normalized B2B job postings, structured and regex-parsed compensation ranges (`minAmount`, `maxAmount`, `currency`, `interval`), `workplaceType` (`REMOTE`, `HYBRID`, `ONSITE`), `techStackKeywords`, and hiring velocity signals across **Greenhouse**, **Workday CXS**, **Ashby**, **Lever**, and **SmartRecruiters** through a single unified schema with zero browser overhead and zero residential proxy cost.
 
@@ -96,4 +96,4 @@ Every job posting across all 5 ATS providers is normalized into a deterministic 
 
 ## License
 
-MIT - Copyright (c) 2026 RevClamp.
+MIT © [RevClamp Enterprise](https://revclamp.com)
