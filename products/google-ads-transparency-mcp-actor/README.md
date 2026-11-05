@@ -1,4 +1,6 @@
-# RevClamp AdPulse - For Google Ads Transparency Center (MCP & Apify Actor)
+# RevClamp AdPulse - Google Ads Transparency Scraper & MCP
+
+[![RevClamp AdPulse - Google Ads Transparency Intelligence](https://revclamp.com/assets/revclamp-product-banner.png)](https://revclamp.com)
 
 > **Disclaimer:** Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.
 
@@ -38,3 +40,7 @@ npm test
 - **Public Transparency Records Only:** RevClamp AdPulse queries publicly accessible transparency disclosures published on the Google Ads Transparency Center (`adstransparency.google.com`) for research, brand-safety auditing, regulatory compliance, and competitive ad intelligence.
 - **No Circumvention or Personal Data:** This tool operates strictly against unauthenticated public transparency endpoints, enforces a strict hostname allowlist (`adstransparency.google.com`, `displayads-formats.googleusercontent.com`, `tpc.googlesyndication.com`), strips cookies and credentials on egress, and halts immediately (`UPSTREAM_RATE_LIMITED`) if upstream rate limits or CAPTCHA challenges (`HTTP 429` / `/sorry/`) are encountered.
 - **Trademark & Affiliation Notice:** "Google" and "Google Ads" are trademarks of Google LLC. RevClamp AdPulse is an independent software tool developed by RevClamp and is not affiliated with, sponsored by, or endorsed by Google LLC.
+
+## License
+
+MIT © [RevClamp Enterprise](https://revclamp.com)
