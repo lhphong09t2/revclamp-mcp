@@ -82,12 +82,25 @@ export function computeRunEconomicsTelemetry({
     Number(process.env.ACTOR_MEMORY_MBYTES || process.env.APIFY_MEMORY_MBYTES) ||
     ACTOR_PRICING_CONTRACT.maxMemoryMb,
   requestCount = 1,
+  unitPriceUsdc = ACTOR_PRICING_CONTRACT.priceUsdc,
+  actorStartFeeUsdc = ACTOR_PRICING_CONTRACT.actorStartFeeUsdc,
 } = {}) {
   const safeCount = Math.max(0, Math.floor(Number(billableCount) || 0));
   const safeChargedCount = Math.max(0, Math.floor(Number(chargedEventCount) || 0));
   const safeDurationMs = Math.max(1, Number(durationMs) || 1);
   const safeMemoryMb = Math.min(1024, Math.max(64, Number(memoryMb) || 256));
   const safeRequests = Math.max(1, Math.floor(Number(requestCount) || 1));
+  const resolvedUnitPriceUsdc =
+    Number.isFinite(Number(unitPriceUsdc)) && Number(unitPriceUsdc) > 0
+      ? Number(unitPriceUsdc)
+      : ACTOR_PRICING_CONTRACT.priceUsdc;
+  const resolvedNetPriceUsdc = Number(
+    (resolvedUnitPriceUsdc * (1 - ACTOR_PRICING_CONTRACT.platformFeeRate)).toFixed(6)
+  );
+  const resolvedStartFeeUsdc =
+    Number.isFinite(Number(actorStartFeeUsdc)) && Number(actorStartFeeUsdc) >= 0
+      ? Number(actorStartFeeUsdc)
+      : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
 
   // Apify compute rate: $0.30 per GB-hour; 256MB = 0.25 GB -> $0.075/hour -> $0.00002083/sec
   const computeHours = safeDurationMs / 3600000;
@@ -95,10 +108,9 @@ export function computeRunEconomicsTelemetry({
     (safeMemoryMb / 1024) * computeHours * ACTOR_PRICING_CONTRACT.computeRatePerGbHourUsdc;
   const networkOverheadUsdc = safeRequests * 0.0000002;
   const totalRunCostUsdc = Number((computeCostUsdc + networkOverheadUsdc).toFixed(8));
-  const actorStartFeeUsdc = ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
 
   const configuredFloorMultiplier = Number(
-    (ACTOR_PRICING_CONTRACT.netPriceUsdc / ACTOR_PRICING_CONTRACT.costCeilingUsdc).toFixed(2)
+    (resolvedNetPriceUsdc / ACTOR_PRICING_CONTRACT.costCeilingUsdc).toFixed(2)
   );
 
   if (safeCount === 0) {
@@ -109,7 +121,7 @@ export function computeRunEconomicsTelemetry({
       durationMs: safeDurationMs,
       memoryMb: safeMemoryMb,
       requestCount: safeRequests,
-      actorStartFeeUsdc,
+      actorStartFeeUsdc: resolvedStartFeeUsdc,
       totalRunCostUsdc,
       actualCostPerEventUsdc: 0,
       costCeilingUsdc: ACTOR_PRICING_CONTRACT.costCeilingUsdc,
@@ -123,11 +135,11 @@ export function computeRunEconomicsTelemetry({
   }
 
   const actualCostPerEventUsdc = Number((totalRunCostUsdc / safeCount).toFixed(8));
-  const grossRevenueUsdc = Number((safeCount * ACTOR_PRICING_CONTRACT.priceUsdc).toFixed(6));
-  const netRevenueUsdc = Number((safeCount * ACTOR_PRICING_CONTRACT.netPriceUsdc).toFixed(6));
+  const grossRevenueUsdc = Number((safeCount * resolvedUnitPriceUsdc).toFixed(6));
+  const netRevenueUsdc = Number((safeCount * resolvedNetPriceUsdc).toFixed(6));
   const effectiveMarginMultiplier =
     actualCostPerEventUsdc > 0
-      ? Number((ACTOR_PRICING_CONTRACT.netPriceUsdc / actualCostPerEventUsdc).toFixed(2))
+      ? Number((resolvedNetPriceUsdc / actualCostPerEventUsdc).toFixed(2))
       : configuredFloorMultiplier;
 
   const withinCostCeiling = actualCostPerEventUsdc <= ACTOR_PRICING_CONTRACT.costCeilingUsdc;
@@ -142,7 +154,7 @@ export function computeRunEconomicsTelemetry({
     durationMs: safeDurationMs,
     memoryMb: safeMemoryMb,
     requestCount: safeRequests,
-    actorStartFeeUsdc,
+    actorStartFeeUsdc: resolvedStartFeeUsdc,
     totalRunCostUsdc,
     actualCostPerEventUsdc,
     costCeilingUsdc: ACTOR_PRICING_CONTRACT.costCeilingUsdc,
@@ -203,9 +215,25 @@ export async function loadApifyActorInput(
     return JSON.parse(raw);
   }
 
+  const isAtHome = env?.APIFY_IS_AT_HOME === '1' || env?.APIFY_IS_AT_HOME === 'true';
+  const applyAtHomeSchemaDefaults = (parsedInput) => {
+    if (
+      isAtHome &&
+      parsedInput &&
+      typeof parsedInput === 'object' &&
+      !Array.isArray(parsedInput) &&
+      !Object.prototype.hasOwnProperty.call(parsedInput, 'query') &&
+      !Object.prototype.hasOwnProperty.call(parsedInput, 'advertiserId') &&
+      !Object.prototype.hasOwnProperty.call(parsedInput, 'pageToken')
+    ) {
+      return { query: 'Stripe', ...parsedInput };
+    }
+    return parsedInput;
+  };
+
   if (env?.APIFY_INPUT_PATH && fs.existsSync(env.APIFY_INPUT_PATH)) {
     const raw = fs.readFileSync(env.APIFY_INPUT_PATH, 'utf8');
-    return JSON.parse(raw);
+    return applyAtHomeSchemaDefaults(raw && raw.trim() ? JSON.parse(raw) : {});
   }
 
   const localStorageDir =
@@ -224,7 +252,8 @@ export async function loadApifyActorInput(
         candidateName
       );
       if (fs.existsSync(localInputPath)) {
-        return JSON.parse(fs.readFileSync(localInputPath, 'utf8'));
+        const raw = fs.readFileSync(localInputPath, 'utf8');
+        return applyAtHomeSchemaDefaults(raw && raw.trim() ? JSON.parse(raw) : {});
       }
     }
   }
@@ -254,9 +283,11 @@ export async function loadApifyActorInput(
       });
       if (res.status === 200) {
         const text = await res.text();
-        if (text && text.trim()) {
-          return JSON.parse(text);
-        }
+        const parsed = text && text.trim() ? JSON.parse(text) : {};
+        return applyAtHomeSchemaDefaults(parsed);
+      }
+      if (res.status === 204 || res.status === 404) {
+        return applyAtHomeSchemaDefaults({});
       }
     } finally {
       clearTimeout(timer);
@@ -348,21 +379,13 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       includeStartFee && Number.isFinite(explicitStartFeeUsd) && explicitStartFeeUsd >= 0
         ? Math.round(explicitStartFeeUsd * 1_000_000)
         : 0;
-    const pricingInfoUnitPriceUsd = Number(
-      pricingInfoChargeEvents?.ad_transparency_creative_retrieved?.eventPriceUsd ??
-        pricingInfoChargeEvents?.['ad-creative-scraped']?.eventPriceUsd
-    );
-    const resolvedUnitPriceUsdc =
-      Number.isFinite(pricingInfoUnitPriceUsd) && pricingInfoUnitPriceUsd > 0
-        ? pricingInfoUnitPriceUsd
-        : ACTOR_PRICING_CONTRACT.priceUsdc;
-    const unitPriceMicros = Math.round(resolvedUnitPriceUsdc * 1_000_000);
     const maxBudgetMicros = hasMaxChargeUsd ? Math.round(maxTotalChargeUsdRaw * 1_000_000) : 0;
-    const maxPayableEvents = hasMaxChargeUsd
-      ? Math.floor(Math.max(0, maxBudgetMicros - startFeeMicros) / unitPriceMicros)
-      : Infinity;
     let cumulativeChargedInAdapter = 0;
     let adapterChargeLimitLatched = false;
+    hooks.actorStartFeeUsdc =
+      includeStartFee && Number.isFinite(explicitStartFeeUsd) && explicitStartFeeUsd >= 0
+        ? explicitStartFeeUsd
+        : 0;
 
     if (kvsId) {
       const checkpointRecordUrl = `${apiBase}/v2/key-value-stores/${encodeURIComponent(kvsId)}/records/${ACTOR_PRICING_CONTRACT.checkpointKey}`;
@@ -499,44 +522,62 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       const allowUnbilledAtHome = env?.ADPULSE_ALLOW_UNBILLED_AT_HOME === '1';
       let unbilledOwnerTestLatched = false;
       let latchedPlatformEventName = null;
-      const resolvePlatformEventName = (rawEventName) => {
-        if (latchedPlatformEventName) {
-          return latchedPlatformEventName;
-        }
+      const resolvePlatformEventAndPrice = (rawEventName) => {
         const candidate = String(rawEventName || ACTOR_PRICING_CONTRACT.eventName);
-        if (pricingInfoChargeEvents) {
-          if (Object.prototype.hasOwnProperty.call(pricingInfoChargeEvents, candidate)) {
+        const effectiveName =
+          latchedPlatformEventName ||
+          (() => {
+            if (pricingInfoChargeEvents) {
+              if (Object.prototype.hasOwnProperty.call(pricingInfoChargeEvents, candidate)) {
+                return candidate;
+              }
+              if (
+                candidate === 'ad-creative-scraped' ||
+                candidate === 'ad_transparency_creative_retrieved'
+              ) {
+                if (
+                  Object.prototype.hasOwnProperty.call(
+                    pricingInfoChargeEvents,
+                    'ad_transparency_creative_retrieved'
+                  )
+                ) {
+                  return 'ad_transparency_creative_retrieved';
+                }
+                if (
+                  Object.prototype.hasOwnProperty.call(
+                    pricingInfoChargeEvents,
+                    'ad-creative-scraped'
+                  )
+                ) {
+                  return 'ad-creative-scraped';
+                }
+              }
+            }
             return candidate;
-          }
-          if (
-            candidate === 'ad-creative-scraped' ||
-            candidate === 'ad_transparency_creative_retrieved'
-          ) {
-            if (
-              Object.prototype.hasOwnProperty.call(
-                pricingInfoChargeEvents,
-                'ad_transparency_creative_retrieved'
-              )
-            ) {
-              return 'ad_transparency_creative_retrieved';
-            }
-            if (
-              Object.prototype.hasOwnProperty.call(pricingInfoChargeEvents, 'ad-creative-scraped')
-            ) {
-              return 'ad-creative-scraped';
-            }
-          }
-        }
-        return candidate;
+          })();
+        const rawEventPrice = Number(pricingInfoChargeEvents?.[effectiveName]?.eventPriceUsd);
+        const unitPriceUsdc =
+          Number.isFinite(rawEventPrice) && rawEventPrice > 0
+            ? rawEventPrice
+            : ACTOR_PRICING_CONTRACT.priceUsdc;
+        return { eventName: effectiveName, unitPriceUsdc };
       };
+      hooks.unitPriceUsdc = resolvePlatformEventAndPrice(
+        ACTOR_PRICING_CONTRACT.eventName
+      ).unitPriceUsdc;
       hooks.chargeEvent = async (receipt) => {
         const requestedCount = Math.max(0, Number(receipt?.count) || 0);
+        const { eventName: primaryEventName, unitPriceUsdc: resolvedUnitPriceUsdc } =
+          resolvePlatformEventAndPrice(receipt?.eventName);
+        hooks.unitPriceUsdc = resolvedUnitPriceUsdc;
         if (unbilledOwnerTestLatched) {
           return {
             chargedCount: 0,
             eventChargeLimitReached: false,
             unbilledOwnerTestBypass: true,
             chargedCreativeIds: [],
+            eventName: primaryEventName,
+            unitPriceUsdc: resolvedUnitPriceUsdc,
           };
         }
         if (adapterChargeLimitLatched) {
@@ -544,8 +585,14 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             chargedCount: 0,
             eventChargeLimitReached: true,
             chargedCreativeIds: [],
+            eventName: primaryEventName,
+            unitPriceUsdc: resolvedUnitPriceUsdc,
           };
         }
+        const unitPriceMicros = Math.round(resolvedUnitPriceUsdc * 1_000_000);
+        const maxPayableEvents = hasMaxChargeUsd
+          ? Math.floor(Math.max(0, maxBudgetMicros - startFeeMicros) / unitPriceMicros)
+          : Infinity;
         const remainingAllowance = Number.isFinite(maxPayableEvents)
           ? Math.max(0, maxPayableEvents - cumulativeChargedInAdapter)
           : requestedCount;
@@ -560,17 +607,18 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             chargedCount: 0,
             eventChargeLimitReached: Number.isFinite(maxPayableEvents),
             chargedCreativeIds: [],
+            eventName: primaryEventName,
+            unitPriceUsdc: resolvedUnitPriceUsdc,
           };
         }
 
-        const primaryEventName = resolvePlatformEventName(receipt?.eventName);
-        const postChargeRequest = async (eventNameToPost, signal) =>
+        const postChargeRequest = async (eventNameToPost, idempotencyKeyToPost, signal) =>
           fetchImpl(chargeUrl, {
             method: 'POST',
             headers: {
               authorization: `Bearer ${token}`,
               'content-type': 'application/json; charset=utf-8',
-              'idempotency-key': receipt.idempotencyKey,
+              'idempotency-key': idempotencyKeyToPost,
             },
             body: JSON.stringify({
               eventName: eventNameToPost,
@@ -582,7 +630,13 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 600);
         try {
-          let res = await postChargeRequest(primaryEventName, controller.signal);
+          let effectiveEventName = primaryEventName;
+          let effectiveIdempotencyKey = receipt.idempotencyKey;
+          let res = await postChargeRequest(
+            primaryEventName,
+            receipt.idempotencyKey,
+            controller.signal
+          );
           if (
             res.status === 404 &&
             !pricingInfoChargeEvents &&
@@ -594,10 +648,22 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
               primaryEventName === 'ad-creative-scraped'
                 ? 'ad_transparency_creative_retrieved'
                 : 'ad-creative-scraped';
-            const fallbackRes = await postChargeRequest(aliasEventName, controller.signal);
-            if (fallbackRes.status >= 200 && fallbackRes.status < 300) {
-              latchedPlatformEventName = aliasEventName;
+            const aliasIdempotencyKey = `${receipt.idempotencyKey}-${aliasEventName}`;
+            const fallbackRes = await postChargeRequest(
+              aliasEventName,
+              aliasIdempotencyKey,
+              controller.signal
+            );
+            if (fallbackRes.status !== 404) {
               res = fallbackRes;
+              effectiveEventName = aliasEventName;
+              effectiveIdempotencyKey = aliasIdempotencyKey;
+              if (
+                (fallbackRes.status >= 200 && fallbackRes.status < 300) ||
+                fallbackRes.status === 402
+              ) {
+                latchedPlatformEventName = aliasEventName;
+              }
             }
           }
           if (res.status === 402) {
@@ -607,6 +673,9 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
               chargedCount: 0,
               eventChargeLimitReached: true,
               chargedCreativeIds: [],
+              eventName: effectiveEventName,
+              unitPriceUsdc: resolvedUnitPriceUsdc,
+              idempotencyKey: effectiveIdempotencyKey,
             };
           }
           if (allowUnbilledAtHome && (res.status === 405 || res.status === 403)) {
@@ -627,6 +696,9 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
                 eventChargeLimitReached: false,
                 unbilledOwnerTestBypass: true,
                 chargedCreativeIds: [],
+                eventName: effectiveEventName,
+                unitPriceUsdc: resolvedUnitPriceUsdc,
+                idempotencyKey: effectiveIdempotencyKey,
               };
             }
           }
@@ -635,7 +707,11 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             try {
               const errText = await res.text();
               if (errText && errText.trim()) {
-                errSuffix = ` (${errText.trim().slice(0, 160)})`;
+                const errJson = JSON.parse(errText);
+                const errType = errJson?.error?.type;
+                if (typeof errType === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(errType)) {
+                  errSuffix = ` (${errType})`;
+                }
               }
             } catch {
               errSuffix = '';
@@ -670,14 +746,32 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             Boolean(dataObj?.eventChargeLimitReached) ||
             limitReached ||
             (Number.isFinite(maxPayableEvents) && cumulativeChargedInAdapter >= maxPayableEvents);
-          const subsetIds = Array.isArray(dataObj?.chargedCreativeIds)
-            ? dataObj.chargedCreativeIds
-            : Array.isArray(receipt?.creativeIds)
-              ? receipt.creativeIds.slice(0, resolvedChargedCount)
-              : undefined;
+          let subsetIds;
+          if (Array.isArray(dataObj?.chargedCreativeIds)) {
+            const reqIds = Array.isArray(receipt?.creativeIds) ? receipt.creativeIds : null;
+            const uniqueValidIds = new Set(
+              dataObj.chargedCreativeIds.filter(
+                (id) => typeof id === 'string' && (!reqIds || reqIds.includes(id))
+              )
+            );
+            if (
+              dataObj.chargedCreativeIds.length !== resolvedChargedCount ||
+              uniqueValidIds.size !== resolvedChargedCount
+            ) {
+              throw new Error(
+                'Apify Pay-per-Event charge response contained invalid chargedCreativeIds'
+              );
+            }
+            subsetIds = Array.from(uniqueValidIds);
+          } else if (Array.isArray(receipt?.creativeIds)) {
+            subsetIds = receipt.creativeIds.slice(0, resolvedChargedCount);
+          }
           return {
             chargedCount: resolvedChargedCount,
             eventChargeLimitReached: resolvedLimitReached,
+            eventName: effectiveEventName,
+            unitPriceUsdc: resolvedUnitPriceUsdc,
+            idempotencyKey: effectiveIdempotencyKey,
             ...(subsetIds ? { chargedCreativeIds: subsetIds } : {}),
           };
         } finally {
@@ -1450,6 +1544,8 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: Math.max(1, totalRpcRequests),
+        unitPriceUsdc: hooks?.unitPriceUsdc ?? ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
       }),
     });
   }
@@ -1473,6 +1569,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     }
   };
 
+  let lastResolvedUnitPriceUsdc = hooks?.unitPriceUsdc ?? ACTOR_PRICING_CONTRACT.priceUsdc;
   for (let offset = 0; offset < newBillableCandidates.length; offset += chunkSize) {
     const effectiveChunkDeadlineMs = hasChargeHook
       ? deadlineAtMs - step4ReserveMs
@@ -1573,6 +1670,28 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     // Step 4.2: Strict ChargeResult validation (never fallback to ?? unchargedChunk.length)
     const chargedCount = chargeResult?.chargedCount;
     const eventChargeLimitReached = Boolean(chargeResult?.eventChargeLimitReached);
+    const resolvedReceiptEventName =
+      typeof chargeResult?.eventName === 'string' && chargeResult.eventName
+        ? chargeResult.eventName
+        : receipt.eventName;
+    const resolvedReceiptUnitPriceUsdc =
+      Number.isFinite(Number(chargeResult?.unitPriceUsdc)) && Number(chargeResult.unitPriceUsdc) > 0
+        ? Number(chargeResult.unitPriceUsdc)
+        : receipt.unitPriceUsdc;
+    lastResolvedUnitPriceUsdc = resolvedReceiptUnitPriceUsdc;
+    const resolvedReceiptIdempotencyKey =
+      typeof chargeResult?.idempotencyKey === 'string' && chargeResult.idempotencyKey
+        ? chargeResult.idempotencyKey
+        : receipt.idempotencyKey;
+    const buildFinalReceipt = (actualChargedCount, extra = {}) => ({
+      ...receipt,
+      idempotencyKey: resolvedReceiptIdempotencyKey,
+      eventName: resolvedReceiptEventName,
+      unitPriceUsdc: resolvedReceiptUnitPriceUsdc,
+      chunkAmountUsdc: Number((actualChargedCount * resolvedReceiptUnitPriceUsdc).toFixed(6)),
+      chargedCount: actualChargedCount,
+      ...extra,
+    });
 
     if (
       !chargeResult ||
@@ -1605,11 +1724,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
 
       const pushRes = await pushDataWithRetry(unchargedChunk);
       if (!pushRes.ok) {
-        chargeReceipts.push({
-          ...receipt,
-          chargedCount,
-          eventChargeLimitReached,
-        });
+        chargeReceipts.push(buildFinalReceipt(chargedCount, { eventChargeLimitReached }));
         finalOk = false;
         finalStatus = 'PARTIAL_BILLING_HALT';
         haltReason = `Dataset pushData failed after charge (paid items preserved in KVS checkpoint stagedItemsById): ${pushRes.error?.message || String(pushRes.error)}`;
@@ -1622,11 +1737,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       deliveredCount = deliveredSet.size;
       await persistCheckpointPostCharge();
 
-      chargeReceipts.push({
-        ...receipt,
-        chargedCount,
-        eventChargeLimitReached,
-      });
+      chargeReceipts.push(buildFinalReceipt(chargedCount, { eventChargeLimitReached }));
 
       if (eventChargeLimitReached) {
         finalStatus = 'CHARGE_LIMIT_REACHED';
@@ -1650,20 +1761,16 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         }
         deliveredCount = deliveredSet.size;
         await persistCheckpointPostCharge();
-        chargeReceipts.push({
-          ...receipt,
-          chargedCount: 0,
-          eventChargeLimitReached: false,
-          unbilledOwnerTestBypass: true,
-        });
+        chargeReceipts.push(
+          buildFinalReceipt(0, {
+            eventChargeLimitReached: false,
+            unbilledOwnerTestBypass: true,
+          })
+        );
         continue;
       }
       await persistCheckpointPostCharge();
-      chargeReceipts.push({
-        ...receipt,
-        chargedCount: 0,
-        eventChargeLimitReached,
-      });
+      chargeReceipts.push(buildFinalReceipt(0, { eventChargeLimitReached }));
       if (eventChargeLimitReached) {
         finalOk = true;
         finalStatus = 'CHARGE_LIMIT_REACHED';
@@ -1675,11 +1782,19 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       break;
     } else {
       // Partial chunk charge (0 < chargedCount < unchargedChunk.length)
-      const explicitChargedIds = Array.isArray(chargeResult.chargedCreativeIds)
-        ? chargeResult.chargedCreativeIds.filter((id) => chunkIds.includes(id))
+      const hasExplicitIdsArray = Array.isArray(chargeResult.chargedCreativeIds);
+      const explicitChargedIds = hasExplicitIdsArray
+        ? Array.from(
+            new Set(chargeResult.chargedCreativeIds.filter((id) => chunkIds.includes(id)))
+          )
         : null;
+      const isValidExplicitChargedIds = Boolean(
+        explicitChargedIds &&
+          explicitChargedIds.length === chargedCount &&
+          chargeResult.chargedCreativeIds.length === chargedCount
+      );
 
-      if (explicitChargedIds && explicitChargedIds.length === chargedCount) {
+      if (isValidExplicitChargedIds) {
         for (const id of explicitChargedIds) {
           chargedSet.add(id);
         }
@@ -1690,12 +1805,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         const paidSubset = unchargedChunk.filter((c) => explicitChargedIds.includes(c.creativeId));
         const pushRes = await pushDataWithRetry(paidSubset);
         if (!pushRes.ok) {
-          chargeReceipts.push({
-            ...receipt,
-            chargedCount,
-            chargedCreativeIds: explicitChargedIds,
-            eventChargeLimitReached,
-          });
+          chargeReceipts.push(
+            buildFinalReceipt(chargedCount, {
+              chargedCreativeIds: explicitChargedIds,
+              eventChargeLimitReached,
+            })
+          );
           finalOk = false;
           finalStatus = 'PARTIAL_BILLING_HALT';
           haltReason = `Dataset pushData failed after partial charge (paid items preserved in KVS checkpoint stagedItemsById): ${pushRes.error?.message || String(pushRes.error)}`;
@@ -1708,12 +1823,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         deliveredCount = deliveredSet.size;
         await persistCheckpointPostCharge();
 
-        chargeReceipts.push({
-          ...receipt,
-          chargedCount,
-          chargedCreativeIds: explicitChargedIds,
-          eventChargeLimitReached,
-        });
+        chargeReceipts.push(
+          buildFinalReceipt(chargedCount, {
+            chargedCreativeIds: explicitChargedIds,
+            eventChargeLimitReached,
+          })
+        );
 
         finalOk = eventChargeLimitReached;
         finalStatus = eventChargeLimitReached ? 'CHARGE_LIMIT_REACHED' : 'PARTIAL_BILLING_HALT';
@@ -1721,7 +1836,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
           haltReason = `Partial chunk charge (${chargedCount}/${unchargedChunk.length}) without charge limit flag`;
         }
         break;
-      } else if (eventChargeLimitReached) {
+      } else if (!hasExplicitIdsArray && eventChargeLimitReached) {
         // Standard Apify SDK ChargeResult when hitting user's max charge ceiling:
         // Attribute charge deterministically to the ordered prefix `unchargedChunk.slice(0, chargedCount)`
         // so the customer receives every item they paid for, and leave the remaining tail uncharged.
@@ -1736,12 +1851,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
 
         const pushRes = await pushDataWithRetry(paidPrefix);
         if (!pushRes.ok) {
-          chargeReceipts.push({
-            ...receipt,
-            chargedCount,
-            chargedCreativeIds: paidPrefixIds,
-            eventChargeLimitReached: true,
-          });
+          chargeReceipts.push(
+            buildFinalReceipt(chargedCount, {
+              chargedCreativeIds: paidPrefixIds,
+              eventChargeLimitReached: true,
+            })
+          );
           finalOk = false;
           finalStatus = 'PARTIAL_BILLING_HALT';
           haltReason = `Dataset pushData failed after charge limit prefix (paid items preserved in KVS checkpoint stagedItemsById): ${pushRes.error?.message || String(pushRes.error)}`;
@@ -1754,12 +1869,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         deliveredCount = deliveredSet.size;
         await persistCheckpointPostCharge();
 
-        chargeReceipts.push({
-          ...receipt,
-          chargedCount,
-          chargedCreativeIds: paidPrefixIds,
-          eventChargeLimitReached: true,
-        });
+        chargeReceipts.push(
+          buildFinalReceipt(chargedCount, {
+            chargedCreativeIds: paidPrefixIds,
+            eventChargeLimitReached: true,
+          })
+        );
 
         finalOk = true;
         finalStatus = 'CHARGE_LIMIT_REACHED';
@@ -1774,11 +1889,11 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount = chargedSet.size + chargedCount;
         await persistCheckpointPostCharge();
 
-        chargeReceipts.push({
-          ...receipt,
-          chargedCount,
-          eventChargeLimitReached: false,
-        });
+        chargeReceipts.push(
+          buildFinalReceipt(chargedCount, {
+            eventChargeLimitReached: false,
+          })
+        );
 
         finalOk = false;
         finalStatus = 'PARTIAL_BILLING_HALT';
@@ -1841,6 +1956,8 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     chargedEventCount,
     durationMs,
     requestCount: Math.max(1, totalRpcRequests),
+    unitPriceUsdc: lastResolvedUnitPriceUsdc,
+    actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
   });
 
   return finalizeActorReturn({

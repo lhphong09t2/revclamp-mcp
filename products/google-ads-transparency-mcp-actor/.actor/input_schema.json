@@ -9,6 +9,8 @@
       "description": "Brand name or domain to match against verified Google Ads Transparency advertiser entities (e.g. 'nike.com', 'Stripe', 'shopify.com').",
       "maxLength": 512,
       "editor": "textfield",
+      "default": "Stripe",
+      "prefill": "Stripe",
       "example": "nike.com"
     },
     "advertiserId": {
@@ -62,7 +64,8 @@
       "description": "Maximum number of deduplicated ad creatives to extract in this run (1 to 200).",
       "minimum": 1,
       "maximum": 200,
-      "default": 40
+      "default": 40,
+      "prefill": 10
     },
     "pageToken": {
       "title": "Next-Page Cursor Token (Optional)",
