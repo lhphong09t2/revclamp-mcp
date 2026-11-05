@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "com.revclamp/google-ads-transparency-mcp-actor",
   "title": "RevClamp AdPulse (Google Ads Transparency MCP)",
-  "description": "Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.",
-  "version": "1.0.0",
+  "description": "Google Ads Transparency Center advertiser & creative intelligence MCP server by RevClamp.",
+  "version": "1.0.1",
   "websiteUrl": "https://revclamp.com",
   "repository": {
     "url": "https://github.com/lhphong09t2/revclamp-mcp",
@@ -27,7 +27,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@revclamp/google-ads-transparency-mcp-actor",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "transport": {
         "type": "stdio"
       }

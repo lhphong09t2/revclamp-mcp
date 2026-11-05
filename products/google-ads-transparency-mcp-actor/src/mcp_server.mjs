@@ -43,7 +43,7 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'google-ads-transparency-mcp-actor',
   title: 'RevClamp AdPulse - For Google Ads Transparency Center (MCP & Apify Actor)',
-  version: '1.0.0',
+  version: '1.0.1',
   description:
     'Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.',
   // Forward-compatible MCP Registry & Glama metadata extensions (ignored by older stdio clients)
