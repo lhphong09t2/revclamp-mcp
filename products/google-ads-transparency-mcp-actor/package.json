@@ -1,7 +1,7 @@
 {
   "name": "@revclamp/google-ads-transparency-mcp-actor",
   "mcpName": "com.revclamp/google-ads-transparency-mcp-actor",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "RevClamp AdPulse - For Google Ads Transparency Center (MCP & Apify Actor). Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.",
   "homepage": "https://revclamp.com",
