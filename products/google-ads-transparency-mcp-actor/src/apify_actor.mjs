@@ -470,8 +470,18 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
 
     if (runId) {
       const chargeUrl = `${apiBase}/v2/actor-runs/${encodeURIComponent(runId)}/charge`;
+      const allowUnbilledAtHome = env?.ADPULSE_ALLOW_UNBILLED_AT_HOME === '1';
+      let unbilledOwnerTestLatched = false;
       hooks.chargeEvent = async (receipt) => {
         const requestedCount = Math.max(0, Number(receipt?.count) || 0);
+        if (unbilledOwnerTestLatched) {
+          return {
+            chargedCount: 0,
+            eventChargeLimitReached: false,
+            unbilledOwnerTestBypass: true,
+            chargedCreativeIds: [],
+          };
+        }
         if (adapterChargeLimitLatched) {
           return {
             chargedCount: 0,
@@ -520,6 +530,27 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
               eventChargeLimitReached: true,
               chargedCreativeIds: [],
             };
+          }
+          if (allowUnbilledAtHome && (res.status === 405 || res.status === 403)) {
+            let isUnmonetizedNotAllowed = res.status === 405;
+            if (res.status === 403) {
+              try {
+                const errText = await res.text();
+                const errJson = errText && errText.trim() ? JSON.parse(errText) : null;
+                isUnmonetizedNotAllowed = errJson?.error?.type === 'operation-not-allowed';
+              } catch {
+                isUnmonetizedNotAllowed = false;
+              }
+            }
+            if (isUnmonetizedNotAllowed) {
+              unbilledOwnerTestLatched = true;
+              return {
+                chargedCount: 0,
+                eventChargeLimitReached: false,
+                unbilledOwnerTestBypass: true,
+                chargedCreativeIds: [],
+              };
+            }
           }
           if (res.status < 200 || res.status >= 300) {
             throw new Error(`Apify Pay-per-Event charge HTTP ${res.status}`);
@@ -704,7 +735,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       'default_run'
   );
   const hasChargeHook = typeof hooks.chargeEvent === 'function';
-  const billingMode =
+  let billingMode =
     hasChargeHook || hooks.isAtHome === true ? 'APIFY_PAY_PER_EVENT' : 'LOCAL_UNBILLED';
 
   const maxRunDurationMs = Math.min(
@@ -1516,6 +1547,30 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       }
     } else if (chargedCount === 0) {
       inFlightSet = new Set();
+      if (chargeResult?.unbilledOwnerTestBypass === true) {
+        billingMode = 'UNBILLED_OWNER_TEST';
+        await persistCheckpointPostCharge();
+        const pushRes = await pushDataWithRetry(unchargedChunk);
+        if (!pushRes.ok) {
+          finalOk = false;
+          finalStatus = 'PARTIAL_BILLING_HALT';
+          haltReason = `Dataset pushData failed in UNBILLED_OWNER_TEST mode: ${pushRes.error?.message || String(pushRes.error)}`;
+          break;
+        }
+        for (const c of unchargedChunk) {
+          deliveredSet.add(c.creativeId);
+          newlyDeliveredItems.push(c);
+        }
+        deliveredCount = deliveredSet.size;
+        await persistCheckpointPostCharge();
+        chargeReceipts.push({
+          ...receipt,
+          chargedCount: 0,
+          eventChargeLimitReached: false,
+          unbilledOwnerTestBypass: true,
+        });
+        continue;
+      }
       await persistCheckpointPostCharge();
       chargeReceipts.push({
         ...receipt,
