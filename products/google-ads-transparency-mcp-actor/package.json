@@ -1,7 +1,7 @@
 {
   "name": "@revclamp/google-ads-transparency-mcp-actor",
   "mcpName": "com.revclamp/google-ads-transparency-mcp-actor",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "description": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP. Find verified advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates with zero browser overhead. Independent tool by RevClamp; not affiliated with Google LLC.",
   "homepage": "https://revclamp.com",
