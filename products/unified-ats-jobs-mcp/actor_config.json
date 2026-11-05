@@ -1,0 +1,31 @@
+{
+  "actorType": "apify_actor",
+  "pricingModel": {
+    "type": "pay_per_event",
+    "eventName": "job-posting-normalized",
+    "priceUsdc": 0.0015,
+    "costCeilingUsdc": 0.0002,
+    "platformFeeRate": 0.2,
+    "minMarginMultiplier": 2.5
+  },
+  "resourceLimits": {
+    "maxTimeoutSec": 25,
+    "maxMemoryMb": 512,
+    "maxPayloadBytes": 30000
+  },
+  "allowedEgressUrls": [
+    "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+    "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs",
+    "https://api.ashbyhq.com/posting-api/job-board/linear?includeCompensation=true",
+    "https://api.lever.co/v0/postings/zoox?mode=json",
+    "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings?limit=100&offset=0"
+  ],
+  "manifest": {
+    "name": "unified-ats-jobs-mcp",
+    "title": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed",
+    "version": "1.0.0",
+    "minMemoryMbytes": 256,
+    "maxMemoryMbytes": 512,
+    "trademarkNotice": "Independent hiring intelligence tool by RevClamp. Greenhouse, Workday, Ashby, Lever, and SmartRecruiters are trademarks of their respective owners; this tool is not affiliated with or endorsed by them."
+  }
+}

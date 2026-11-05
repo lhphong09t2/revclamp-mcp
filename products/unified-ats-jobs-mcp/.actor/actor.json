@@ -1,0 +1,85 @@
+{
+  "actorSpecification": 1,
+  "name": "unified-ats-jobs-mcp",
+  "title": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Jobs & Signals",
+  "description": "Extract normalized B2B job postings, compensation ranges, workplace classification (REMOTE/HYBRID/ONSITE), and tech-stack hiring signals across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters with zero browser overhead. Independent tool by RevClamp; not affiliated with any ATS vendor.",
+  "version": "1.0",
+  "buildTag": "latest",
+  "minMemoryMbytes": 256,
+  "maxMemoryMbytes": 512,
+  "defaultRunOptions": {
+    "build": "latest",
+    "timeoutSecs": 25,
+    "memoryMbytes": 256
+  },
+  "input": "./input_schema.json",
+  "output": {
+    "actorOutputSchemaVersion": 1,
+    "title": "Unified ATS Job Postings & Hiring Signal Summary",
+    "description": "Normalized B2B ATS job postings across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters (Default Dataset) and execution/billing telemetry (Key-Value Store OUTPUT).",
+    "properties": {
+      "jobPostings": {
+        "type": "string",
+        "title": "Normalized ATS Job Postings",
+        "description": "Canonical B2B job postings with compensation ranges, workplaceType, seniorityLevel, techStackKeywords, and prompt-injection sanitized excerpts.",
+        "template": "{{links.apiDefaultDatasetUrl}}/items"
+      },
+      "runSummary": {
+        "type": "string",
+        "title": "Run Summary & Telemetry (OUTPUT)",
+        "description": "Structured execution summary, resolved ATS board metadata, pagination cursor, and billing receipt summary.",
+        "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+      }
+    }
+  },
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "fields": {
+        "type": "object",
+        "properties": {
+          "jobId": { "type": "string", "title": "Job ID" },
+          "atsProvider": { "type": "string", "title": "ATS Provider" },
+          "companySlug": { "type": "string", "title": "Company Slug" },
+          "companyName": { "type": "string", "title": "Company Name" },
+          "title": { "type": "string", "title": "Job Title" },
+          "department": { "type": "string", "title": "Department" },
+          "locationRaw": { "type": "string", "title": "Location" },
+          "workplaceType": { "type": "string", "title": "Workplace Type" },
+          "countryIso2": { "type": "string", "title": "Country (ISO-2)" },
+          "employmentType": { "type": "string", "title": "Employment Type" },
+          "seniorityLevel": { "type": "string", "title": "Seniority Level" },
+          "postedAtIso": { "type": "string", "title": "Posted At (ISO)" },
+          "daysOpen": { "type": "integer", "title": "Days Open" },
+          "applyUrl": { "type": "string", "title": "Apply URL" }
+        }
+      },
+      "views": {
+        "overview": {
+          "title": "Normalized ATS Job Postings Overview",
+          "transformation": {
+            "fields": [
+              "jobId",
+              "atsProvider",
+              "companyName",
+              "title",
+              "department",
+              "locationRaw",
+              "workplaceType",
+              "countryIso2",
+              "employmentType",
+              "seniorityLevel",
+              "postedAtIso",
+              "daysOpen",
+              "applyUrl"
+            ]
+          },
+          "display": {
+            "component": "table"
+          }
+        }
+      }
+    }
+  },
+  "dockerfile": "../Dockerfile"
+}

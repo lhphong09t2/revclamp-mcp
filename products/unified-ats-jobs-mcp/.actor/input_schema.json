@@ -1,0 +1,85 @@
+{
+  "title": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed",
+  "type": "object",
+  "schemaVersion": 1,
+  "description": "Resolve and normalize active B2B job postings, compensation bands, workplace classification (REMOTE / HYBRID / ONSITE), and technology stack hiring signals across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters. Leave defaults intact and click Start to run an instant verification query for Linear.",
+  "properties": {
+    "query": {
+      "title": "Company Slug, Career URL, or Brand Name",
+      "type": "string",
+      "description": "Company slug (e.g. 'linear', 'stripe', 'nvidia', 'zoox', 'BoschGroup') or direct ATS career board URL (Greenhouse, Workday myworkdayjobs.com, Ashby, Lever, or SmartRecruiters).",
+      "editor": "textfield",
+      "default": "linear",
+      "prefill": "linear"
+    },
+    "provider": {
+      "title": "ATS Provider Override (Optional)",
+      "type": "string",
+      "description": "Explicit ATS provider override. Leave as AUTO to automatically detect from URL, curated directory, or live ATS board resolution.",
+      "editor": "select",
+      "default": "AUTO",
+      "enum": [
+        "AUTO",
+        "GREENHOUSE",
+        "WORKDAY",
+        "ASHBY",
+        "LEVER",
+        "SMARTRECRUITERS"
+      ],
+      "enumTitles": [
+        "Auto-Detect (Recommended)",
+        "Greenhouse (boards-api.greenhouse.io)",
+        "Workday CXS (*.wd1..5.myworkdayjobs.com)",
+        "Ashby (api.ashbyhq.com)",
+        "Lever (api.lever.co)",
+        "SmartRecruiters (api.smartrecruiters.com)"
+      ]
+    },
+    "searchKeyword": {
+      "title": "Role / Keyword Filter (Optional)",
+      "type": "string",
+      "description": "Case-insensitive filter applied across job title, department, location, and tech stack keywords (e.g. 'Engineer', 'Security', 'Python').",
+      "editor": "textfield",
+      "default": ""
+    },
+    "workplaceType": {
+      "title": "Workplace Type Filter",
+      "type": "string",
+      "description": "Filter normalized job postings by workplace classification.",
+      "editor": "select",
+      "default": "ANY",
+      "enum": ["ANY", "REMOTE", "HYBRID", "ONSITE"],
+      "enumTitles": [
+        "Any Workplace Type",
+        "Remote Only",
+        "Hybrid Only",
+        "On-Site Only"
+      ]
+    },
+    "departmentKeyword": {
+      "title": "Department Filter (Optional)",
+      "type": "string",
+      "description": "Case-insensitive substring filter on normalized department name (e.g. 'Engineering', 'Sales', 'Product').",
+      "editor": "textfield",
+      "default": ""
+    },
+    "maxResults": {
+      "title": "Max Job Postings to Return",
+      "type": "integer",
+      "description": "Maximum number of normalized job postings to return in a single call (bounded to 1..50).",
+      "editor": "number",
+      "default": 5,
+      "prefill": 5,
+      "minimum": 1,
+      "maximum": 50
+    },
+    "pageToken": {
+      "title": "Pagination Cursor Token (Optional)",
+      "type": "string",
+      "description": "Opaque deterministic pagination cursor (rtp1_...) returned by a previous call to resume fetching the next slice.",
+      "editor": "textfield",
+      "default": ""
+    }
+  },
+  "required": []
+}

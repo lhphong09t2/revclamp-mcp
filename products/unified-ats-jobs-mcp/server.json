@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.revclamp/unified-ats-jobs-mcp",
+  "title": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Jobs & Signals",
+  "description": "Unified 5-in-1 B2B ATS job and signal feed: Greenhouse, Workday, Ashby, Lever, SmartRecruiters.",
+  "version": "1.0.0",
+  "websiteUrl": "https://revclamp.com",
+  "repository": {
+    "url": "https://github.com/lhphong09t2/revclamp-mcp",
+    "source": "github",
+    "subfolder": "products/unified-ats-jobs-mcp"
+  },
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/unified-ats-jobs-mcp/assets/icon-180.png",
+      "mimeType": "image/png",
+      "sizes": ["180x180"]
+    },
+    {
+      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/unified-ats-jobs-mcp/assets/icon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": ["any"]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@revclamp/unified-ats-jobs-mcp",
+      "version": "1.0.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--mcp-stdio",
+          "description": "Start the Model Context Protocol (MCP) JSON-RPC 2.0 server over standard input/output."
+        }
+      ],
+      "environmentVariables": []
+    }
+  ]
+}
