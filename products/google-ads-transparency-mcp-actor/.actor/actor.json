@@ -1,0 +1,17 @@
+{
+  "actorSpecification": 1,
+  "name": "google-ads-transparency-mcp-actor",
+  "title": "RevClamp AdPulse - For Google Ads Transparency Center (MCP & Apify Actor)",
+  "description": "Find verified Google Ads advertiser entities from any brand or domain (e.g. nike.com -> Nike, Inc.) and extract active and historical ad creatives (Text, Image, Video), preview URLs, and run dates with zero browser or proxy overhead. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.",
+  "version": "1.0",
+  "buildTag": "latest",
+  "minMemoryMbytes": 256,
+  "maxMemoryMbytes": 512,
+  "defaultRunOptions": {
+    "build": "latest",
+    "timeoutSecs": 25,
+    "memoryMbytes": 256
+  },
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

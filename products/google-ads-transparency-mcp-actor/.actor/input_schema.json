@@ -1,0 +1,76 @@
+{
+  "title": "RevClamp AdPulse - For Google Ads Transparency Center (MCP & Apify Actor)",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "query": {
+      "title": "Brand Name or Domain",
+      "type": "string",
+      "description": "Brand name or domain to match against verified Google Ads Transparency advertiser entities (e.g. 'nike.com', 'Stripe', 'shopify.com').",
+      "maxLength": 512,
+      "editor": "textfield",
+      "example": "nike.com"
+    },
+    "advertiserId": {
+      "title": "Advertiser ID (Optional)",
+      "type": "string",
+      "description": "Optional Google Ads Transparency Advertiser ID (e.g. 'AR16735076323512287233'). When provided, queries this exact advertiser directly.",
+      "editor": "textfield"
+    },
+    "countryCode": {
+      "title": "Country Filter (Optional)",
+      "type": "string",
+      "description": "Optional 2-letter ISO country code filter (e.g. 'US'). Leave blank for all regions.",
+      "editor": "textfield"
+    },
+    "formatFilter": {
+      "title": "Ad Format",
+      "type": "string",
+      "description": "Filter returned ad creatives by format (ALL, TEXT, IMAGE, or VIDEO).",
+      "enum": ["ALL", "TEXT", "IMAGE", "VIDEO"],
+      "default": "ALL"
+    },
+    "includeSubsidiaries": {
+      "title": "Include Regional Subsidiaries",
+      "type": "boolean",
+      "description": "When enabled, matches up to 3 verified regional legal entities for the same brand (e.g. Stripe, Inc. US and Stripe Payments Europe, Limited IE).",
+      "default": true
+    },
+    "includeCreativeDetails": {
+      "title": "Include Creative Region & Legal Details",
+      "type": "boolean",
+      "description": "When enabled, fetches detailed regional presence and legal entity records for up to 10 returned creatives (default 5).",
+      "default": false
+    },
+    "includeAdCopy": {
+      "title": "Include Static Ad Copy (Optional)",
+      "type": "boolean",
+      "description": "When enabled alongside Include Creative Region & Legal Details, extracts static headline, body text, CTA, and destination domain from allowlisted preview scripts without eval.",
+      "default": false
+    },
+    "maxEntities": {
+      "title": "Max Advertiser Entities",
+      "type": "integer",
+      "description": "Maximum number of verified advertiser entities to query when regional subsidiaries are included (1 to 3).",
+      "minimum": 1,
+      "maximum": 3,
+      "default": 3
+    },
+    "maxResults": {
+      "title": "Max Creatives to Extract",
+      "type": "integer",
+      "description": "Maximum number of deduplicated ad creatives to extract in this run (1 to 200).",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 40
+    },
+    "pageToken": {
+      "title": "Next-Page Cursor Token (Optional)",
+      "type": "string",
+      "description": "Optional continuation token returned by a previous run to resume from the next creative.",
+      "maxLength": 2048,
+      "editor": "textfield"
+    }
+  },
+  "required": []
+}
