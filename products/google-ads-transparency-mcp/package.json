@@ -1,9 +1,9 @@
 {
   "name": "@revclamp/google-ads-transparency-mcp",
   "mcpName": "com.revclamp/google-ads-transparency-mcp",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "type": "module",
-  "description": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP. Find verified advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates with zero browser overhead. Independent tool by RevClamp; not affiliated with Google LLC.",
+  "description": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP. Find verified advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent B2B tool by RevClamp.",
   "homepage": "https://revclamp.com",
   "repository": {
     "type": "git",
@@ -29,6 +29,7 @@
   ],
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "google-ads",
     "ads-transparency",
@@ -38,7 +39,6 @@
     "brand-safety",
     "ppc",
     "b2b-marketing",
-    "apify",
     "revclamp"
   ],
   "scripts": {
