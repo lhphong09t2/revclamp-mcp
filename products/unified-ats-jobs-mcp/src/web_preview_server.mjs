@@ -68,7 +68,7 @@ function buildPlaygroundHtml() {
   <header class="site-header">
     <div class="header-inner">
       <div class="brand-group">
-        <img class="brand-logo" src="/assets/icon.svg" width="36" height="36" alt="RevClamp TalentPulse shield icon">
+        <img class="brand-logo" src="/assets/icon.svg" width="36" height="36" alt="RevClamp TalentPulse unified ATS constellation icon">
         <div class="brand-titles">
           <h1 class="brand-title">RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job &amp; Hiring Signal Feed</h1>
           <p class="brand-subtitle">Normalized B2B Hiring Signals, Compensation Bands &amp; Tech Stack Intelligence Across Greenhouse, Workday CXS, Ashby, Lever &amp; SmartRecruiters</p>

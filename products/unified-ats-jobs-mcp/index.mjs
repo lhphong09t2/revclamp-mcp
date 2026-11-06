@@ -70,6 +70,7 @@ import {
   createApifyPlatformHooks,
   loadApifyActorInput,
   runUnifiedAtsJobsActor,
+  scrapeUnifiedAtsJobsBoard,
 } from './src/apify_actor.mjs';
 
 import {
@@ -150,6 +151,7 @@ export {
   createApifyPlatformHooks,
   loadApifyActorInput,
   runUnifiedAtsJobsActor,
+  scrapeUnifiedAtsJobsBoard,
   MCP_MAX_ENVELOPE_BYTES,
   MCP_MAX_ITEMS_LIMIT,
   MCP_MAX_REQ_ID_BYTES,

@@ -107,7 +107,7 @@ Every job posting across all 5 ATS providers is normalized into a deterministic 
 | Product | npm Package | Primary Use Case |
 | :--- | :--- | :--- |
 | **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Paddle`, `Lemon Squeezy`, `Shopify`) |
-| **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp-actor)** | [`@revclamp/google-ads-transparency-mcp-actor`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp-actor) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
+| **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp)** | [`@revclamp/google-ads-transparency-mcp`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
 | **[RevClamp TalentPulse](https://apify.com/revclamp/unified-ats-jobs-mcp)** | [`@revclamp/unified-ats-jobs-mcp`](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) | Unified 5-in-1 B2B ATS job postings, salary ranges & tech-stack hiring signals (`Greenhouse`, `Workday CXS`, `Ashby`, `Lever`, `SmartRecruiters`) |
 
 ---

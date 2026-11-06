@@ -531,6 +531,8 @@
         rpcEnvelope = JSON.parse(rawText);
       } catch {
         clearExportableResultState(true, false);
+        state.lastNextPageToken = null;
+        if (els.nextPageBtn) els.nextPageBtn.hidden = true;
         els.statusBanner.dataset.state = 'error';
         els.statusBanner.textContent = `HTTP ${response.status}: Non-JSON response received.`;
         els.rawJsonBox.textContent = rawText;
@@ -541,6 +543,8 @@
 
       if (rpcEnvelope.ok === false && typeof rpcEnvelope.error === 'string') {
         clearExportableResultState(true, false);
+        state.lastNextPageToken = null;
+        if (els.nextPageBtn) els.nextPageBtn.hidden = true;
         els.statusBanner.dataset.state = 'error';
         els.statusBanner.textContent = `HTTP ${response.status} Error: ${rpcEnvelope.error}`;
         return;
@@ -548,6 +552,8 @@
 
       if (rpcEnvelope.error) {
         clearExportableResultState(true, false);
+        state.lastNextPageToken = null;
+        if (els.nextPageBtn) els.nextPageBtn.hidden = true;
         els.statusBanner.dataset.state = 'error';
         els.statusBanner.textContent = humanizeRpcErrorMessage(rpcEnvelope.error);
         return;
@@ -593,6 +599,8 @@
 
       const omittedCount = Number(structured.omittedItemCount ?? 0);
       const isByteTruncated = Boolean(structured.truncatedForMcpByteCeiling);
+      const isPartialMultiPage =
+        pagStatus === 'PARTIAL_PAGES_HAS_MORE' || pagStatus === 'DEADLINE_REACHED_HAS_MORE';
       const truncationSuffix =
         omittedCount > 0
           ? nextToken
@@ -600,9 +608,17 @@
             : ` (${omittedCount} omitted to fit the 30 KB limit).`
           : isByteTruncated
             ? ' (some details were trimmed to fit the 30 KB limit).'
-            : '.';
+            : isPartialMultiPage
+              ? nextToken
+                ? ' (partial multi-page results preserved - click Load next page to continue).'
+                : ' (partial multi-page results preserved).'
+              : '.';
 
-      els.statusBanner.dataset.state = isResultError ? 'error' : 'ok';
+      els.statusBanner.dataset.state = isResultError
+        ? 'error'
+        : isPartialMultiPage
+          ? 'warn'
+          : 'ok';
       els.statusBanner.textContent = isResultError
         ? `Run halted (${structured.status || 'ERROR'}): ${structured.reason || 'Upstream error occurred.'}`
         : `Completed ${humanToolLabel} (${countVal} matching ${countVal === 1 ? 'record' : 'records'})${truncationSuffix}`;
@@ -611,6 +627,13 @@
     } catch (err) {
       if (requestToken !== state.activeRequestToken) return;
       clearExportableResultState(true, false);
+      if (els.rawJsonBox) {
+        els.rawJsonBox.textContent = '{}';
+      }
+      state.lastNextPageToken = null;
+      if (els.nextPageBtn) {
+        els.nextPageBtn.hidden = true;
+      }
       els.statusBanner.dataset.state = 'error';
       els.statusBanner.textContent = `Request failed: ${err?.message || String(err)}`;
     }
@@ -679,6 +702,21 @@
     if (els.downloadJsonBtn) {
       els.downloadJsonBtn.addEventListener('click', () => {
         downloadExportableJson();
+      });
+    }
+
+    if (els.dynamicFields) {
+      els.dynamicFields.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.repeat) return;
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          const tag = String(e.target?.tagName || '').toUpperCase();
+          if (tag === 'INPUT' || tag === 'SELECT') {
+            e.preventDefault();
+            if (els.statusBanner?.dataset.state !== 'pending') {
+              executeSelectedTool();
+            }
+          }
+        }
       });
     }
   }

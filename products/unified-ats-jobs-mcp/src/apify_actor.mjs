@@ -1202,6 +1202,7 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         if (staged && typeof staged === 'object' && staged.jobId === id) {
           reconciledItems.push(staged);
         }
+        delete stagedItemsById[id];
       } else if (staged && typeof staged === 'object' && staged.jobId === id) {
         deliverablePairs.push({ id, item: staged });
       } else {
@@ -1275,47 +1276,98 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
           deadlineAtMs,
         });
         if (replayRes && replayRes.chargedCount === inFlightArr.length) {
-          const itemsToDeliver = inFlightArr.map((id) => stagedItemsById[id]);
           for (const id of inFlightArr) {
             chargedSet.add(id);
           }
           inFlightSet = new Set();
           inFlightIdempotencyKey = null;
           await persistCheckpoint();
-          const pushRes = await pushDataWithRetry(itemsToDeliver);
-          if (!pushRes.ok) {
-            await persistCheckpoint();
-            const durationMs = Math.max(1, nowMs() - startedAtMs);
-            return finalizeActorReturn({
-              ok: false,
-              status: 'PARTIAL_BILLING_HALT',
-              reason: `Dataset pushData failed during in-flight replay reconciliation: ${pushRes.error?.message || String(pushRes.error)}`,
-              billingMode,
-              boardTarget: null,
-              items: reconciledItems,
-              extractedCount: 0,
-              deliveredCount,
-              billableCount: reconciledItems.length,
-              chargedEventCount: chargedSet.size,
-              unknownOutcomeIds: Array.from(unknownOutcomeSet),
-              chargeReceipts: [],
-              pagination: {
-                nextPageToken: input?.pageToken || null,
-                paginationStatus: 'PARTIAL_BILLING_HALT',
-                paginationIncompleteReason: 'DATASET_PUSH_FAILED',
-              },
-              telemetry: computeRunEconomicsTelemetry({
+
+          let alreadyInDatasetSet = new Set();
+          if (typeof hooks.listDeliveredIds === 'function') {
+            try {
+              const existingDsIds = await hooks.listDeliveredIds();
+              if (Array.isArray(existingDsIds)) {
+                alreadyInDatasetSet = new Set(existingDsIds);
+              }
+            } catch (dsListErr) {
+              const durationMs = Math.max(1, nowMs() - startedAtMs);
+              return finalizeActorReturn({
+                ok: false,
+                status: 'PARTIAL_BILLING_HALT',
+                reason: `Failed to verify delivered dataset IDs during in-flight replay reconciliation: ${dsListErr?.message || String(dsListErr)}`,
+                billingMode,
+                boardTarget: null,
+                items: reconciledItems,
+                extractedCount: 0,
+                deliveredCount,
                 billableCount: reconciledItems.length,
                 chargedEventCount: chargedSet.size,
-                durationMs,
-                requestCount: 1,
-              }),
-            });
+                unknownOutcomeIds: Array.from(unknownOutcomeSet),
+                chargeReceipts: [],
+                pagination: {
+                  nextPageToken: input?.pageToken || null,
+                  paginationStatus: 'PARTIAL_BILLING_HALT',
+                  paginationIncompleteReason: 'DATASET_RECONCILIATION_FAILED',
+                },
+                telemetry: computeRunEconomicsTelemetry({
+                  billableCount: reconciledItems.length,
+                  chargedEventCount: chargedSet.size,
+                  durationMs,
+                  requestCount: 1,
+                }),
+              });
+            }
           }
-          for (const item of itemsToDeliver) {
-            deliveredSet.add(item.jobId);
-            delete stagedItemsById[item.jobId];
-            reconciledItems.push(item);
+
+          const itemsToDeliver = [];
+          for (const id of inFlightArr) {
+            const staged = stagedItemsById[id];
+            if (alreadyInDatasetSet.has(id)) {
+              deliveredSet.add(id);
+              if (staged) reconciledItems.push(staged);
+              delete stagedItemsById[id];
+            } else if (staged) {
+              itemsToDeliver.push(staged);
+            }
+          }
+
+          if (itemsToDeliver.length > 0) {
+            const pushRes = await pushDataWithRetry(itemsToDeliver);
+            if (!pushRes.ok) {
+              await persistCheckpoint();
+              const durationMs = Math.max(1, nowMs() - startedAtMs);
+              return finalizeActorReturn({
+                ok: false,
+                status: 'PARTIAL_BILLING_HALT',
+                reason: `Dataset pushData failed during in-flight replay reconciliation: ${pushRes.error?.message || String(pushRes.error)}`,
+                billingMode,
+                boardTarget: null,
+                items: reconciledItems,
+                extractedCount: 0,
+                deliveredCount: deliveredSet.size,
+                billableCount: reconciledItems.length,
+                chargedEventCount: chargedSet.size,
+                unknownOutcomeIds: Array.from(unknownOutcomeSet),
+                chargeReceipts: [],
+                pagination: {
+                  nextPageToken: input?.pageToken || null,
+                  paginationStatus: 'PARTIAL_BILLING_HALT',
+                  paginationIncompleteReason: 'DATASET_PUSH_FAILED',
+                },
+                telemetry: computeRunEconomicsTelemetry({
+                  billableCount: reconciledItems.length,
+                  chargedEventCount: chargedSet.size,
+                  durationMs,
+                  requestCount: 1,
+                }),
+              });
+            }
+            for (const item of itemsToDeliver) {
+              deliveredSet.add(item.jobId);
+              delete stagedItemsById[item.jobId];
+              reconciledItems.push(item);
+            }
           }
           deliveredCount = deliveredSet.size;
           await persistCheckpoint();
@@ -1326,9 +1378,11 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
       }
     }
 
-    if (!reconciledInFlight && inFlightSet.size > 0) {
-      for (const id of inFlightSet) {
-        unknownOutcomeSet.add(id);
+    if (!reconciledInFlight) {
+      for (const id of inFlightArr) {
+        if (!chargedSet.has(id) && !deliveredSet.has(id)) {
+          unknownOutcomeSet.add(id);
+        }
       }
       inFlightSet = new Set();
       inFlightIdempotencyKey = null;
@@ -1767,6 +1821,7 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         }
         for (const c of unchargedChunk) {
           deliveredSet.add(c.jobId);
+          delete stagedItemsById[c.jobId];
           newlyDeliveredItems.push(c);
         }
         deliveredCount = deliveredSet.size;
@@ -1990,4 +2045,6 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
   });
 }
 
+export const scrapeUnifiedAtsJobsBoard = runUnifiedAtsJobsActor;
 export { resolveAtsBoardTarget, getAtsJobPostingDetail };
+

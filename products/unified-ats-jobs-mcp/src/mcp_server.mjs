@@ -43,7 +43,7 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'unified-ats-jobs-mcp',
   title: 'RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed',
-  version: '1.0.4',
+  version: '1.0.5',
   description:
     'Extract normalized B2B job postings, compensation ranges, workplace classification (REMOTE/HYBRID/ONSITE), and tech-stack hiring signals across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters. Independent hiring intelligence tool by RevClamp; not affiliated with any ATS vendor.',
   websiteUrl: 'https://revclamp.com',
