@@ -311,6 +311,19 @@ const RESERVED_GITHUB_NON_PROFILE_PATHS = new Set([
   'team',
   'contact',
   'premium-support',
+  'partners',
+  'privacy',
+  'press',
+  'support',
+  'legal',
+  'status',
+  'terms',
+  'docs',
+  'careers',
+  'investors',
+  'customers',
+  'spark',
+  'models',
   'fluidicon.png',
 ]);
 
@@ -852,6 +865,36 @@ export function validateExtractedB2bEmail(rawEmail, labelHint = '') {
     domainPart,
     role: classifiedRole,
   };
+}
+
+/**
+ * Extracts a clean organization name from raw `<title>` inner text, splitting on standard
+ * title delimiters (including backslash `\`) and stripping generic `'Home'`/`'Welcome'` prefixes.
+ *
+ * @param {string} rawTitleText
+ * @returns {string}
+ */
+export function extractOrganizationNameFromTitleText(rawTitleText) {
+  const decodedTitle = String(rawTitleText ?? '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#x27;|&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!decodedTitle) return '';
+  const segments = decodedTitle
+    .split(/\s*[:|\\/\-\u2013\u2014\u2022\u00b7]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const candidateSeg =
+    segments.find((seg) => !/^(?:home|homepage|welcome|index)$/i.test(seg)) || segments[0] || '';
+  const cleanTitle = candidateSeg
+    .replace(/^(?:home\s+of\s+|welcome\s+to\s+|home\s+)/i, '')
+    .trim();
+  if (cleanTitle.length >= 2 && cleanTitle.length <= 48) {
+    return cleanTitle;
+  }
+  return '';
 }
 
 /**
@@ -1813,15 +1856,9 @@ export async function enrichSingleB2bDomain(
       socialProfiles = { ...socialProfiles, ...extracted.socialProfiles };
       const titleMatch = homeRes.text.match(/<title[^>]*>([^<]{2,120})<\/title>/i);
       if (titleMatch) {
-        const decodedTitle = titleMatch[1]
-          .replace(/&amp;/gi, '&')
-          .replace(/&#x27;|&#39;|&apos;/gi, "'")
-          .replace(/&quot;/gi, '"')
-          .replace(/\s+/g, ' ')
-          .trim();
-        const cleanTitle = decodedTitle.split(/\s*[:|\-\u2013\u2014\u2022\u00b7]\s*/)[0].trim();
-        if (cleanTitle.length >= 2 && cleanTitle.length <= 48) {
-          organizationName = cleanTitle;
+        const parsedOrgName = extractOrganizationNameFromTitleText(titleMatch[1]);
+        if (parsedOrgName) {
+          organizationName = parsedOrgName;
         }
       }
     }
