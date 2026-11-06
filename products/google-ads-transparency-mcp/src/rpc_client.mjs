@@ -61,7 +61,8 @@ const MAX_VALID_EPOCH_SEC = 4102444800; // 2100-01-01T00:00:00Z
  * for top global brands so common queries resolve in 0 SearchSuggestions RPC calls
  * and degrade gracefully if upstream SearchSuggestions encounters rate-limiting.
  */
-export const KNOWN_ADVERTISER_DIRECTORY = Object.freeze({
+export const KNOWN_ADVERTISER_DIRECTORY = Object.freeze(
+  Object.assign(Object.create(null), {
   nike: Object.freeze({
     advertiserId: 'AR16735076323512287233',
     advertiserName: 'Nike, Inc.',
@@ -230,7 +231,85 @@ export const KNOWN_ADVERTISER_DIRECTORY = Object.freeze({
     minAds: 16500000,
     maxAds: 16600000,
   }),
-});
+  oracle: Object.freeze({
+    advertiserId: 'AR08687048956523315201',
+    advertiserName: 'Oracle America, Inc.',
+    regionCode: 'US',
+    minAds: 3000,
+    maxAds: 4000,
+  }),
+  sap: Object.freeze({
+    advertiserId: 'AR14859734842907557889',
+    advertiserName: 'SAP SE',
+    regionCode: 'DE',
+    minAds: 2000,
+    maxAds: 3000,
+  }),
+  cisco: Object.freeze({
+    advertiserId: 'AR13942224429984514049',
+    advertiserName: 'Cisco Systems, Inc.',
+    regionCode: 'US',
+    minAds: 7000,
+    maxAds: 8000,
+  }),
+  nvidia: Object.freeze({
+    advertiserId: 'AR01839840586606051329',
+    advertiserName: 'NVIDIA Corporation',
+    regionCode: 'US',
+    minAds: 600,
+    maxAds: 700,
+  }),
+  canva: Object.freeze({
+    advertiserId: 'AR06374349942554624001',
+    advertiserName: 'Canva, Pty Ltd',
+    regionCode: 'AU',
+    minAds: 30000,
+    maxAds: 40000,
+  }),
+  asana: Object.freeze({
+    advertiserId: 'AR06554691289986629633',
+    advertiserName: 'Asana, Inc.',
+    regionCode: 'US',
+    minAds: 6000,
+    maxAds: 7000,
+  }),
+  zendesk: Object.freeze({
+    advertiserId: 'AR13756467712907804673',
+    advertiserName: 'Zendesk, Inc.',
+    regionCode: 'US',
+    minAds: 3000,
+    maxAds: 4000,
+  }),
+  okta: Object.freeze({
+    advertiserId: 'AR10734849505959608321',
+    advertiserName: 'Okta, Inc',
+    regionCode: 'US',
+    minAds: 1000,
+    maxAds: 2000,
+  }),
+  crowdstrike: Object.freeze({
+    advertiserId: 'AR13642683652595777537',
+    advertiserName: 'CROWDSTRIKE, INC.',
+    regionCode: 'US',
+    minAds: 8000,
+    maxAds: 9000,
+  }),
+  servicenow: Object.freeze({
+    advertiserId: 'AR04119835984416210945',
+    advertiserName: 'ServiceNow, Inc',
+    regionCode: 'US',
+    minAds: 10000,
+    maxAds: 20000,
+  }),
+  workday: Object.freeze({
+    advertiserId: 'AR09563861960156512257',
+    advertiserName: 'Workday, Inc.',
+    regionCode: 'US',
+    minAds: 5000,
+    maxAds: 6000,
+  }),
+  })
+);
 
 /**
  * Canonical Google Ads Geo Target Criterion IDs mapped by ISO 3166-1 alpha-2 country code.
@@ -605,6 +684,13 @@ export const CORPORATE_LEGAL_SUFFIX_TOKENS = new Set([
   'lp',
   'holdings',
   'holding',
+  'opco',
+  'holdco',
+  'topco',
+  'bidco',
+  'midco',
+  'newco',
+  'finco',
   'group',
   'international',
   'global',
@@ -827,9 +913,17 @@ export function parseBrandQueryTokens(rawQuery) {
       : rawBrandTokens;
 
   const brandStem = brandTokens[0] || foldedStemSource.replace(/[^\p{L}\p{N}]/gu, '');
-  const brandStemWithoutHq =
-    isDomainQuery && brandStem.length >= 6 && brandStem.endsWith('hq')
+  const candidateStemWithoutHq =
+    brandStem.length >= 6 && brandStem.endsWith('hq')
       ? brandStem.slice(0, -2)
+      : brandStem;
+  const brandStemWithoutHq =
+    candidateStemWithoutHq !== brandStem &&
+    brandTokens.length === 1 &&
+    (isDomainQuery ||
+      Object.hasOwn(KNOWN_ADVERTISER_DIRECTORY, brandStem) ||
+      Object.hasOwn(KNOWN_ADVERTISER_DIRECTORY, candidateStemWithoutHq))
+      ? candidateStemWithoutHq
       : brandStem;
 
   return {
@@ -1449,8 +1543,18 @@ export function scoreAdvertiserCandidate(candidate, queryMeta, preferredCountry 
       ? Boolean(leadingEntityWords[0] === brandTokens[0] && allBrandTokensPresentAsWords)
       : firstWordMatchesStem;
 
+  const hasHqStemReduction = Boolean(
+    brandTokens.length === 1 &&
+      brandStemWithoutHq &&
+      brandStemWithoutHq !== brandStem &&
+      brandStemWithoutHq.length >= 2
+  );
   let domainConcatPrefixWords = [];
-  if (queryMeta?.isDomainQuery && brandStemWithoutHq && brandStemWithoutHq.length >= 2) {
+  if (
+    (queryMeta?.isDomainQuery || hasHqStemReduction) &&
+    brandStemWithoutHq &&
+    brandStemWithoutHq.length >= 2
+  ) {
     for (const wordList of [leadingEntityWords, nameWords]) {
       let acc = '';
       for (let k = 0; k < Math.min(5, wordList.length); k += 1) {
@@ -1470,12 +1574,11 @@ export function scoreAdvertiserCandidate(candidate, queryMeta, preferredCountry 
   }
 
   const domainStemPrefixMatch = Boolean(
-    queryMeta?.isDomainQuery &&
+    (queryMeta?.isDomainQuery || hasHqStemReduction) &&
       brandStemWithoutHq &&
       brandStemWithoutHq.length >= 2 &&
-      ((leadingEntityWords[0] === brandStemWithoutHq &&
-        (brandTokens.length <= 1 || allBrandTokensPresentAsWords)) ||
-        domainConcatPrefixWords.length > 0)
+      (brandTokens.length <= 1 || allBrandTokensPresentAsWords) &&
+      (leadingEntityWords[0] === brandStemWithoutHq || domainConcatPrefixWords.length > 0)
   );
 
   const matchedCoreTokens = exactBrandWordMatch
@@ -2126,10 +2229,26 @@ export async function resolveAdvertiserEntities(options = {}) {
   // Match single-brand or domain stem against KNOWN_ADVERTISER_DIRECTORY when !includeSubsidiaries
   const directoryKey =
     queryMeta.brandTokens.length === 1 ? String(queryMeta.brandStem || '').toLowerCase() : '';
-  const rawKnownEntry = directoryKey ? KNOWN_ADVERTISER_DIRECTORY[directoryKey] || null : null;
+  const fallbackDirectoryKey =
+    queryMeta.brandTokens.length === 1
+      ? String(queryMeta.brandStemWithoutHq || '').toLowerCase()
+      : '';
+  const rawKnownEntry = directoryKey
+    ? (Object.hasOwn(KNOWN_ADVERTISER_DIRECTORY, directoryKey)
+        ? KNOWN_ADVERTISER_DIRECTORY[directoryKey]
+        : null) ||
+      (fallbackDirectoryKey && Object.hasOwn(KNOWN_ADVERTISER_DIRECTORY, fallbackDirectoryKey)
+        ? KNOWN_ADVERTISER_DIRECTORY[fallbackDirectoryKey]
+        : null) ||
+      null
+    : null;
+  const normalizedFilterCountry = rawCountry === 'UK' ? 'GB' : rawCountry;
   const knownDirectoryEntity =
-    rawKnownEntry && (!rawCountry || rawCountry === 'ALL' || rawCountry === rawKnownEntry.regionCode)
-      ? scoreAdvertiserCandidate(rawKnownEntry, queryMeta, rawCountry)
+    rawKnownEntry &&
+    (!normalizedFilterCountry ||
+      normalizedFilterCountry === 'ALL' ||
+      normalizedFilterCountry === rawKnownEntry.regionCode)
+      ? scoreAdvertiserCandidate(rawKnownEntry, queryMeta, normalizedFilterCountry)
       : null;
 
   const singleEntityDirectoryEligible = maxEntities === 1;
@@ -2152,12 +2271,21 @@ export async function resolveAdvertiserEntities(options = {}) {
     };
   }
 
-  // Multi-token domains (e.g. on-running.com) join all tokens ("on running") rather than truncating to first token
+  // Multi-token domains (e.g. on-running.com) join all tokens ("on running") rather than truncating to first token;
+  // single-token -hq domains/queries (e.g. datadoghq.com, datadoghq) search by brandStemWithoutHq ("datadog").
+  const effectiveSingleTokenStem =
+    queryMeta.brandStemWithoutHq && queryMeta.brandStemWithoutHq !== queryMeta.brandStem
+      ? queryMeta.brandStemWithoutHq
+      : queryMeta.brandStem;
   const searchQueryStr = queryMeta.isDomainQuery
     ? queryMeta.brandTokens.length > 1
       ? queryMeta.brandTokens.join(' ')
-      : queryMeta.brandStem
-    : queryMeta.rawQuery;
+      : effectiveSingleTokenStem
+    : queryMeta.brandTokens.length === 1 &&
+        queryMeta.brandStemWithoutHq &&
+        queryMeta.brandStemWithoutHq !== queryMeta.brandStem
+      ? queryMeta.brandStemWithoutHq
+      : queryMeta.rawQuery;
 
   const endpointUrl = options.endpointUrl || GOOGLE_ADS_RPC_ENDPOINTS.SearchSuggestions;
   const rpcRes = await executeGoogleAdsRpcPost(
