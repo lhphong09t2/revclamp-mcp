@@ -1,0 +1,58 @@
+{
+  "name": "@revclamp/b2b-domain-contact-enricher-mcp",
+  "mcpName": "com.revclamp/b2b-domain-contact-enricher-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "RevClamp ContactPulse - Deterministic B2B Domain Contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC Deliverability Enricher. Independent B2B intelligence tool by RevClamp.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhphong09t2/revclamp-mcp.git",
+    "directory": "products/b2b-domain-contact-enricher-mcp"
+  },
+  "homepage": "https://revclamp.com",
+  "main": "./index.mjs",
+  "bin": {
+    "b2b-domain-contact-enricher-mcp": "./index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "src/",
+    "assets/",
+    "actor_config.json",
+    "server.json",
+    "glama.json",
+    ".well-known/",
+    ".actor/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "b2b-contact-enrichment",
+    "security-txt",
+    "rfc9116",
+    "dmarc",
+    "spf",
+    "mx-lookup",
+    "dns-over-https",
+    "lead-enrichment",
+    "email-deliverability",
+    "revclamp"
+  ],
+  "scripts": {
+    "start": "node index.mjs --apify-run",
+    "mcp": "node index.mjs --mcp-stdio",
+    "playground": "node index.mjs --playground",
+    "preview": "node index.mjs --web-preview",
+    "self-test": "node index.mjs --self-test",
+    "list-tools": "node index.mjs --list-tools",
+    "verify:config": "node ../mcp_actor_validator.mjs --verify actor_config.json",
+    "test": "node --test test/b2b_domain_contact_enricher.test.mjs",
+    "release:audit": "node scripts/release_publisher.mjs --audit"
+  }
+}

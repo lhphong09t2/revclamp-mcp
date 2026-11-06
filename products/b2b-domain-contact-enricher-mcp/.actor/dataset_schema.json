@@ -1,0 +1,44 @@
+{
+  "actorSpecification": 1,
+  "fields": {
+    "type": "object",
+    "properties": {
+      "profileId": { "type": "string", "title": "Profile ID" },
+      "domain": { "type": "string", "title": "Domain" },
+      "organizationName": { "type": "string", "title": "Organization Name" },
+      "primaryEmail": { "type": ["string", "null"], "title": "Primary Contact Email" },
+      "primaryRole": { "type": ["string", "null"], "title": "Primary Role" },
+      "emailGatewayProvider": { "type": "string", "title": "Email Gateway Provider" },
+      "deliverabilityGrade": { "type": "string", "title": "Deliverability Grade" },
+      "dmarcPolicy": { "type": "string", "title": "DMARC Policy" },
+      "spfAllMechanism": { "type": "string", "title": "SPF Policy" },
+      "securityTxtStatus": { "type": "string", "title": "RFC 9116 security.txt Status" },
+      "contactsCount": { "type": "integer", "title": "Verified Contacts Count" },
+      "canonicalUrl": { "type": "string", "title": "Canonical Website URL" }
+    }
+  },
+  "views": {
+    "overview": {
+      "title": "Enriched B2B Domain Contact Profiles Overview",
+      "transformation": {
+        "fields": [
+          "profileId",
+          "domain",
+          "organizationName",
+          "primaryEmail",
+          "primaryRole",
+          "emailGatewayProvider",
+          "deliverabilityGrade",
+          "dmarcPolicy",
+          "spfAllMechanism",
+          "securityTxtStatus",
+          "contactsCount",
+          "canonicalUrl"
+        ]
+      },
+      "display": {
+        "component": "table"
+      }
+    }
+  }
+}

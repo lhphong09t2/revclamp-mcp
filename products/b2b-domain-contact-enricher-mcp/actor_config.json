@@ -1,0 +1,32 @@
+{
+  "actorType": "apify_actor",
+  "pricingModel": {
+    "type": "pay_per_event",
+    "eventName": "domain-contact-profile-enriched",
+    "actorStartFeeUsdc": 0.001,
+    "priceUsdc": 0.002,
+    "costCeilingUsdc": 0.00015,
+    "platformFeeRate": 0.2,
+    "minMarginMultiplier": 2.5
+  },
+  "resourceLimits": {
+    "maxTimeoutSec": 25,
+    "maxMemoryMb": 256,
+    "maxPayloadBytes": 30000
+  },
+  "allowedEgressUrls": [
+    "https://cloudflare-dns.com/dns-query",
+    "https://dns.google/resolve",
+    "https://stripe.com/.well-known/security.txt",
+    "https://linear.app/.well-known/security.txt",
+    "https://www.cloudflare.com/.well-known/security.txt"
+  ],
+  "manifest": {
+    "name": "b2b-domain-contact-enricher-mcp",
+    "title": "RevClamp ContactPulse - B2B Domain Contact, RFC 9116 & Deliverability Enricher",
+    "version": "1.0.0",
+    "minMemoryMbytes": 256,
+    "maxMemoryMbytes": 512,
+    "trademarkNotice": "Independent B2B domain contact and DNS deliverability intelligence tool by RevClamp. All company domains and product names referenced in examples are trademarks of their respective owners."
+  }
+}

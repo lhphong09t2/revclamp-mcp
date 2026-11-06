@@ -1,0 +1,75 @@
+{
+  "title": "RevClamp ContactPulse - B2B Domain Contact, RFC 9116 & Deliverability Enricher",
+  "type": "object",
+  "schemaVersion": 1,
+  "description": "Extract verified B2B role contacts, RFC 9116 /.well-known/security.txt disclosures, Schema.org ContactPoint JSON-LD, de-obfuscated emails, social links, and DNS-over-HTTPS MX/SPF/DMARC deliverability posture across B2B domains. Leave defaults intact and click Start to run an instant verification query for stripe.com.",
+  "properties": {
+    "query": {
+      "title": "Target B2B Domain(s) or Company URL",
+      "type": "string",
+      "description": "Single domain or comma/space-separated B2B domains/URLs (e.g. 'stripe.com', 'linear.app, cloudflare.com, shopify.com, github.com').",
+      "editor": "textfield",
+      "default": "stripe.com, linear.app, cloudflare.com, shopify.com, github.com",
+      "prefill": "stripe.com, linear.app, cloudflare.com, shopify.com, github.com"
+    },
+    "roleFilter": {
+      "title": "Contact Role Filter (Optional)",
+      "type": "string",
+      "description": "Filter extracted contacts by functional B2B department role.",
+      "editor": "select",
+      "default": "ANY",
+      "enum": [
+        "ANY",
+        "SECURITY",
+        "PRIVACY_DPO",
+        "BILLING_FINANCE",
+        "LEGAL",
+        "SUPPORT",
+        "SALES",
+        "PRESS",
+        "GENERAL"
+      ],
+      "enumTitles": [
+        "Any Role (All Verified Contacts)",
+        "Security & Vulnerability Disclosure (SECURITY)",
+        "Privacy & Data Protection Officer (PRIVACY_DPO)",
+        "Billing, Accounts & Finance (BILLING_FINANCE)",
+        "Legal & Compliance (LEGAL)",
+        "Customer Support & Helpdesk (SUPPORT)",
+        "Sales & Partnerships (SALES)",
+        "Press & Media Relations (PRESS)",
+        "General Inquiries (GENERAL)"
+      ]
+    },
+    "includeDnsPosture": {
+      "title": "Include DNS MX / SPF / DMARC Deliverability Posture",
+      "type": "boolean",
+      "description": "Resolve MX gateway provider, SPF policy, and DMARC enforcement posture via DNS-over-HTTPS.",
+      "default": true
+    },
+    "includeSecurityTxt": {
+      "title": "Include RFC 9116 /.well-known/security.txt Inspection",
+      "type": "boolean",
+      "description": "Parse RFC 9116 security.txt fields (Contact, Expires, Encryption, Policy, Acknowledgments, Hiring).",
+      "default": true
+    },
+    "maxResults": {
+      "title": "Max Enriched Domain Profiles to Return",
+      "type": "integer",
+      "description": "Maximum number of enriched B2B domain profiles to return in a single call (bounded to 1..25).",
+      "editor": "number",
+      "default": 5,
+      "prefill": 5,
+      "minimum": 1,
+      "maximum": 25
+    },
+    "pageToken": {
+      "title": "Pagination Cursor Token (Optional)",
+      "type": "string",
+      "description": "Opaque deterministic pagination cursor (rcd1_...) returned by a previous call to resume fetching the next slice.",
+      "editor": "textfield",
+      "default": ""
+    }
+  },
+  "required": []
+}

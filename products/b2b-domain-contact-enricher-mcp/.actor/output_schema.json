@@ -1,0 +1,19 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "B2B Domain Contact & Deliverability Enrichment Summary",
+  "description": "Enriched B2B domain contact profiles, RFC 9116 security.txt metadata, and DNS MX/SPF/DMARC posture (Default Dataset) plus execution/billing telemetry (Key-Value Store OUTPUT).",
+  "properties": {
+    "domainProfiles": {
+      "type": "string",
+      "title": "Enriched B2B Domain Contact Profiles",
+      "description": "Normalized B2B domain contact profiles with classified role emails, RFC 9116 security.txt fields, verified social profiles, and DNS MX/SPF/DMARC deliverability grades.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    },
+    "runSummary": {
+      "type": "string",
+      "title": "Run Summary & Telemetry (OUTPUT)",
+      "description": "Structured execution summary, pagination cursor, and Pay-per-Event billing receipt.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    }
+  }
+}
