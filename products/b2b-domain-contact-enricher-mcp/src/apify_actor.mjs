@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {
+  DEFAULT_RUN_DEADLINE_MS,
   resolveB2bDomainContactsBatch,
   computeRewoundCursorForDeliveredPrefix,
 } from './contact_client.mjs';
@@ -459,8 +460,16 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
   const startedAtMs = Date.now();
   const hooks = options?.platformHooks || createApifyPlatformHooks(options?.env || process.env, options?.fetchImpl);
   const billingMode = hooks.isAtHome ? 'APIFY_PAY_PER_EVENT' : 'LOCAL_UNBILLED';
+  const billingReserveMs = hooks.isAtHome ? 2500 : 0;
+  const deadlineAtMs =
+    Number.isFinite(Number(options?.deadlineAtMs)) && Number(options.deadlineAtMs) > 0
+      ? Number(options.deadlineAtMs)
+      : startedAtMs + Math.max(2000, DEFAULT_RUN_DEADLINE_MS - billingReserveMs);
 
-  const batchRes = await resolveB2bDomainContactsBatch(input, options);
+  const batchRes = await resolveB2bDomainContactsBatch(input, {
+    ...options,
+    deadlineAtMs,
+  });
   if (!batchRes.ok) {
     const durationMs = Math.max(1, Date.now() - startedAtMs);
     const telemetry = computeRunEconomicsTelemetry({

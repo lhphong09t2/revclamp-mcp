@@ -81,8 +81,253 @@ const FALSE_POSITIVE_EMAIL_DOMAINS = new Set([
 const FALSE_POSITIVE_ASSET_TLD_RE =
   /\.(?:png|jpg|jpeg|gif|svg|webp|avif|ico|css|js|mjs|cjs|ts|tsx|jsx|woff|woff2|ttf|eot|otf|map|mp4|webm|pdf|zip)$/i;
 
-const NO_REPLY_LOCAL_RE = /^(?:no-?reply|donotreply|do-not-reply|bounce|mailer-daemon|postmaster|Automated)$/i;
+const NO_REPLY_LOCAL_RE = /^(?:no-?reply|donotreply|do-not-reply|bounce|mailer-daemon|automated)$/i;
 const HEX_NOISE_LOCAL_RE = /^[0-9a-f]{24,}$/i;
+
+const CORE_B2B_ROLE_SUBTOKENS = new Set([
+  'security',
+  'sec',
+  'psirt',
+  'csirt',
+  'soc',
+  'vuln',
+  'vulnerability',
+  'bugbounty',
+  'bounty',
+  'abuse',
+  'cert',
+  'infosec',
+  'trust',
+  'disclosure',
+  'privacy',
+  'dpo',
+  'dataprotection',
+  'gdpr',
+  'ccpa',
+  'privacyquestions',
+  'privacypolicy',
+  'billing',
+  'finance',
+  'accounts',
+  'accounting',
+  'payable',
+  'receivable',
+  'ap',
+  'ar',
+  'invoicing',
+  'invoices',
+  'payments',
+  'tax',
+  'vat',
+  'treasury',
+  'procurement',
+  'legal',
+  'compliance',
+  'dmca',
+  'copyright',
+  'trademark',
+  'subpoena',
+  'lawenforcement',
+  'counsel',
+  'notices',
+  'terms',
+  'support',
+  'help',
+  'helpdesk',
+  'care',
+  'customerservice',
+  'customercare',
+  'success',
+  'customersuccess',
+  'service',
+  'sales',
+  'enterprise',
+  'partners',
+  'partnerships',
+  'bd',
+  'bizdev',
+  'deals',
+  'solutions',
+  'commercial',
+  'revenue',
+  'press',
+  'media',
+  'pr',
+  'communications',
+  'comms',
+  'news',
+  'newsroom',
+  'analyst',
+  'relations',
+  'info',
+  'contact',
+  'contactus',
+  'hello',
+  'hi',
+  'office',
+  'team',
+  'hq',
+  'inquiries',
+  'enquiries',
+  'enquiry',
+  'general',
+  'admin',
+  'administrator',
+  'webmaster',
+  'hostmaster',
+  'postmaster',
+  'ops',
+  'operations',
+  'devops',
+  'engineering',
+  'eng',
+  'product',
+  'feedback',
+  'careers',
+  'jobs',
+  'hr',
+  'recruiting',
+  'talent',
+  'people',
+  'ir',
+  'investors',
+  'governance',
+  'board',
+  'founders',
+  'executive',
+  'exec',
+  'leadership',
+  'events',
+  'marketing',
+  'growth',
+  'community',
+  'api',
+  'developers',
+  'dev',
+  'status',
+  'noc',
+  'desk',
+  'dept',
+  'department',
+]);
+
+const B2B_QUALIFIER_SUBTOKENS = new Set([
+  'customer',
+  'customers',
+  'tech',
+  'technical',
+  'partner',
+  'channel',
+  'corporate',
+  'corp',
+  'global',
+  'regional',
+  'us',
+  'eu',
+  'uk',
+  'apac',
+  'emea',
+  'amer',
+  'b2b',
+  'client',
+  'clients',
+  'vendor',
+  'vendors',
+  'supplier',
+  'suppliers',
+  'public',
+  'investor',
+  'data',
+  'protection',
+  'bug',
+  'group',
+  'questions',
+  'policy',
+  'requests',
+  'reports',
+  'aggregate',
+  'alerts',
+  'response',
+]);
+
+const DMARC_TELEMETRY_SUBTOKENS = new Set([
+  'dmarc',
+  'rua',
+  'ruf',
+  'forensics',
+  'spf',
+  'tls',
+  'rpt',
+]);
+
+const RESERVED_GITHUB_NON_PROFILE_PATHS = new Set([
+  'login',
+  'signup',
+  'pricing',
+  'features',
+  'about',
+  'why-github',
+  'account',
+  'session',
+  'join',
+  'new',
+  'organizations',
+  'education',
+  'nonprofit',
+  'git-guides',
+  'customer-terms',
+  'trust-center',
+  'newsroom',
+  'blog',
+  'diversity',
+  'sustainability',
+  'social-impact',
+  'security',
+  'settings',
+  'marketplace',
+  'sponsors',
+  'orgs',
+  'topics',
+  'collections',
+  'events',
+  'trending',
+  'readme',
+  'customer-stories',
+  'enterprise',
+  'mobile',
+  'copilot',
+  'codespaces',
+  'notifications',
+  'pulls',
+  'issues',
+  'explore',
+  'search',
+  'site',
+  'platform',
+  'solutions',
+  'resources',
+  'open-source',
+  'services',
+  'team',
+  'contact',
+  'premium-support',
+  'fluidicon.png',
+]);
+
+const RESERVED_X_NON_PROFILE_PATHS = new Set([
+  'intent',
+  'share',
+  'home',
+  'explore',
+  'search',
+  'login',
+  'signup',
+  'i',
+  'settings',
+  'privacy',
+  'tos',
+  'hashtag',
+]);
 
 export const CURATED_B2B_DOMAIN_DIRECTORY = Object.freeze({
   'stripe.com': {
@@ -458,59 +703,82 @@ export function classifyContactEmailRole(email, labelHint = '') {
   const localPart = (cleanEmail.split('@')[0] || '').replace(/[^a-z0-9._-]/g, '');
   const hint = String(labelHint ?? '').trim().toLowerCase();
 
-  const strippedRoleToken = localPart.replace(
-    /[._-](?:team|dept|department|desk|office|group|ops|support|inquiries|enquiries|reports|requests|questions|policy|response|alerts|notices|us|global|eu|uk|apac|amer|emea)$/,
-    ''
-  );
-
-  const isExactRoleToken = (tok) =>
-    /^(?:security|sec|psirt|csirt|soc|vuln|vulnerability|bugbounty|bounty|abuse|cert|infosec|trust|privacy|dpo|dataprotection|data-protection|gdpr|ccpa|privacyquestions|privacypolicy|billing|finance|accounts|accounting|ap|ar|invoicing|invoices|payments|tax|vat|treasury|procurement|legal|compliance|dmca|copyright|trademark|subpoena|lawenforcement|counsel|notices|terms|support|help|helpdesk|care|customerservice|customer-service|customercare|success|customersuccess|service|sales|enterprise|partners|partnerships|bd|bizdev|deals|solutions|commercial|revenue|press|media|pr|communications|comms|news|newsroom|analyst|info|contact|contactus|contact-us|hello|hi|office|team|hq|inquiries|enquiries|enquiry|general|admin|administrator|webmaster|hostmaster|ops|operations|devops|engineering|eng|product|feedback|careers|jobs|hr|recruiting|talent|people|ir|investors|governance|board|founders|executive|exec|leadership|events|marketing|growth|community|api|developers|dev|status|noc|dmarc|dmarc-reports)$/.test(
-      tok
-    );
-
-  if (!isExactRoleToken(localPart) && !isExactRoleToken(strippedRoleToken)) {
+  const subTokens = localPart.split(/[._-]+/).filter(Boolean);
+  if (subTokens.length === 0 || subTokens.length > 5) {
     return 'PERSONAL_EXCLUDED';
   }
-  const roleToken = isExactRoleToken(localPart) ? localPart : strippedRoleToken;
+  const hasDmarcTelemetryToken = subTokens.some((tok) => DMARC_TELEMETRY_SUBTOKENS.has(tok));
+  if (hasDmarcTelemetryToken) {
+    const allDmarcTokensAllowed = subTokens.every(
+      (tok) =>
+        CORE_B2B_ROLE_SUBTOKENS.has(tok) ||
+        B2B_QUALIFIER_SUBTOKENS.has(tok) ||
+        DMARC_TELEMETRY_SUBTOKENS.has(tok)
+    );
+    return allDmarcTokensAllowed ? 'DMARC_REPORTING' : 'PERSONAL_EXCLUDED';
+  }
+  const allTokensAllowed = subTokens.every(
+    (tok) => CORE_B2B_ROLE_SUBTOKENS.has(tok) || B2B_QUALIFIER_SUBTOKENS.has(tok)
+  );
+  const hasCoreRoleToken =
+    subTokens.some((tok) => CORE_B2B_ROLE_SUBTOKENS.has(tok)) ||
+    (subTokens.includes('data') && subTokens.includes('protection'));
+  if (!allTokensAllowed || !hasCoreRoleToken) {
+    return 'PERSONAL_EXCLUDED';
+  }
+
+  const hasSubToken = (re) => subTokens.some((tok) => re.test(tok));
 
   if (
-    /^(?:security|sec|psirt|csirt|soc|vuln|vulnerability|bugbounty|bounty|abuse|cert|infosec|trust)$/.test(roleToken) ||
+    hasSubToken(
+      /^(?:security|sec|psirt|csirt|soc|vuln|vulnerability|bugbounty|bounty|bug|abuse|cert|infosec|trust|disclosure)$/
+    ) ||
     /\b(?:security|vulnerability|psirt|csirt|bug\s*bounty|abuse)\b/.test(hint)
   ) {
     return 'SECURITY';
   }
   if (
-    /^(?:privacy|dpo|dataprotection|data-protection|gdpr|ccpa|privacyquestions|privacypolicy)$/.test(roleToken) ||
+    hasSubToken(/^(?:privacy|dpo|dataprotection|gdpr|ccpa|privacyquestions|privacypolicy)$/) ||
+    (subTokens.includes('data') && subTokens.includes('protection')) ||
     /\b(?:privacy|dpo|data\s*protection|gdpr|ccpa)\b/.test(hint)
   ) {
     return 'PRIVACY_DPO';
   }
   if (
-    /^(?:billing|finance|accounts|accounting|ap|ar|invoicing|invoices|payments|tax|vat|treasury|procurement)$/.test(roleToken) ||
+    hasSubToken(
+      /^(?:billing|finance|accounts|accounting|payable|receivable|ap|ar|invoicing|invoices|payments|tax|vat|treasury|procurement)$/
+    ) ||
     /\b(?:billing|finance|invoic|accounts\s*payable|tax|vat)\b/.test(hint)
   ) {
     return 'BILLING_FINANCE';
   }
   if (
-    /^(?:legal|compliance|dmca|copyright|trademark|subpoena|lawenforcement|counsel|notices|terms)$/.test(roleToken) ||
+    hasSubToken(
+      /^(?:legal|compliance|dmca|copyright|trademark|subpoena|lawenforcement|counsel|notices|terms)$/
+    ) ||
     /\b(?:legal|compliance|dmca|counsel|trademark)\b/.test(hint)
   ) {
     return 'LEGAL';
   }
   if (
-    /^(?:support|help|helpdesk|care|customerservice|customer-service|customercare|success|customersuccess|service)$/.test(roleToken) ||
+    hasSubToken(
+      /^(?:support|help|helpdesk|care|customerservice|customercare|success|customersuccess|service)$/
+    ) ||
     /\b(?:support|helpdesk|customer\s*service|customer\s*care|technical\s*support)\b/.test(hint)
   ) {
     return 'SUPPORT';
   }
   if (
-    /^(?:sales|enterprise|partners|partnerships|bd|bizdev|deals|solutions|commercial|revenue)$/.test(roleToken) ||
+    hasSubToken(
+      /^(?:sales|enterprise|partners|partnerships|bd|bizdev|deals|solutions|commercial|revenue)$/
+    ) ||
     /\b(?:sales|enterprise|partnership|business\s*development)\b/.test(hint)
   ) {
     return 'SALES';
   }
   if (
-    /^(?:press|media|pr|communications|comms|news|newsroom|analyst)$/.test(roleToken) ||
+    hasSubToken(/^(?:press|media|pr|communications|comms|news|newsroom|analyst)$/) ||
+    (subTokens.includes('public') && subTokens.includes('relations')) ||
     /\b(?:press|media|public\s*relations|newsroom)\b/.test(hint)
   ) {
     return 'PRESS';
@@ -534,7 +802,8 @@ export function validateExtractedB2bEmail(rawEmail, labelHint = '') {
     .trim()
     .toLowerCase()
     .replace(/^[<([\s'"]+/, '')
-    .replace(/[.,;:)>\]'"]+$/, '');
+    .replace(/[.,;:)>\]'"]+$/, '')
+    .replace(/![0-9]+[kmgt]?$/i, '');
   const parts = cleaned.split('@');
   if (parts.length !== 2) {
     return { valid: false, reason: 'MALFORMED_EMAIL' };
@@ -565,6 +834,16 @@ export function validateExtractedB2bEmail(rawEmail, labelHint = '') {
   const classifiedRole = classifyContactEmailRole(fullEmail, labelHint);
   if (classifiedRole === 'PERSONAL_EXCLUDED') {
     return { valid: false, reason: 'PERSONAL_MAILBOX_EXCLUDED_BY_B2B_ROLE_POLICY' };
+  }
+  if (
+    classifiedRole === 'DMARC_REPORTING' &&
+    String(labelHint || '').trim().toLowerCase() !== 'dmarc'
+  ) {
+    return {
+      valid: false,
+      reason: 'AUTOMATED_DMARC_REPORT_INBOX_EXCLUDED',
+      role: 'DMARC_REPORTING',
+    };
   }
   return {
     valid: true,
@@ -610,7 +889,43 @@ export function extractContactsFromHtmlOrText(rawContent, sourceLabel = 'HTML_PA
     if (decoded) addCandidate(decoded, '', 'CLOUDFLARE_CFEMAIL_DECODED');
   }
 
-  // 2. Schema.org JSON-LD ContactPoint blocks
+  // 2. Schema.org JSON-LD ContactPoint & Organization sameAs blocks
+  const socialProfiles = {};
+  const tryAcceptSocialUrl = (rawSocialUrl) => {
+    const cleanUrl = String(rawSocialUrl ?? '').trim().replace(/\/+$/, '');
+    if (
+      !cleanUrl ||
+      FALSE_POSITIVE_ASSET_TLD_RE.test(cleanUrl) ||
+      /\.(?:json|xml|txt)$/i.test(cleanUrl)
+    ) {
+      return;
+    }
+    const liMatch = cleanUrl.match(/^https:\/\/(?:www\.)?linkedin\.com\/company\/([a-zA-Z0-9_-]+)$/i);
+    if (liMatch && !socialProfiles.linkedin) {
+      socialProfiles.linkedin = liMatch[0];
+      return;
+    }
+    const ghMatch = cleanUrl.match(/^https:\/\/github\.com\/([a-zA-Z0-9_.-]+)$/i);
+    if (ghMatch && !socialProfiles.github) {
+      const slug = ghMatch[1].toLowerCase();
+      if (
+        !RESERVED_GITHUB_NON_PROFILE_PATHS.has(slug) &&
+        !FALSE_POSITIVE_ASSET_TLD_RE.test(slug) &&
+        !/\.(?:json|xml|txt)$/i.test(slug)
+      ) {
+        socialProfiles.github = ghMatch[0];
+      }
+      return;
+    }
+    const xMatch = cleanUrl.match(/^https:\/\/(?:x\.com|twitter\.com)\/([a-zA-Z0-9_]{2,32})$/i);
+    if (xMatch && !socialProfiles.x) {
+      const handle = xMatch[1].toLowerCase();
+      if (!RESERVED_X_NON_PROFILE_PATHS.has(handle)) {
+        socialProfiles.x = `https://x.com/${xMatch[1]}`;
+      }
+    }
+  };
+
   const scriptBlocks = text.matchAll(
     /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
   );
@@ -637,14 +952,26 @@ export function extractContactsFromHtmlOrText(rawContent, sourceLabel = 'HTML_PA
             addCandidate(cp.email, cp.contactType || cp.name || '', 'SCHEMA_CONTACT_POINT');
           }
         }
+        const sameAsList = Array.isArray(node.sameAs)
+          ? node.sameAs
+          : typeof node.sameAs === 'string'
+            ? [node.sameAs]
+            : [];
+        for (const sameUrl of sameAsList) {
+          tryAcceptSocialUrl(sameUrl);
+        }
       }
     } catch {
       // Ignore malformed JSON-LD blocks
     }
   }
 
-  // 3. De-obfuscate HTML entities & bracketed [at] / (at) patterns
+  // 3. De-obfuscate HTML entities & bracketed [at] / (at) patterns (replacing non-anchor HTML tags with spaces to prevent cross-tag word concatenation)
   const entityNormalized = text
+    .replace(
+      /<\/?(?:p|div|span|li|ul|ol|td|tr|th|table|br|hr|h[1-6]|strong|em|b|i|code|pre|section|article|header|footer|main|nav)\b[^<>]*>/gi,
+      ' '
+    )
     .replace(/&#64;|&#x40;|&commat;/gi, '@')
     .replace(/&#46;|&#x2e;|&period;/gi, '.');
 
@@ -661,16 +988,17 @@ export function extractContactsFromHtmlOrText(rawContent, sourceLabel = 'HTML_PA
   }
 
   // 4. Extract canonical social links (LinkedIn, GitHub, X/Twitter)
-  const socialProfiles = {};
-  const liMatch = text.match(/https:\/\/(?:www\.)?linkedin\.com\/company\/[a-zA-Z0-9_-]+/i);
-  if (liMatch) socialProfiles.linkedin = liMatch[0];
-  const ghMatch = text.match(/https:\/\/github\.com\/[a-zA-Z0-9_.-]+/i);
-  if (ghMatch && !/\/(?:login|signup|pricing|features|about|security|settings)$/i.test(ghMatch[0])) {
-    socialProfiles.github = ghMatch[0];
+  for (const liMatch of text.matchAll(/https:\/\/(?:www\.)?linkedin\.com\/company\/[a-zA-Z0-9_-]+\/?(?=["'\s<>)]|$)/gi)) {
+    tryAcceptSocialUrl(liMatch[0]);
+    if (socialProfiles.linkedin) break;
   }
-  const xMatch = text.match(/https:\/\/(?:x\.com|twitter\.com)\/[a-zA-Z0-9_]{2,32}/i);
-  if (xMatch && !/\/(?:intent|share|home|explore|search)$/i.test(xMatch[0])) {
-    socialProfiles.x = xMatch[0].replace('twitter.com', 'x.com');
+  for (const ghMatch of text.matchAll(/https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/?(?=["'\s<>)]|$)/gi)) {
+    tryAcceptSocialUrl(ghMatch[0]);
+    if (socialProfiles.github) break;
+  }
+  for (const xMatch of text.matchAll(/https:\/\/(?:x\.com|twitter\.com)\/[a-zA-Z0-9_.]{2,32}\/?(?=["'\s<>)]|$)/gi)) {
+    tryAcceptSocialUrl(xMatch[0]);
+    if (socialProfiles.x) break;
   }
 
   return {
@@ -902,6 +1230,8 @@ export function evaluateDnsDeliverabilityPosture({
   let dmarcSubdomainPolicy = null;
   let dmarcPct = 100;
   let dmarcRua = null;
+  let dmarcRuf = null;
+  const dmarcEmails = [];
   if (dmarcRecord) {
     const pMatch = dmarcRecord.match(/(?:^|;)\s*p\s*=\s*([a-zA-Z]+)/i);
     if (pMatch) {
@@ -916,6 +1246,22 @@ export function evaluateDnsDeliverabilityPosture({
     if (pctMatch) dmarcPct = Math.min(100, Math.max(0, Number(pctMatch[1])));
     const ruaMatch = dmarcRecord.match(/(?:^|;)\s*rua\s*=\s*([^;]+)/i);
     if (ruaMatch) dmarcRua = ruaMatch[1].trim();
+    const rufMatch = dmarcRecord.match(/(?:^|;)\s*ruf\s*=\s*([^;]+)/i);
+    if (rufMatch) dmarcRuf = rufMatch[1].trim();
+
+    const seenDmarcEmails = new Set();
+    for (const rawList of [dmarcRua, dmarcRuf]) {
+      if (!rawList) continue;
+      for (const token of rawList.split(',')) {
+        const trimmedUri = token.trim();
+        if (!/^mailto:/i.test(trimmedUri) && !trimmedUri.includes('@')) continue;
+        const validated = validateExtractedB2bEmail(trimmedUri, 'dmarc');
+        if (validated.valid && !seenDmarcEmails.has(validated.email)) {
+          seenDmarcEmails.add(validated.email);
+          dmarcEmails.push(validated.email);
+        }
+      }
+    }
   }
 
   let deliverabilityGrade = 'F';
@@ -963,6 +1309,8 @@ export function evaluateDnsDeliverabilityPosture({
     dmarcSubdomainPolicy,
     dmarcPct,
     dmarcRua,
+    dmarcRuf,
+    dmarcEmails,
     deliverabilityGrade,
   };
 }
@@ -1210,21 +1558,43 @@ export async function fetchHttpsTextBounded(
 ) {
   let currentUrl = rawUrl;
   const maxRedirects = 3;
+  const rawTimeoutMs = timeoutMs === undefined ? 3500 : Number(timeoutMs);
+  if (!Number.isFinite(rawTimeoutMs) || rawTimeoutMs <= 0) {
+    return { ok: false, status: 0, reason: 'TIMEOUT', text: '' };
+  }
+  const totalBudgetMs = Math.max(1, Math.min(8000, rawTimeoutMs));
+  const fetchDeadlineAtMs = Date.now() + totalBudgetMs;
   for (let hop = 0; hop <= maxRedirects; hop += 1) {
+    const dnsBudgetMs = fetchDeadlineAtMs - Date.now();
+    if (dnsBudgetMs <= 0) {
+      return { ok: false, status: 0, reason: 'TIMEOUT', text: '' };
+    }
     const ssrf = verifyEgressUrlSsrfSafe(currentUrl);
     if (!ssrf.safe) {
       return { ok: false, status: 0, reason: `SSRF_BLOCKED:${ssrf.reason}`, text: '' };
     }
     let pinnedAgent = null;
     if (typeof dnsLookup === 'function' || fetchImpl === globalThis.fetch) {
-      const dnsCheck = await resolveAndVerifyPublicHostname(ssrf.hostname, dnsLookup);
+      const dnsCheck = await resolveAndVerifyPublicHostname(
+        ssrf.hostname,
+        dnsLookup,
+        dnsBudgetMs
+      );
       if (!dnsCheck.safe) {
         return { ok: false, status: 0, reason: `SSRF_DNS_BLOCKED:${dnsCheck.reason}`, text: '' };
       }
-      pinnedAgent = createEphemeralHttpsAgent(timeoutMs, dnsCheck.addresses?.[0] || null);
+      const postDnsBudgetMs = fetchDeadlineAtMs - Date.now();
+      if (postDnsBudgetMs <= 0) {
+        return { ok: false, status: 0, reason: 'TIMEOUT', text: '' };
+      }
+      pinnedAgent = createEphemeralHttpsAgent(postDnsBudgetMs, dnsCheck.addresses?.[0] || null);
+    }
+    const httpBudgetMs = fetchDeadlineAtMs - Date.now();
+    if (httpBudgetMs <= 0) {
+      return { ok: false, status: 0, reason: 'TIMEOUT', text: '' };
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(250, Math.min(8000, timeoutMs)));
+    const timer = setTimeout(() => controller.abort(), httpBudgetMs);
     try {
       const reqHeaders = {
         accept: acceptHeader,
@@ -1237,7 +1607,7 @@ export async function fetchHttpsTextBounded(
               agent: pinnedAgent,
               headers: reqHeaders,
               signal: controller.signal,
-              timeoutMs,
+              timeoutMs: httpBudgetMs,
             })
           : await fetchImpl(ssrf.normalizedUrl, {
               method: 'GET',
@@ -1298,11 +1668,16 @@ export async function queryDohJsonRecords(
     `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(cleanName)}&type=${encodeURIComponent(upperType)}`,
     `https://dns.google/resolve?name=${encodeURIComponent(cleanName)}&type=${encodeURIComponent(upperType)}`,
   ];
+  const rawTimeoutMs = timeoutMs === undefined ? 2500 : Number(timeoutMs);
+  if (!Number.isFinite(rawTimeoutMs) || rawTimeoutMs <= 0) return [];
+  const dohDeadlineAtMs = Date.now() + Math.max(1, Math.min(8000, rawTimeoutMs));
   for (const url of endpoints) {
+    const remMs = dohDeadlineAtMs - Date.now();
+    if (remMs <= 0) break;
     const res = await fetchHttpsTextBounded(url, {
       fetchImpl,
       dnsLookup,
-      timeoutMs,
+      timeoutMs: remMs,
       maxBytes: 65536,
       acceptHeader: 'application/dns-json',
     });
@@ -1333,6 +1708,7 @@ export async function enrichSingleB2bDomain(
     fetchImpl = globalThis.fetch,
     dnsLookup = undefined,
     nowMs = Date.now(),
+    deadlineAtMs = undefined,
     preferCurated = false,
   } = {}
 ) {
@@ -1344,8 +1720,18 @@ export async function enrichSingleB2bDomain(
   const normalizedRoleFilter = String(roleFilter || 'ANY').trim().toUpperCase();
   const curated = preferCurated === true ? CURATED_B2B_DOMAIN_DIRECTORY[domain] : null;
 
+  const numericDeadlineAtMs = Number(deadlineAtMs);
+  const getRemainingBudgetMs = (capMs) => {
+    if (!Number.isFinite(numericDeadlineAtMs) || numericDeadlineAtMs <= 0) return capMs;
+    return Math.min(capMs, Math.max(0, numericDeadlineAtMs - Date.now()));
+  };
+
   if (!curated && (typeof dnsLookup === 'function' || fetchImpl === globalThis.fetch)) {
-    const dnsCheck = await resolveAndVerifyPublicHostname(domain, dnsLookup);
+    const dnsCheck = await resolveAndVerifyPublicHostname(
+      domain,
+      dnsLookup,
+      getRemainingBudgetMs(2500)
+    );
     if (!dnsCheck.safe) {
       return {
         ok: false,
@@ -1371,41 +1757,162 @@ export async function enrichSingleB2bDomain(
   let socialProfiles = curated?.socialProfiles ? { ...curated.socialProfiles } : {};
   let resolutionSource = curated ? 'SAMPLE_FIXTURE_DIRECTORY' : 'LIVE_HTTPS_AND_DOH_PROBE';
 
+  const isFirstPartyDomainEmail = (emailStr) => {
+    const emailDom = String(emailStr || '').split('@')[1] || '';
+    return emailDom === domain || emailDom.endsWith(`.${domain}`);
+  };
+
   if (!curated && typeof fetchImpl === 'function') {
-    if (includeDnsPosture) {
-      const [mxAns, txtAns, dmarcAns] = await Promise.all([
-        queryDohJsonRecords(domain, 'MX', { fetchImpl, dnsLookup }),
-        queryDohJsonRecords(domain, 'TXT', { fetchImpl, dnsLookup }),
-        queryDohJsonRecords(`_dmarc.${domain}`, 'TXT', { fetchImpl, dnsLookup }),
-      ]);
-      mxHosts = mxAns;
-      txtRecords = txtAns;
-      dmarcTxtRecords = dmarcAns;
-    }
-    if (includeSecurityTxt) {
-      const secRes = await fetchHttpsTextBounded(`https://${domain}/.well-known/security.txt`, {
+    const [dnsTuple, secWellKnownRes, homeRes] = await Promise.all([
+      includeDnsPosture
+        ? Promise.all([
+            queryDohJsonRecords(domain, 'MX', {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: getRemainingBudgetMs(2500),
+            }),
+            queryDohJsonRecords(domain, 'TXT', {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: getRemainingBudgetMs(2500),
+            }),
+            queryDohJsonRecords(`_dmarc.${domain}`, 'TXT', {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: getRemainingBudgetMs(2500),
+            }),
+          ])
+        : Promise.resolve([[], [], []]),
+      includeSecurityTxt
+        ? fetchHttpsTextBounded(`https://${domain}/.well-known/security.txt`, {
+            fetchImpl,
+            dnsLookup,
+            timeoutMs: getRemainingBudgetMs(3000),
+          })
+        : Promise.resolve({ ok: false, text: '' }),
+      fetchHttpsTextBounded(`https://${domain}`, {
         fetchImpl,
         dnsLookup,
-        timeoutMs: 3000,
-      });
-      if (secRes.ok && secRes.text) {
-        securityTxtRaw = secRes.text;
-      }
+        timeoutMs: getRemainingBudgetMs(3500),
+      }),
+    ]);
+
+    if (includeDnsPosture) {
+      [mxHosts, txtRecords, dmarcTxtRecords] = dnsTuple;
     }
-    const homeRes = await fetchHttpsTextBounded(`https://${domain}`, {
-      fetchImpl,
-      dnsLookup,
-      timeoutMs: 3500,
-    });
+    if (includeSecurityTxt && secWellKnownRes.ok && secWellKnownRes.text) {
+      securityTxtRaw = secWellKnownRes.text;
+    }
     if (homeRes.ok && homeRes.text) {
       const extracted = extractContactsFromHtmlOrText(homeRes.text, 'HOMEPAGE_HTML');
-      rawContacts.push(...extracted.contacts);
+      for (const c of extracted.contacts) {
+        if (isFirstPartyDomainEmail(c.email) && !rawContacts.some((ex) => ex.email === c.email)) {
+          rawContacts.push(c);
+        }
+      }
       socialProfiles = { ...socialProfiles, ...extracted.socialProfiles };
-      const titleMatch = homeRes.text.match(/<title[^>]*>([^<]{2,80})<\/title>/i);
+      const titleMatch = homeRes.text.match(/<title[^>]*>([^<]{2,120})<\/title>/i);
       if (titleMatch) {
-        const cleanTitle = titleMatch[1].split(/[|\-\u2013\u2014]/)[0].trim();
+        const decodedTitle = titleMatch[1]
+          .replace(/&amp;/gi, '&')
+          .replace(/&#x27;|&#39;|&apos;/gi, "'")
+          .replace(/&quot;/gi, '"')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const cleanTitle = decodedTitle.split(/\s*[:|\-\u2013\u2014\u2022\u00b7]\s*/)[0].trim();
         if (cleanTitle.length >= 2 && cleanTitle.length <= 48) {
           organizationName = cleanTitle;
+        }
+      }
+    }
+
+    const secParsedInitial = includeSecurityTxt
+      ? parseRfc9116SecurityTxt(securityTxtRaw, nowMs)
+      : { found: true, contacts: [], isExpired: false };
+    const hasInitialSecEmail =
+      !secParsedInitial.isExpired &&
+      (secParsedInitial.contacts || []).some(
+        (u) => (/^mailto:/i.test(u) || u.includes('@')) && validateExtractedB2bEmail(u).valid
+      );
+    const needsSecFallback = includeSecurityTxt && !secParsedInitial.found;
+    const needsHtmlContactFallback = rawContacts.length === 0 && !hasInitialSecEmail;
+
+    if ((needsSecFallback || needsHtmlContactFallback) && getRemainingBudgetMs(2200) >= 800) {
+      const fbTimeout = getRemainingBudgetMs(2200);
+      const [
+        secRootRes,
+        secWwwRes,
+        contactPageRes,
+        privacyPageRes,
+        pressPageRes,
+        sitePrivacyRes,
+      ] = await Promise.all([
+        needsSecFallback
+          ? fetchHttpsTextBounded(`https://${domain}/security.txt`, {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: fbTimeout,
+            })
+          : Promise.resolve({ ok: false, text: '' }),
+        needsSecFallback
+          ? fetchHttpsTextBounded(`https://www.${domain}/.well-known/security.txt`, {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: fbTimeout,
+            })
+          : Promise.resolve({ ok: false, text: '' }),
+        needsHtmlContactFallback
+          ? fetchHttpsTextBounded(`https://${domain}/contact`, {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: fbTimeout,
+            })
+          : Promise.resolve({ ok: false, text: '' }),
+        needsHtmlContactFallback
+          ? fetchHttpsTextBounded(`https://${domain}/privacy`, {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: fbTimeout,
+            })
+          : Promise.resolve({ ok: false, text: '' }),
+        needsHtmlContactFallback
+          ? fetchHttpsTextBounded(`https://${domain}/press`, {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: fbTimeout,
+            })
+          : Promise.resolve({ ok: false, text: '' }),
+        needsHtmlContactFallback
+          ? fetchHttpsTextBounded(`https://${domain}/site/privacy`, {
+              fetchImpl,
+              dnsLookup,
+              timeoutMs: fbTimeout,
+            })
+          : Promise.resolve({ ok: false, text: '' }),
+      ]);
+
+      if (needsSecFallback) {
+        if (secRootRes.ok && secRootRes.text && parseRfc9116SecurityTxt(secRootRes.text, nowMs).found) {
+          securityTxtRaw = secRootRes.text;
+        } else if (secWwwRes.ok && secWwwRes.text && parseRfc9116SecurityTxt(secWwwRes.text, nowMs).found) {
+          securityTxtRaw = secWwwRes.text;
+        }
+      }
+
+      for (const [pageRes, pageSource] of [
+        [contactPageRes, 'CONTACT_PAGE'],
+        [privacyPageRes, 'PRIVACY_PAGE'],
+        [pressPageRes, 'PRESS_PAGE'],
+        [sitePrivacyRes, 'PRIVACY_PAGE'],
+      ]) {
+        if (pageRes.ok && pageRes.text) {
+          const pageExt = extractContactsFromHtmlOrText(pageRes.text, pageSource);
+          for (const c of pageExt.contacts) {
+            if (isFirstPartyDomainEmail(c.email) && !rawContacts.some((ex) => ex.email === c.email)) {
+              rawContacts.push(c);
+            }
+          }
+          socialProfiles = { ...pageExt.socialProfiles, ...socialProfiles };
         }
       }
     }
@@ -1439,17 +1946,12 @@ export async function enrichSingleB2bDomain(
             email: check.email,
             role: 'SECURITY',
             source: 'RFC9116_SECURITY_TXT',
-            verified: !curated && securityTxt.status === 'VALID_ACTIVE',
+            verified: !curated && !securityTxt.isExpired,
           });
         }
       }
     }
   }
-
-  const filteredContacts =
-    normalizedRoleFilter === 'ANY'
-      ? rawContacts
-      : rawContacts.filter((c) => c.role === normalizedRoleFilter);
 
   const dnsPosture = includeDnsPosture
     ? evaluateDnsDeliverabilityPosture({
@@ -1469,8 +1971,15 @@ export async function enrichSingleB2bDomain(
         dmarcSubdomainPolicy: null,
         dmarcPct: 100,
         dmarcRua: null,
+        dmarcRuf: null,
+        dmarcEmails: [],
         deliverabilityGrade: 'N/A',
       };
+
+  const filteredContacts =
+    normalizedRoleFilter === 'ANY'
+      ? rawContacts
+      : rawContacts.filter((c) => c.role === normalizedRoleFilter);
 
   const primaryContact = filteredContacts[0] || rawContacts[0] || null;
   const hasEnrichedSignal =
@@ -1570,7 +2079,26 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
   const sliceDomains = allDomains.slice(startOffset, startOffset + pageSize);
   const items = [];
   const itemNextOffsets = [];
+  const batchStartedAtMs = Date.now();
+  const deadlineMs =
+    Number.isFinite(Number(options?.deadlineMs)) && Number(options.deadlineMs) > 0
+      ? Number(options.deadlineMs)
+      : DEFAULT_RUN_DEADLINE_MS;
+  const deadlineAtMs =
+    Number.isFinite(Number(options?.deadlineAtMs)) && Number(options.deadlineAtMs) > 0
+      ? Number(options.deadlineAtMs)
+      : batchStartedAtMs + deadlineMs;
+  let deadlineReached = false;
+  let lastAttemptedOffset = startOffset;
+
   for (let sliceIdx = 0; sliceIdx < sliceDomains.length; sliceIdx += 1) {
+    if (
+      sliceIdx > 0 &&
+      (Date.now() >= deadlineAtMs || deadlineAtMs - Date.now() < 2500)
+    ) {
+      deadlineReached = true;
+      break;
+    }
     const dom = sliceDomains[sliceIdx];
     const res = await enrichSingleB2bDomain(dom, {
       roleFilter,
@@ -1579,15 +2107,17 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
       fetchImpl: options?.fetchImpl || globalThis.fetch,
       dnsLookup: options?.dnsLookup,
       nowMs: options?.nowMs || Date.now(),
+      deadlineAtMs,
       preferCurated: options?.preferCurated === true || input?.useSampleFixtures === true,
     });
+    lastAttemptedOffset = startOffset + sliceIdx + 1;
     if (res.ok && res.profile) {
       items.push(res.profile);
       itemNextOffsets.push(startOffset + sliceIdx + 1);
     }
   }
 
-  const nextOffset = startOffset + sliceDomains.length;
+  const nextOffset = deadlineReached ? lastAttemptedOffset : startOffset + sliceDomains.length;
   const hasMore = nextOffset < allDomains.length;
   const nextPageToken = hasMore
     ? encodeCompositeCursor({
@@ -1596,6 +2126,8 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
         scopeHash,
       })
     : null;
+  const paginationStatus =
+    deadlineReached && hasMore ? 'DEADLINE_REACHED_HAS_MORE' : hasMore ? 'HAS_MORE' : 'COMPLETE';
 
   const nonEmptyCount = items.filter((item) => !item.emptyResult).length;
 
@@ -1616,7 +2148,7 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
       totalDomainsCount: allDomains.length,
       hasMore,
       nextPageToken,
-      paginationStatus: hasMore ? 'HAS_MORE' : 'COMPLETE',
+      paginationStatus,
     },
     cursorResumeContext: {
       startOffset,

@@ -348,6 +348,7 @@ export async function createContactPulsePreviewServer(options = {}) {
         try {
           const rpcResponse = await handleMcpJsonRpcRequest(parsedBody, {
             fetchImpl: options.fetchImpl,
+            dnsLookup: options.dnsLookup,
             preferCurated: options.preferCurated === true,
           });
           if (res.headersSent || res.writableEnded) return;

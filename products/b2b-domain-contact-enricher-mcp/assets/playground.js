@@ -304,41 +304,66 @@
       `${item.organizationName || item.domain} (${item.domain})`
     );
     const badgesWrap = createEl('div', 'job-tech-row');
-    const posture = item.dnsDeliverability || {};
+    const posture = item.dnsPosture || item.dnsDeliverability || {};
+    const grade = item.deliverabilityGrade || posture.deliverabilityGrade || posture.grade || 'N/A';
+    const gateway = item.emailGatewayProvider || posture.emailGatewayProvider || 'NONE';
+    const spf = item.spfAllMechanism || posture.spfAllMechanism || posture.spfPolicy || 'MISSING';
+    const dmarc = item.dmarcPolicy || posture.dmarcPolicy || 'MISSING';
     badgesWrap.appendChild(
       createEl(
         'span',
         'badge badge-emerald',
-        `Readiness: ${posture.deliverabilityReadinessScore ?? 0}/100 (${posture.grade || 'N/A'})`
+        `Grade: ${grade}`
       )
     );
     badgesWrap.appendChild(
-      createEl('span', 'badge badge-cyan', `Gateway: ${posture.emailGatewayProvider || 'NONE'}`)
+      createEl('span', 'badge badge-cyan', `Gateway: ${gateway}`)
     );
     header.appendChild(title);
     header.appendChild(badgesWrap);
     card.appendChild(header);
 
     const secTxt = item.securityTxt || {};
+    const contactsList = Array.isArray(item.contacts)
+      ? item.contacts
+      : Array.isArray(secTxt.contacts)
+        ? secTxt.contacts.map((u) => ({
+            email: String(u).replace(/^mailto:/i, ''),
+            role: 'SECURITY',
+          }))
+        : [];
+    const contactsCount = item.contactsCount ?? item.contactCount ?? contactsList.length;
+    const profileId = item.profileId || `DOMAIN:${item.domain}`;
     const meta = createEl(
       'div',
       'job-meta',
-      `ID: ${item.profileId} | Contacts: ${item.contactCount ?? 0} | SPF: ${posture.spfPolicy || 'MISSING'} | DMARC: ${posture.dmarcPolicy || 'MISSING'} | RFC 9116 security.txt: ${secTxt.found ? 'FOUND' : 'NOT_FOUND'}`
+      `ID: ${profileId} | Contacts: ${contactsCount} | SPF: ${spf} | DMARC: ${dmarc} | RFC 9116 security.txt: ${secTxt.found ? 'FOUND' : 'NOT_FOUND'}`
     );
     card.appendChild(meta);
 
-    if (Array.isArray(item.contacts) && item.contacts.length > 0) {
+    if (contactsList.length > 0) {
       const contactsRow = createEl('div', 'job-tech-row');
-      for (const c of item.contacts) {
+      for (const c of contactsList) {
         const label = c.email
-          ? `${c.role}: ${c.email} (${c.confidenceScore}%)`
+          ? c.confidenceScore !== undefined
+            ? `${c.role}: ${c.email} (${c.confidenceScore}%)`
+            : `${c.role}: ${c.email}`
           : `${c.role}: ${c.contactUri || c.telephone || 'URI'}`;
         contactsRow.appendChild(createEl('span', 'badge', label));
       }
       card.appendChild(contactsRow);
     }
 
-    if (item.untrustedDomainExcerpt && item.untrustedDomainExcerpt.plainTextExcerpt) {
+    const plainTextSignal =
+      item.untrustedDomainExcerpt?.plainTextExcerpt ||
+      [
+        posture.spfRecord ? `SPF: ${posture.spfRecord}` : '',
+        posture.dmarcRecord ? `DMARC: ${posture.dmarcRecord}` : '',
+        secTxt.expiresAtIso ? `RFC 9116 Expires: ${secTxt.expiresAtIso}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+    if (plainTextSignal) {
       const excerptBox = createEl('div', 'job-excerpt-box');
       const excerptHeader = createEl('div', 'job-excerpt-header');
       excerptHeader.appendChild(
@@ -346,12 +371,16 @@
       );
       excerptBox.appendChild(excerptHeader);
       excerptBox.appendChild(
-        createEl('div', 'job-excerpt-body', item.untrustedDomainExcerpt.plainTextExcerpt)
+        createEl('div', 'job-excerpt-body', plainTextSignal)
       );
       card.appendChild(excerptBox);
     }
 
-    const policyUrl = secTxt.policyUrls?.[0] || item.canonicalWebsiteUrl;
+    const policyUrl =
+      secTxt.policyUrls?.[0] ||
+      item.canonicalUrl ||
+      item.canonicalWebsiteUrl ||
+      (item.domain ? `https://${item.domain}` : '');
     if (state.loadPreviewsOptIn && isSafeExternalHttpsUrl(policyUrl)) {
       const linksRow = createEl('div', 'job-links');
       const link = createEl('a', 'btn btn-secondary', 'Open Verified Domain / Policy URL');
@@ -387,29 +416,40 @@
       return;
     }
 
-    if (structured.email && structured.domain) {
+    if ((structured.evaluatedEmail || structured.email) && structured.domain) {
+      const emailAddr = structured.evaluatedEmail || structured.email;
+      const roleVal = structured.classifiedRole || structured.role || 'GENERAL';
+      const gradeVal = structured.deliverabilityGrade || structured.deliverabilityVerdict || 'CHECKED';
       const card = createEl('article', 'job-card');
       const header = createEl('div', 'job-card-header');
       header.appendChild(
-        createEl('div', 'job-title', `${structured.email} (${structured.role || 'GENERAL'})`)
+        createEl('div', 'job-title', `${emailAddr} (${roleVal})`)
       );
       header.appendChild(
         createEl(
           'span',
           'badge badge-emerald',
-          `${structured.deliverabilityVerdict || 'CHECKED'} (${structured.confidenceScore ?? 0}%)`
+          `Grade: ${gradeVal}`
         )
       );
       card.appendChild(header);
-      const posture = structured.dnsDeliverability || {};
+      const posture = structured.dnsPosture || structured.dnsDeliverability || {};
+      const gateway = structured.emailGatewayProvider || posture.emailGatewayProvider || 'NONE';
+      const spf = structured.spfAllMechanism || posture.spfAllMechanism || posture.spfPolicy || 'MISSING';
+      const dmarc = structured.dmarcPolicy || posture.dmarcPolicy || 'MISSING';
       card.appendChild(
         createEl(
           'div',
           'job-meta',
-          `Domain: ${structured.domain} | Role Email: ${structured.isRoleAccount ? 'YES' : 'NO'} | Gateway: ${posture.emailGatewayProvider || 'NONE'} | SPF: ${posture.spfPolicy || 'MISSING'} | DMARC: ${posture.dmarcPolicy || 'MISSING'}`
+          `Domain: ${structured.domain} | Role Email: ${structured.isRoleAccount ? 'YES' : 'NO'} | Gateway: ${gateway} | SPF: ${spf} | DMARC: ${dmarc}`
         )
       );
       els.cardsContainer.appendChild(card);
+      return;
+    }
+
+    if (structured.domain && (structured.dnsPosture || structured.securityTxt)) {
+      els.cardsContainer.appendChild(renderDomainProfileCard(structured));
       return;
     }
 
@@ -565,7 +605,7 @@
             ? structured.deliveredCount
             : structured.extractedCount !== undefined
               ? structured.extractedCount
-              : structured.domainProfile || structured.email
+              : structured.domainProfile || structured.evaluatedEmail || structured.email || structured.domain
                 ? 1
                 : 0;
       els.extractedCountValue.textContent = String(countVal);

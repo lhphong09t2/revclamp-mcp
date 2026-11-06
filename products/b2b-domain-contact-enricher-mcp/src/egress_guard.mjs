@@ -162,7 +162,11 @@ export const truncateUtf8Safe = sliceUtf8Safe;
  * @param {Function} [lookupFn]
  * @returns {Promise<{safe: boolean, hostname: string, addresses?: Array<{address: string, family: number}>, reason?: string}>}
  */
-export async function resolveAndVerifyPublicHostname(hostname, lookupFn = dns.promises.lookup) {
+export async function resolveAndVerifyPublicHostname(
+  hostname,
+  lookupFn = dns.promises.lookup,
+  timeoutMs = 2500
+) {
   const cleanHost = String(hostname ?? '').trim().toLowerCase().replace(/\.+$/, '');
   if (!cleanHost || net.isIP(cleanHost) !== 0) {
     return {
@@ -171,8 +175,25 @@ export async function resolveAndVerifyPublicHostname(hostname, lookupFn = dns.pr
       reason: `Host '${cleanHost}' must be a valid DNS domain name`,
     };
   }
+  const rawTimeoutMs = timeoutMs === undefined ? 2500 : Number(timeoutMs);
+  if (!Number.isFinite(rawTimeoutMs) || rawTimeoutMs <= 0) {
+    return {
+      safe: false,
+      hostname: cleanHost,
+      reason: `DNS lookup budget exhausted (${rawTimeoutMs}ms) for '${cleanHost}'`,
+    };
+  }
+  const boundedTimeoutMs = Math.max(1, Math.min(8000, rawTimeoutMs));
+  let timer = null;
   try {
-    const rawRecords = await lookupFn(cleanHost, { all: true, verbatim: true });
+    const rawRecords = await Promise.race([
+      lookupFn(cleanHost, { all: true, verbatim: true }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`DNS lookup timed out after ${boundedTimeoutMs}ms`));
+        }, boundedTimeoutMs);
+      }),
+    ]);
     const records = Array.isArray(rawRecords)
       ? rawRecords
       : rawRecords && typeof rawRecords === 'object' && rawRecords.address
@@ -209,6 +230,8 @@ export async function resolveAndVerifyPublicHostname(hostname, lookupFn = dns.pr
       hostname: cleanHost,
       reason: `DNS resolution failed for '${cleanHost}': ${err?.message || err}`,
     };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

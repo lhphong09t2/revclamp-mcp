@@ -41,7 +41,7 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'b2b-domain-contact-enricher-mcp',
   title: 'RevClamp ContactPulse - B2B Domain Contact, RFC 9116 & Deliverability Enricher',
-  version: '1.0.0',
+  version: '1.0.1',
   description:
     'Deterministic B2B domain contact, RFC 9116 /.well-known/security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher. Independent B2B intelligence tool by RevClamp.',
   websiteUrl: 'https://revclamp.com',
@@ -220,12 +220,17 @@ export function truncateMcpResponseEnvelope(
 
   // Tier 1: Pop tail items and rewind nextPageToken so zero items are lost
   if (Array.isArray(working.items) && working.items.length > 1) {
+    const originalItemCount = working.items.length;
     const originalNextToken = working.pagination?.nextPageToken || null;
     while (
       working.items.length > 1 &&
       Buffer.byteLength(JSON.stringify(buildEnvelope(working)), 'utf8') > maxBytes
     ) {
       working.items.pop();
+    }
+    if (working.items.length < originalItemCount) {
+      working.truncatedForMcpByteCeiling = true;
+      working.omittedItemCount = originalItemCount - working.items.length;
     }
     if (working.pagination && cursorResumeContext) {
       working.pagination.nextPageToken = computeRewoundCursorForDeliveredPrefix(
@@ -245,6 +250,7 @@ export function truncateMcpResponseEnvelope(
   }
 
   // Tier 2: Prune oversized single-item contacts or UTF-8 safe string truncation on reason/text fallback
+  working.truncatedForMcpByteCeiling = true;
   if (Array.isArray(working.items) && working.items.length === 1 && Array.isArray(working.items[0]?.contacts)) {
     while (
       working.items[0].contacts.length > 1 &&
