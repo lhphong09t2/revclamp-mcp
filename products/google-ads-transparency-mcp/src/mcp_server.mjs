@@ -41,9 +41,9 @@ const RAW_BRAND_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0
 export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIComponent(RAW_BRAND_ICON_SVG)}`;
 
 export const MCP_SERVER_INFO = Object.freeze({
-  name: 'google-ads-transparency-mcp-actor',
+  name: 'google-ads-transparency-mcp',
   title: 'RevClamp AdPulse - Google Ads Transparency Scraper & MCP',
-  version: '1.0.7',
+  version: '1.0.8',
   description:
     'Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.',
   // Forward-compatible MCP Registry & Glama metadata extensions (ignored by older stdio clients)
@@ -55,12 +55,12 @@ export const MCP_SERVER_INFO = Object.freeze({
       sizes: ['any'],
     },
     {
-      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon-180.png',
+      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp/assets/icon-180.png',
       mimeType: 'image/png',
       sizes: ['180x180'],
     },
     {
-      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon-32.png',
+      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp/assets/icon-32.png',
       mimeType: 'image/png',
       sizes: ['32x32'],
     },

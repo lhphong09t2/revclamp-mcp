@@ -1,23 +1,23 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "com.revclamp/google-ads-transparency-mcp-actor",
+  "name": "com.revclamp/google-ads-transparency-mcp",
   "title": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP",
   "description": "Google Ads Transparency Center advertiser & creative intelligence MCP server by RevClamp.",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "websiteUrl": "https://revclamp.com",
   "repository": {
     "url": "https://github.com/lhphong09t2/revclamp-mcp",
     "source": "github",
-    "subfolder": "products/google-ads-transparency-mcp-actor"
+    "subfolder": "products/google-ads-transparency-mcp"
   },
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon-180.png",
+      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp/assets/icon-180.png",
       "mimeType": "image/png",
       "sizes": ["180x180"]
     },
     {
-      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon.svg",
+      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp/assets/icon.svg",
       "mimeType": "image/svg+xml",
       "sizes": ["any"]
     }
@@ -26,8 +26,8 @@
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "@revclamp/google-ads-transparency-mcp-actor",
-      "version": "1.0.7",
+      "identifier": "@revclamp/google-ads-transparency-mcp",
+      "version": "1.0.8",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

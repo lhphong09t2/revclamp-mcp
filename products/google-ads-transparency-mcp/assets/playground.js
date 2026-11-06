@@ -216,6 +216,11 @@
 
   function resetStalePaginationCursorOnFilterEdit(changedFieldName) {
     if (changedFieldName === 'pageToken') return;
+    state.activeRequestToken += 1;
+    if (els.statusBanner && els.statusBanner.dataset.state === 'pending') {
+      els.statusBanner.dataset.state = 'idle';
+      els.statusBanner.textContent = 'Ready - filter updated; click Run to execute.';
+    }
     const pageTokenInput = document.getElementById('field-pageToken');
     if (pageTokenInput && pageTokenInput.value) {
       pageTokenInput.value = '';
@@ -694,7 +699,9 @@
           : isByteTruncated
             ? ' (some details were trimmed to fit the 30 KB limit).'
             : isPartialMultiPage
-              ? ' (partial multi-page results preserved - click Load next page to continue).'
+              ? nextToken
+                ? ' (partial multi-page results preserved - click Load next page to continue).'
+                : ' (partial multi-page results preserved).'
               : '.';
 
       els.statusBanner.dataset.state = isResultError
@@ -783,6 +790,21 @@
     if (els.downloadJsonBtn) {
       els.downloadJsonBtn.addEventListener('click', () => {
         downloadExportableJson();
+      });
+    }
+
+    if (els.dynamicFields) {
+      els.dynamicFields.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.repeat) return;
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          const tag = String(e.target?.tagName || '').toUpperCase();
+          if (tag === 'INPUT' || tag === 'SELECT') {
+            e.preventDefault();
+            if (els.statusBanner?.dataset.state !== 'pending') {
+              executeSelectedTool();
+            }
+          }
+        }
       });
     }
   }

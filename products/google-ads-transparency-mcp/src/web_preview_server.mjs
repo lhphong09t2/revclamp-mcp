@@ -68,7 +68,7 @@ function buildPlaygroundHtml() {
   <header class="site-header">
     <div class="header-inner">
       <div class="brand-group">
-        <img class="brand-logo" src="/assets/icon.svg" width="36" height="36" alt="RevClamp AdPulse shield icon">
+        <img class="brand-logo" src="/assets/icon.svg" width="36" height="36" alt="RevClamp AdPulse ad library lens icon">
         <div class="brand-titles">
           <h1 class="brand-title">RevClamp AdPulse - Google Ads Transparency Scraper &amp; MCP</h1>
           <p class="brand-subtitle">Find Verified Advertiser Entities &amp; Extract Active or Historical Google Ads Creatives</p>

@@ -4,10 +4,10 @@
 
 > **Disclaimer:** Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.
 
-Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates directly from the Google Ads Transparency Center (`adstransparency.google.com`) with zero browser or residential proxy overhead. Available as both an Apify Pay-per-Event Actor and a Model Context Protocol (MCP) server (`@revclamp/google-ads-transparency-mcp-actor`).
+Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates directly from the Google Ads Transparency Center (`adstransparency.google.com`) with zero browser or residential proxy overhead. Available as both an Apify Pay-per-Event Actor and a Model Context Protocol (MCP) server (`@revclamp/google-ads-transparency-mcp`).
 
 - **Canonical Publisher Website:** [https://revclamp.com](https://revclamp.com)
-- **Official MCP Package:** `@revclamp/google-ads-transparency-mcp-actor` (`com.revclamp/google-ads-transparency-mcp-actor`)
+- **Official MCP Package:** `@revclamp/google-ads-transparency-mcp` (`com.revclamp/google-ads-transparency-mcp`)
 
 ---
 
@@ -28,7 +28,7 @@ Find verified Google Ads advertiser entities and extract active or historical ad
 Run directly via `npx`:
 
 ```bash
-npx @revclamp/google-ads-transparency-mcp-actor --mcp-stdio
+npx @revclamp/google-ads-transparency-mcp --mcp-stdio
 ```
 
 ### Claude Desktop / Cursor Configuration (`claude_desktop_config.json`)
@@ -38,7 +38,7 @@ npx @revclamp/google-ads-transparency-mcp-actor --mcp-stdio
   "mcpServers": {
     "revclamp-adpulse": {
       "command": "npx",
-      "args": ["-y", "@revclamp/google-ads-transparency-mcp-actor", "--mcp-stdio"]
+      "args": ["-y", "@revclamp/google-ads-transparency-mcp", "--mcp-stdio"]
     }
   }
 }
@@ -99,14 +99,14 @@ npx @revclamp/google-ads-transparency-mcp-actor --mcp-stdio
 
 ```bash
 # Run MCP stdio server
-npx @revclamp/google-ads-transparency-mcp-actor --mcp-stdio
+npx @revclamp/google-ads-transparency-mcp --mcp-stdio
 
 # Run instant zero-network local self-test & inspect MCP tools
-npx @revclamp/google-ads-transparency-mcp-actor --self-test
-npx @revclamp/google-ads-transparency-mcp-actor --list-tools
+npx @revclamp/google-ads-transparency-mcp --self-test
+npx @revclamp/google-ads-transparency-mcp --list-tools
 
 # Call an MCP tool directly from the CLI
-npx @revclamp/google-ads-transparency-mcp-actor --call resolve_google_ads_advertiser '{"query":"stripe.com"}'
+npx @revclamp/google-ads-transparency-mcp --call resolve_google_ads_advertiser '{"query":"stripe.com"}'
 
 # Start local interactive web playground on http://127.0.0.1:4410
 npm run playground
@@ -120,7 +120,7 @@ npm test
 | Product | npm Package | Primary Use Case |
 | :--- | :--- | :--- |
 | **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Paddle`, `Lemon Squeezy`, `Shopify`) |
-| **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp-actor)** | [`@revclamp/google-ads-transparency-mcp-actor`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp-actor) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
+| **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp)** | [`@revclamp/google-ads-transparency-mcp`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
 | **[RevClamp TalentPulse](https://apify.com/revclamp/unified-ats-jobs-mcp)** | [`@revclamp/unified-ats-jobs-mcp`](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) | Unified 5-in-1 B2B ATS job postings, salary ranges & tech-stack hiring signals (`Greenhouse`, `Workday CXS`, `Ashby`, `Lever`, `SmartRecruiters`) |
 
 ## Terms of Use, Data Provenance & Independent Tool Disclaimer

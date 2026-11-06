@@ -929,6 +929,7 @@ function normalizeBillingCheckpointState(rawState, runId) {
       chargedIds: [],
       deliveredIds: [],
       inFlightIds: [],
+      inFlightIdempotencyKey: null,
       unknownOutcomeIds: [],
       stagedItemsById: {},
     };
@@ -953,6 +954,10 @@ function normalizeBillingCheckpointState(rawState, runId) {
     chargedIds: toUniqueIdArray(s.chargedIds),
     deliveredIds: toUniqueIdArray(s.deliveredIds),
     inFlightIds: toUniqueIdArray(s.inFlightIds),
+    inFlightIdempotencyKey:
+      typeof s.inFlightIdempotencyKey === 'string' && s.inFlightIdempotencyKey.trim()
+        ? s.inFlightIdempotencyKey.trim()
+        : null,
     unknownOutcomeIds: toUniqueIdArray(s.unknownOutcomeIds),
     stagedItemsById,
   };
@@ -1146,6 +1151,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
   const deliveredSet = new Set(checkpoint.deliveredIds);
   const unknownOutcomeSet = new Set(checkpoint.unknownOutcomeIds);
   let inFlightSet = new Set(checkpoint.inFlightIds);
+  let inFlightIdempotencyKey = checkpoint.inFlightIdempotencyKey || null;
   const stagedItemsById = { ...checkpoint.stagedItemsById };
 
   const persistCheckpoint = async () => {
@@ -1154,6 +1160,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       chargedIds: Array.from(chargedSet),
       deliveredIds: Array.from(deliveredSet),
       inFlightIds: Array.from(inFlightSet),
+      inFlightIdempotencyKey: inFlightSet.size > 0 ? inFlightIdempotencyKey : null,
       unknownOutcomeIds: Array.from(unknownOutcomeSet),
       stagedItemsById,
     };
@@ -1217,6 +1224,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         if (staged && typeof staged === 'object' && staged.creativeId === id) {
           reconciledItems.push(staged);
         }
+        delete stagedItemsById[id];
       } else if (staged && typeof staged === 'object' && staged.creativeId === id) {
         deliverablePairs.push({ id, item: staged });
       } else {
@@ -1259,6 +1267,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       }
       for (const { id, item } of deliverablePairs) {
         deliveredSet.add(id);
+        delete stagedItemsById[id];
         reconciledItems.push(item);
       }
     }
@@ -1266,13 +1275,144 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     await persistCheckpoint();
   }
 
-  // Step 0b: Any leftover `inFlightIds` from a prior interrupted run transition to `unknownOutcomeIds`
+  // Step 0b: Reconcile leftover `inFlightIds` via stored `inFlightIdempotencyKey` when available; otherwise transition to `unknownOutcomeIds`
   if (inFlightSet.size > 0) {
-    for (const id of inFlightSet) {
-      unknownOutcomeSet.add(id);
+    const inFlightArr = Array.from(inFlightSet);
+    const canReplayInFlight =
+      hooks.idempotentChargeRetryEnabled === true &&
+      Boolean(inFlightIdempotencyKey) &&
+      typeof hooks.chargeEvent === 'function' &&
+      inFlightArr.every((id) => stagedItemsById[id] && stagedItemsById[id].creativeId === id);
+
+    let reconciledInFlight = false;
+    if (canReplayInFlight) {
+      try {
+        const replayRes = await hooks.chargeEvent({
+          idempotencyKey: inFlightIdempotencyKey,
+          eventName: ACTOR_PRICING_CONTRACT.eventName,
+          count: inFlightArr.length,
+          unitPriceUsdc: ACTOR_PRICING_CONTRACT.priceUsdc,
+          chunkAmountUsdc: Number(
+            (inFlightArr.length * ACTOR_PRICING_CONTRACT.priceUsdc).toFixed(6)
+          ),
+          creativeIds: inFlightArr,
+          deadlineAtMs,
+        });
+        if (replayRes && replayRes.chargedCount === inFlightArr.length) {
+          for (const id of inFlightArr) {
+            chargedSet.add(id);
+          }
+          inFlightSet = new Set();
+          inFlightIdempotencyKey = null;
+          await persistCheckpoint();
+
+          let alreadyInDatasetSet = new Set();
+          if (typeof hooks.listDeliveredIds === 'function') {
+            try {
+              const existingDsIds = await hooks.listDeliveredIds();
+              if (Array.isArray(existingDsIds)) {
+                alreadyInDatasetSet = new Set(existingDsIds);
+              }
+            } catch (dsListErr) {
+              const durationMs = Math.max(1, nowMs() - startedAtMs);
+              return finalizeActorReturn({
+                ok: false,
+                status: 'PARTIAL_BILLING_HALT',
+                reason: `Failed to verify delivered dataset IDs during in-flight replay reconciliation: ${dsListErr?.message || String(dsListErr)}`,
+                billingMode,
+                queryMeta: null,
+                selectedEntities: [],
+                items: reconciledItems,
+                extractedCount: 0,
+                deliveredCount,
+                billableCount: reconciledItems.length,
+                chargedEventCount: chargedSet.size,
+                unknownOutcomeIds: Array.from(unknownOutcomeSet),
+                chargeReceipts: [],
+                pagination: {
+                  nextPageToken: input?.pageToken || null,
+                  paginationStatus: 'PARTIAL_BILLING_HALT',
+                  paginationIncompleteReason: 'DATASET_RECONCILIATION_FAILED',
+                },
+                telemetry: computeRunEconomicsTelemetry({
+                  billableCount: reconciledItems.length,
+                  chargedEventCount: chargedSet.size,
+                  durationMs,
+                  requestCount: 1,
+                }),
+              });
+            }
+          }
+
+          const itemsToDeliver = [];
+          for (const id of inFlightArr) {
+            const staged = stagedItemsById[id];
+            if (alreadyInDatasetSet.has(id)) {
+              deliveredSet.add(id);
+              if (staged) reconciledItems.push(staged);
+              delete stagedItemsById[id];
+            } else if (staged) {
+              itemsToDeliver.push(staged);
+            }
+          }
+
+          if (itemsToDeliver.length > 0) {
+            const pushRes = await pushDataWithRetry(itemsToDeliver);
+            if (!pushRes.ok) {
+              await persistCheckpoint();
+              const durationMs = Math.max(1, nowMs() - startedAtMs);
+              return finalizeActorReturn({
+                ok: false,
+                status: 'PARTIAL_BILLING_HALT',
+                reason: `Dataset pushData failed during in-flight replay reconciliation: ${pushRes.error?.message || String(pushRes.error)}`,
+                billingMode,
+                queryMeta: null,
+                selectedEntities: [],
+                items: reconciledItems,
+                extractedCount: 0,
+                deliveredCount: deliveredSet.size,
+                billableCount: reconciledItems.length,
+                chargedEventCount: chargedSet.size,
+                unknownOutcomeIds: Array.from(unknownOutcomeSet),
+                chargeReceipts: [],
+                pagination: {
+                  nextPageToken: input?.pageToken || null,
+                  paginationStatus: 'PARTIAL_BILLING_HALT',
+                  paginationIncompleteReason: 'DATASET_PUSH_FAILED',
+                },
+                telemetry: computeRunEconomicsTelemetry({
+                  billableCount: reconciledItems.length,
+                  chargedEventCount: chargedSet.size,
+                  durationMs,
+                  requestCount: 1,
+                }),
+              });
+            }
+            for (const item of itemsToDeliver) {
+              deliveredSet.add(item.creativeId);
+              delete stagedItemsById[item.creativeId];
+              reconciledItems.push(item);
+            }
+          }
+          deliveredCount = deliveredSet.size;
+          await persistCheckpoint();
+          reconciledInFlight = true;
+        }
+      } catch {
+        reconciledInFlight = false;
+      }
     }
-    inFlightSet = new Set();
-    await persistCheckpoint();
+
+    if (!reconciledInFlight) {
+      for (const id of inFlightArr) {
+        if (!chargedSet.has(id) && !deliveredSet.has(id)) {
+          unknownOutcomeSet.add(id);
+        }
+      }
+      inFlightSet = new Set();
+      inFlightIdempotencyKey = null;
+      await persistCheckpoint();
+    }
   }
 
   if (unknownOutcomeSet.size > 0 && input?.strictBillingResume !== false) {
@@ -1679,6 +1819,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       }
       for (const c of unchargedChunk) {
         deliveredSet.add(c.creativeId);
+        delete stagedItemsById[c.creativeId];
         newlyDeliveredItems.push(c);
       }
       deliveredCount = deliveredSet.size;
@@ -1686,8 +1827,9 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       continue;
     }
 
-    // Step 4.1: Persist inFlightIds and stagedItemsById BEFORE invoking chargeEvent
+    // Step 4.1: Persist inFlightIds, inFlightIdempotencyKey, and stagedItemsById BEFORE invoking chargeEvent
     inFlightSet = new Set(chunkIds);
+    inFlightIdempotencyKey = idempotencyKey;
     for (const c of unchargedChunk) {
       stagedItemsById[c.creativeId] = c;
     }
@@ -1695,6 +1837,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       await persistCheckpoint();
     } catch (preCpErr) {
       inFlightSet = new Set();
+      inFlightIdempotencyKey = null;
       finalOk = false;
       finalStatus = 'PARTIAL_BILLING_HALT';
       haltReason = `Pre-charge checkpoint write failed before billing: ${preCpErr?.message || String(preCpErr)}`;
@@ -1703,6 +1846,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
 
     if (nowMs() >= effectiveChunkDeadlineMs) {
       inFlightSet = new Set();
+      inFlightIdempotencyKey = null;
       await persistCheckpointPostCharge();
       finalOk = newlyDeliveredItems.length > 0 || reconciledItems.length > 0;
       finalStatus = 'DEADLINE_EXCEEDED_BEFORE_CHARGE';
@@ -1720,6 +1864,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         (unchargedChunk.length * ACTOR_PRICING_CONTRACT.priceUsdc).toFixed(6)
       ),
       creativeIds: chunkIds,
+      deadlineAtMs,
     };
 
     let chargeResult;
@@ -1730,6 +1875,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         unknownOutcomeSet.add(id);
       }
       inFlightSet = new Set();
+      inFlightIdempotencyKey = null;
       await persistCheckpointPostCharge();
       finalOk = false;
       finalStatus = 'PARTIAL_BILLING_HALT';
@@ -1802,6 +1948,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       }
       for (const c of unchargedChunk) {
         deliveredSet.add(c.creativeId);
+        delete stagedItemsById[c.creativeId];
         newlyDeliveredItems.push(c);
       }
       deliveredCount = deliveredSet.size;
@@ -1827,6 +1974,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         }
         for (const c of unchargedChunk) {
           deliveredSet.add(c.creativeId);
+          delete stagedItemsById[c.creativeId];
           newlyDeliveredItems.push(c);
         }
         deliveredCount = deliveredSet.size;
@@ -2055,3 +2203,6 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     telemetry,
   });
 }
+
+export const scrapeGoogleAdsTransparency = runGoogleAdsTransparencyActor;
+

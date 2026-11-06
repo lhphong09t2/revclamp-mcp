@@ -58,6 +58,7 @@ import {
   createApifyPlatformHooks,
   loadApifyActorInput,
   runGoogleAdsTransparencyActor,
+  scrapeGoogleAdsTransparency,
 } from './src/apify_actor.mjs';
 
 import {
@@ -126,6 +127,7 @@ export {
   createApifyPlatformHooks,
   loadApifyActorInput,
   runGoogleAdsTransparencyActor,
+  scrapeGoogleAdsTransparency,
   MCP_MAX_ENVELOPE_BYTES,
   MCP_MAX_ITEMS_LIMIT,
   MCP_MAX_REQ_ID_BYTES,

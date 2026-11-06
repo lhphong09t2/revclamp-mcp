@@ -1,6 +1,6 @@
 {
   "actorSpecification": 1,
-  "name": "google-ads-transparency-mcp-actor",
+  "name": "google-ads-transparency-mcp",
   "title": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP",
   "description": "Resolve verified Google Ads advertiser entities from any brand or domain and extract active or historical ad creatives (Text, Image, Video), ad copy, and run dates with zero browser overhead. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.",
   "version": "1.0",
@@ -42,11 +42,11 @@
           "advertiserName": { "type": "string", "title": "Advertiser Name" },
           "creativeId": { "type": "string", "title": "Creative ID" },
           "format": { "type": "string", "title": "Ad Format" },
-          "regionCode": { "type": "string", "title": "Region Code" },
-          "firstSeenAtIso": { "type": "string", "title": "First Seen (ISO)" },
-          "lastSeenAtIso": { "type": "string", "title": "Last Seen (ISO)" },
-          "daysActive": { "type": "integer", "title": "Days Active" },
-          "previewUrl": { "type": "string", "title": "Preview Asset URL" },
+          "regionCode": { "type": ["string", "null"], "title": "Region Code" },
+          "firstSeenAtIso": { "type": ["string", "null"], "title": "First Seen (ISO)" },
+          "lastSeenAtIso": { "type": ["string", "null"], "title": "Last Seen (ISO)" },
+          "daysActive": { "type": ["integer", "null"], "title": "Days Active" },
+          "previewUrl": { "type": ["string", "null"], "title": "Preview Asset URL" },
           "transparencyUrl": { "type": "string", "title": "Transparency Center URL" }
         }
       },
