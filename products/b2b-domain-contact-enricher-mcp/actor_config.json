@@ -24,7 +24,9 @@
   "manifest": {
     "name": "b2b-domain-contact-enricher-mcp",
     "title": "RevClamp ContactPulse - B2B Domain Contact, RFC 9116 & Deliverability Enricher",
-    "version": "1.0.2",
+    "version": "1.0.3",
+    "websiteUrl": "https://revclamp.com",
+    "description": "Deterministic B2B domain contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher with zero browser overhead.",
     "minMemoryMbytes": 256,
     "maxMemoryMbytes": 512,
     "trademarkNotice": "Independent B2B domain contact and DNS deliverability intelligence tool by RevClamp. All company domains and product names referenced in examples are trademarks of their respective owners."
