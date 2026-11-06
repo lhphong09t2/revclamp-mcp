@@ -36,14 +36,14 @@ export const SUPPORTED_MCP_PROTOCOL_VERSIONS = Object.freeze([
   '2024-11-05',
 ]);
 
-const RAW_BRAND_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="rc-title"><title id="rc-title">RevClamp AdPulse</title><defs><linearGradient id="rc-fill" gradientUnits="userSpaceOnUse" x1="32" y1="6" x2="32" y2="58"><stop offset="0" stop-color="#111C38"/><stop offset="1" stop-color="#0B1020"/></linearGradient><linearGradient id="rc-edge" gradientUnits="userSpaceOnUse" x1="11" y1="6" x2="53" y2="58"><stop offset="0" stop-color="#10B981"/><stop offset="1" stop-color="#06B6D4"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="#0B1020"/><path d="M32 6L53 13.5V31C53 44 44.5 52.5 32 58C19.5 52.5 11 44 11 31V13.5Z" fill="url(#rc-fill)" stroke="url(#rc-edge)" stroke-width="2" stroke-linejoin="round"/><path d="M38.5 36.5L44.5 42.5" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" fill="none"/><circle cx="30.5" cy="28.5" r="12.5" fill="#0B1020"/><path d="M30.5 17.5V39.5M19.5 28.5H41.5" stroke="#06B6D4" stroke-opacity="0.35" stroke-width="1.2" fill="none"/><circle cx="30.5" cy="28.5" r="6" stroke="#06B6D4" stroke-opacity="0.5" stroke-width="1.2" fill="none"/><path d="M30.5 28.5V17.5A11 11 0 0 1 40.03 23Z" fill="#10B981" fill-opacity="0.38"/><path d="M30.5 28.5V17.5" stroke="#10B981" stroke-width="1.6" stroke-linecap="round" fill="none"/><circle cx="34" cy="22.4" r="4" fill="#F59E0B" fill-opacity="0.25"/><circle cx="34" cy="22.4" r="2.4" fill="#F59E0B"/><circle cx="25.5" cy="33" r="4.2" fill="#10B981"/><path d="M23.4 33.2L24.9 34.7L27.7 31.4" stroke="#0B1020" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="30.5" cy="28.5" r="12.5" stroke="#F8FAFC" stroke-width="2.5" fill="none"/></svg>`;
+const RAW_BRAND_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="rc-title"><title id="rc-title">RevClamp AdPulse</title><defs><linearGradient id="rc-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#111C38"/><stop offset="100%" stop-color="#090E1D"/></linearGradient><linearGradient id="rc-edge" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10B981"/><stop offset="100%" stop-color="#06B6D4"/></linearGradient></defs><rect width="64" height="64" fill="#0B1020"/><path d="M32 10L50 16.5V31C50 42.5 42.5 49.5 32 54C21.5 49.5 14 42.5 14 31V16.5Z" fill="url(#rc-fill)" stroke="url(#rc-edge)" stroke-width="2.4" stroke-linejoin="round"/><path d="M32 12.8L47.4 18.4V30.8C47.4 40.4 41 46.7 32 50.8C23 46.7 16.6 40.4 16.6 30.8V18.4Z" fill="none" stroke="#F59E0B" stroke-opacity="0.45" stroke-width="0.9" stroke-linejoin="round"/><line x1="35.8" y1="34.4" x2="40.6" y2="39.2" stroke="#F59E0B" stroke-width="3.2" stroke-linecap="round"/><circle cx="29.4" cy="28" r="9.4" fill="#0B1020"/><path d="M29.4 19.6V36.4M21 28H37.8" stroke="#06B6D4" stroke-opacity="0.35" stroke-width="1"/><circle cx="29.4" cy="28" r="4.8" fill="none" stroke="#06B6D4" stroke-opacity="0.5" stroke-width="1"/><path d="M29.4 28V19.6A8.4 8.4 0 0 1 36.67 23.8Z" fill="#10B981" fill-opacity="0.38"/><line x1="29.4" y1="28" x2="29.4" y2="19.6" stroke="#10B981" stroke-width="1.4" stroke-linecap="round"/><circle cx="32.2" cy="23.4" r="2" fill="#F59E0B"/><circle cx="25.5" cy="31.3" r="3.5" fill="#10B981"/><path d="M23.9 31.4L25.1 32.6L27.3 30.1" fill="none" stroke="#0B1020" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="29.4" cy="28" r="9.4" fill="none" stroke="#F8FAFC" stroke-width="2"/></svg>`;
 
 export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIComponent(RAW_BRAND_ICON_SVG)}`;
 
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'google-ads-transparency-mcp-actor',
-  title: 'RevClamp AdPulse - For Google Ads Transparency Center (MCP & Apify Actor)',
-  version: '1.0.2',
+  title: 'RevClamp AdPulse - Google Ads Transparency Scraper & MCP',
+  version: '1.0.7',
   description:
     'Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.',
   // Forward-compatible MCP Registry & Glama metadata extensions (ignored by older stdio clients)
@@ -55,12 +55,12 @@ export const MCP_SERVER_INFO = Object.freeze({
       sizes: ['any'],
     },
     {
-      src: 'https://revclamp.com/apple-touch-icon.png',
+      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon-180.png',
       mimeType: 'image/png',
       sizes: ['180x180'],
     },
     {
-      src: 'https://revclamp.com/favicon.png',
+      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon-32.png',
       mimeType: 'image/png',
       sizes: ['32x32'],
     },
@@ -269,7 +269,11 @@ export function truncateMcpResponseEnvelope(
   envelopeContext = {},
   isErrorArg = false
 ) {
-  const safeMaxBytes = Math.min(32768, Math.max(2048, Number(maxBytes) || MCP_MAX_ENVELOPE_BYTES));
+  const parsedMaxBytes =
+    maxBytes !== undefined && maxBytes !== null && Number.isFinite(Number(maxBytes))
+      ? Number(maxBytes)
+      : MCP_MAX_ENVELOPE_BYTES;
+  const safeMaxBytes = Math.min(32768, Math.max(2048, parsedMaxBytes));
   const isContextObj =
     envelopeContext !== null &&
     typeof envelopeContext === 'object' &&
@@ -306,17 +310,19 @@ export function truncateMcpResponseEnvelope(
 
     if (cand.pagination && typeof cand.pagination === 'object') {
       delete cand.pagination.cursorResumeContext;
-      if (omittedCount > 0 && cursorResumeContext) {
+      if ((omittedCount > 0 || tier >= 4) && cursorResumeContext) {
         const rewoundToken = computeRewoundCursorForDeliveredPrefix(
           cursorResumeContext,
           returnedCount,
           originalNextPageToken
         );
         cand.pagination.nextPageToken = rewoundToken;
-        cand.pagination.hasMore = Boolean(rewoundToken) || omittedCount > 0;
+        cand.pagination.hasMore = Boolean(rewoundToken);
         cand.pagination.paginationStatus = rewoundToken
           ? 'TRUNCATED_HAS_MORE_MID_PAGE'
           : 'TRUNCATED_AT_BYTE_CEILING';
+      } else {
+        cand.pagination.hasMore = Boolean(cand.pagination.nextPageToken);
       }
       if (cand.deliveredCount !== undefined && Array.isArray(cand.items)) {
         cand.deliveredCount = cand.items.length;
@@ -540,15 +546,76 @@ export function truncateMcpResponseEnvelope(
   }
 
   // Emergency minimal stub if oversized top-level custom properties remain
-  return buildOrderedPayload(
+  const emergencyWithPagination = buildOrderedPayload(
     {
       ok: Boolean(work.ok),
       status: sliceUtf8Safe(work.status || 'OK', 32),
       items: [],
+      ...(rawClone.pagination
+        ? {
+            pagination: {
+              nextPageToken: originalNextPageToken,
+              hasMore: Boolean(originalNextPageToken),
+              paginationStatus: 'TRUNCATED_AT_BYTE_CEILING',
+            },
+          }
+        : {}),
     },
     4,
     originalItemCount
   );
+  if (measureFullRpcBytes(emergencyWithPagination) <= safeMaxBytes) {
+    return emergencyWithPagination;
+  }
+
+  const emergencyNoToken = {
+    summary: `Truncated response to fit ${safeMaxBytes}-byte MCP ceiling (tier 4, returned 0, omitted ${originalItemCount} item(s)).`,
+    truncatedForMcpByteCeiling: true,
+    truncationTier: 4,
+    omittedItemCount: originalItemCount,
+    ok: Boolean(work.ok),
+    status: sliceUtf8Safe(work.status || 'OK', 32),
+    items: [],
+    ...(rawClone.pagination
+      ? {
+          pagination: {
+            nextPageToken: null,
+            hasMore: false,
+            paginationStatus: 'TRUNCATED_AT_BYTE_CEILING',
+          },
+        }
+      : {}),
+  };
+  if (measureFullRpcBytes(emergencyNoToken) <= safeMaxBytes) {
+    return emergencyNoToken;
+  }
+
+  const ultraMinimalWithPagination = {
+    ok: Boolean(work.ok),
+    status: sliceUtf8Safe(work.status || 'OK', 16),
+    truncatedForMcpByteCeiling: true,
+    truncationTier: 4,
+    omittedItemCount: originalItemCount,
+    items: [],
+    ...(rawClone.pagination
+      ? {
+          pagination: {
+            nextPageToken: null,
+            hasMore: false,
+          },
+        }
+      : {}),
+  };
+  if (measureFullRpcBytes(ultraMinimalWithPagination) <= safeMaxBytes) {
+    return ultraMinimalWithPagination;
+  }
+
+  return {
+    ok: Boolean(work.ok),
+    truncatedForMcpByteCeiling: true,
+    truncationTier: 4,
+    items: [],
+  };
 }
 
 /**
@@ -562,7 +629,11 @@ function validateJsonRpcRequestId(rawId) {
     return { valid: true, id: null };
   }
   if (typeof rawId === 'string') {
-    if (Buffer.byteLength(rawId, 'utf8') > MCP_MAX_REQ_ID_BYTES) {
+    if (
+      /[\u0000-\u001F\u007F]/.test(rawId) ||
+      Buffer.byteLength(rawId, 'utf8') > MCP_MAX_REQ_ID_BYTES ||
+      Buffer.byteLength(JSON.stringify(rawId), 'utf8') > MCP_MAX_REQ_ID_BYTES + 2
+    ) {
       return { valid: false, id: null };
     }
     return { valid: true, id: rawId };

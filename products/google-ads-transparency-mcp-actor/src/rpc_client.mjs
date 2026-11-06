@@ -19,14 +19,20 @@ import crypto from 'node:crypto';
 import { domainToASCII, domainToUnicode } from 'node:url';
 import {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
+  LIVE_SECRET_GUARD_RE,
+  containsLiveSecretToken,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  createEphemeralHttpsAgent,
 } from './egress_guard.mjs';
 
 export {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
+  LIVE_SECRET_GUARD_RE,
+  containsLiveSecretToken,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  createEphemeralHttpsAgent,
 };
 
 export const GOOGLE_ADS_RPC_ENDPOINTS = Object.freeze({
@@ -766,7 +772,7 @@ export function encodeCompositeCursor({
     n: typeof n === 'string' && n.trim() ? n.trim() : null,
     ps: safePs,
     rl: safeRl,
-    o: Number(o) || 1,
+    o: Number.isInteger(o) && o >= 0 ? o : 1,
     ...(typeof qh === 'string' && qh ? { qh } : {}),
     ...(safeAc ? { ac: safeAc } : {}),
   };
@@ -876,7 +882,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
         boundRowCap < 1 ||
         boundRowCap > 40 ||
         !Number.isInteger(parsed.o) ||
-        parsed.o < 1 ||
+        parsed.o < 0 ||
         parsed.o >= boundRowCap ||
         (parsed.qh !== undefined && (typeof parsed.qh !== 'string' || !/^[0-9a-f]{12}$/.test(parsed.qh))) ||
         (parsed.ac !== undefined && (typeof parsed.ac !== 'string' || !CREATIVE_ID_RE.test(parsed.ac)))
@@ -1322,8 +1328,12 @@ export function scoreAdvertiserCandidate(candidate, queryMeta, preferredCountry 
   // Single-ad bucket [1, 1] is a legitimate active advertiser bucket in Google Ads Transparency
   const hasVerifiedActiveAdVolume = maxAds >= 1;
   const preferredCountryNorm = String(preferredCountry ?? '').trim().toUpperCase();
+  const canonicalPreferredCountry = preferredCountryNorm === 'UK' ? 'GB' : preferredCountryNorm;
+  const canonicalRegionCode = regionCode === 'UK' ? 'GB' : regionCode;
   const countryMatch = Boolean(
-    preferredCountryNorm && preferredCountryNorm !== 'ALL' && regionCode === preferredCountryNorm
+    canonicalPreferredCountry &&
+      canonicalPreferredCountry !== 'ALL' &&
+      canonicalRegionCode === canonicalPreferredCountry
   );
   const isPrimaryCorporateEntity = Boolean(
     (exactBrandWordMatch || domainStemPrefixMatch) && onlyCorporateSuffixesRemaining
@@ -1900,6 +1910,20 @@ export async function resolveAdvertiserEntities(options = {}) {
       rpcAttempts: 0,
       billableCount: 0,
       reason: `Parameter query exceeds maximum length of ${MAX_QUERY_LENGTH} characters`,
+    };
+  }
+  if (containsLiveSecretToken(rawQueryTrimmed)) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      queryMeta: parseBrandQueryTokens(''),
+      primaryEntity: null,
+      selectedEntities: [],
+      allCandidates: [],
+      rpcAttempts: 0,
+      billableCount: 0,
+      reason:
+        'Outbound live secret guard: query contains a sensitive credential or API token pattern',
     };
   }
 
@@ -2771,10 +2795,13 @@ export async function fetchAndExtractStaticAdCopy(previewUrl, options = {}) {
               } else {
                 const randomFn =
                   typeof options.randomFn === 'function' ? options.randomFn : Math.random;
-                const delayMs = computeRetryDelayMs(attempt, retryAfterRaw, randomFn);
+                const delayMs = Math.min(
+                  2000,
+                  Math.round(250 * Math.pow(2, attempt - 1) + randomFn() * 150)
+                );
                 if (!options.deadlineAtMs || nowFn() + delayMs + 50 < options.deadlineAtMs) {
                   const sleepFn =
-                    typeof options.sleepFn === 'function' ? options.sleepFn : defaultSleep;
+                    typeof options.sleepFn === 'function' ? options.sleepFn : sleepMs;
                   await sleepFn(delayMs);
                   continue;
                 }
@@ -2872,12 +2899,9 @@ export function normalizeCreativeRecord(rawRow, context = {}) {
       ? String(rawRow['14']).trim().toUpperCase()
       : '';
   let resolvedRowCountry = '';
-  if (rawField14Str) {
-    if (
-      ISO_COUNTRY_RE.test(rawField14Str) &&
-      Object.prototype.hasOwnProperty.call(ISO_COUNTRY_TO_GOOGLE_GEO_ID, rawField14Str)
-    ) {
-      resolvedRowCountry = rawField14Str;
+  if (rawField14Str && rawField14Str !== 'ALL') {
+    if (ISO_COUNTRY_RE.test(rawField14Str) && !/^(?:AA|Q[M-Z]|X[A-Z]|ZZ)$/.test(rawField14Str)) {
+      resolvedRowCountry = rawField14Str === 'UK' ? 'GB' : rawField14Str;
     } else if (
       /^\d+$/.test(rawField14Str) &&
       Object.prototype.hasOwnProperty.call(GOOGLE_GEO_ID_TO_ISO_COUNTRY, rawField14Str)
@@ -2888,15 +2912,17 @@ export function normalizeCreativeRecord(rawRow, context = {}) {
 
   const contextCountry = String(context.countryCode ?? '').trim().toUpperCase();
   const validContextCountry =
-    ISO_COUNTRY_RE.test(contextCountry) &&
-    Object.prototype.hasOwnProperty.call(ISO_COUNTRY_TO_GOOGLE_GEO_ID, contextCountry)
-      ? contextCountry
+    contextCountry !== 'ALL' && ISO_COUNTRY_RE.test(contextCountry)
+      ? contextCountry === 'UK'
+        ? 'GB'
+        : contextCountry
       : '';
   const fallbackRegion = String(context.fallbackRegionCode ?? '').trim().toUpperCase();
   const validFallbackRegion =
-    ISO_COUNTRY_RE.test(fallbackRegion) &&
-    Object.prototype.hasOwnProperty.call(ISO_COUNTRY_TO_GOOGLE_GEO_ID, fallbackRegion)
-      ? fallbackRegion
+    fallbackRegion !== 'ALL' && ISO_COUNTRY_RE.test(fallbackRegion)
+      ? fallbackRegion === 'UK'
+        ? 'GB'
+        : fallbackRegion
       : '';
 
   let country = 'ALL';
@@ -3178,7 +3204,7 @@ export async function fetchAdvertiserCreatives(options = {}) {
 
   while (pagesFetched < maxPages && deduplicatedCreatives.length < maxResults) {
     if (options.deadlineAtMs && nowFn() >= options.deadlineAtMs) {
-      if (pagesFetched > 0 && deduplicatedCreatives.length > 0) {
+      if (pagesFetched > 0 && (deduplicatedCreatives.length > 0 || currentUpstreamToken)) {
         outputNextPageToken = currentUpstreamToken || null;
         paginationStatus = 'DEADLINE_REACHED_HAS_MORE';
         paginationIncompleteReason = 'DEADLINE_EXCEEDED';
@@ -3247,7 +3273,11 @@ export async function fetchAdvertiserCreatives(options = {}) {
         !isPermanentClient4xx &&
         !isByteCapExceeded &&
         (rpcRes.status === 'UPSTREAM_RATE_LIMITED' || rpcRes.status === 'UPSTREAM_ERROR');
-      if (pagesFetched > 0 && deduplicatedCreatives.length > 0 && isAllowlistedTransientPageError) {
+      if (
+        pagesFetched > 0 &&
+        (deduplicatedCreatives.length > 0 || currentUpstreamToken) &&
+        isAllowlistedTransientPageError
+      ) {
         const isDeadlineHalt =
           Boolean(options.deadlineAtMs && nowFn() >= options.deadlineAtMs) ||
           /deadline exceeded/i.test(String(rpcRes.errorMessage || ''));
@@ -3479,7 +3509,7 @@ export function computeRewoundCursorForDeliveredPrefix(
     if (locations.length > 0) {
       const firstLoc = locations[0];
       const startOffset = Math.max(0, firstLoc.nextOffset - 1);
-      if (startOffset > 0 && startOffset < firstLoc.rl) {
+      if (startOffset < firstLoc.rl) {
         return encodeCompositeCursor({
           u: firstLoc.u,
           n: firstLoc.n,
@@ -3487,7 +3517,7 @@ export function computeRewoundCursorForDeliveredPrefix(
           rl: firstLoc.rl,
           o: startOffset,
           qh: firstLoc.qh,
-          ac: firstLoc.prevCid,
+          ...(startOffset > 0 && firstLoc.prevCid ? { ac: firstLoc.prevCid } : {}),
         });
       }
       return firstLoc.u || cursorResumeContext.initialPageToken || null;

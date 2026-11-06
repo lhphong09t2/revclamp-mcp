@@ -1,9 +1,9 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.revclamp/google-ads-transparency-mcp-actor",
-  "title": "RevClamp AdPulse (Google Ads Transparency MCP)",
+  "title": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP",
   "description": "Google Ads Transparency Center advertiser & creative intelligence MCP server by RevClamp.",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "websiteUrl": "https://revclamp.com",
   "repository": {
     "url": "https://github.com/lhphong09t2/revclamp-mcp",
@@ -12,14 +12,14 @@
   },
   "icons": [
     {
-      "src": "https://revclamp.com/apple-touch-icon.png",
+      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon-180.png",
       "mimeType": "image/png",
       "sizes": ["180x180"]
     },
     {
-      "src": "https://revclamp.com/favicon.png",
-      "mimeType": "image/png",
-      "sizes": ["32x32"]
+      "src": "https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/google-ads-transparency-mcp-actor/assets/icon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": ["any"]
     }
   ],
   "packages": [
@@ -27,10 +27,19 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@revclamp/google-ads-transparency-mcp-actor",
-      "version": "1.0.6",
+      "version": "1.0.7",
+      "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--mcp-stdio",
+          "description": "Start the Model Context Protocol (MCP) JSON-RPC 2.0 server over standard input/output."
+        }
+      ],
+      "environmentVariables": []
     }
   ]
 }

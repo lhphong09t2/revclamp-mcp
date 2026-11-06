@@ -9,8 +9,11 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
+  LIVE_SECRET_GUARD_RE,
+  containsLiveSecretToken,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  createEphemeralHttpsAgent,
 } from './src/egress_guard.mjs';
 
 import {
@@ -80,8 +83,11 @@ import {
 
 export {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
+  LIVE_SECRET_GUARD_RE,
+  containsLiveSecretToken,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  createEphemeralHttpsAgent,
   GOOGLE_ADS_RPC_ENDPOINTS,
   ADVERTISER_ID_RE,
   CREATIVE_ID_RE,
@@ -137,16 +143,100 @@ export {
   createAdPulsePreviewServer,
 };
 
-export async function runCli(argv = process.argv.slice(2)) {
+export async function runCli(argv = process.argv.slice(2), options = {}) {
   const args = Array.isArray(argv) ? argv : [];
-  if (args.includes('--playground')) {
+  const writeStdout =
+    typeof options.writeStdout === 'function'
+      ? options.writeStdout
+      : (str) => process.stdout.write(str);
+  const exitFn = typeof options.exitFn === 'function' ? options.exitFn : (code) => process.exit(code);
+
+  if (args.includes('--list-tools')) {
+    const out = {
+      ok: true,
+      serverInfo: MCP_SERVER_INFO,
+      tools: MCP_TOOLS_MANIFEST,
+    };
+    writeStdout(`${JSON.stringify(out, null, 2)}\n`);
+    return out;
+  }
+
+  if (args.includes('--self-test')) {
+    const initRes = await handleMcpJsonRpcRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18' },
+    });
+    const listRes = await handleMcpJsonRpcRequest({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/list',
+      params: {},
+    });
+    const secretBlocked = containsLiveSecretToken(['sk', 'live', '1234567890abcdef'].join('_'));
+    const ssrfBlocked = !assertAllowedGoogleAdsEgress('http://127.0.0.1/internal').safe;
+    const ok =
+      Boolean(initRes?.result?.serverInfo?.name) &&
+      Array.isArray(listRes?.result?.tools) &&
+      listRes.result.tools.length === 3 &&
+      secretBlocked &&
+      ssrfBlocked;
+    const report = {
+      ok,
+      status: ok ? 'SELF_TEST_PASSED' : 'SELF_TEST_FAILED',
+      server: MCP_SERVER_INFO.name,
+      version: MCP_SERVER_INFO.version,
+      toolsVerified: listRes?.result?.tools?.length || 0,
+      secretGuardActive: secretBlocked,
+      ssrfGuardActive: ssrfBlocked,
+    };
+    writeStdout(`${JSON.stringify(report, null, 2)}\n`);
+    if (!options.noExit) exitFn(ok ? 0 : 1);
+    return report;
+  }
+
+  const callIdx = args.indexOf('--call');
+  if (callIdx !== -1) {
+    const toolName = String(args[callIdx + 1] || '').trim();
+    const rawJsonArgs = args[callIdx + 2] ? String(args[callIdx + 2]).trim() : '{}';
+    let parsedArgs = {};
+    try {
+      parsedArgs = JSON.parse(rawJsonArgs);
+    } catch (err) {
+      const errOut = {
+        ok: false,
+        status: 'INVALID_INPUT',
+        reason: `Invalid JSON arguments for --call ${toolName}: ${err.message}`,
+      };
+      writeStdout(`${JSON.stringify(errOut, null, 2)}\n`);
+      if (!options.noExit) exitFn(1);
+      return errOut;
+    }
+    const rpcRes = await handleMcpJsonRpcRequest(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: toolName, arguments: parsedArgs },
+      },
+      options
+    );
+    const out = rpcRes?.result?.structuredContent || rpcRes;
+    writeStdout(`${JSON.stringify(out, null, 2)}\n`);
+    const isOk = Boolean(out?.ok !== false && !rpcRes?.error && !rpcRes?.result?.isError);
+    if (!options.noExit) exitFn(isOk ? 0 : 1);
+    return out;
+  }
+
+  if (args.includes('--playground') || args.includes('--web-preview')) {
     const portArg = Number(process.env.PORT || 4410);
     const srv = await createAdPulsePreviewServer({ port: portArg });
-    process.stdout.write(`RevClamp AdPulse Web Playground listening on ${srv.url}\n`);
+    writeStdout(`RevClamp AdPulse Web Playground listening on ${srv.url}\n`);
     return srv;
   }
 
-  if (args.includes('--mcp-stdio')) {
+  if (args.includes('--mcp-stdio') || args.includes('--stdio')) {
     const rl = readline.createInterface({
       input: process.stdin,
       terminal: false,

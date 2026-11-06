@@ -27,7 +27,7 @@ export const PLAYGROUND_CSP_HEADER =
 export const MAX_PLAYGROUND_BODY_BYTES = 65536;
 export const PLAYGROUND_REQUEST_TIMEOUT_MS = 25000;
 
-const ALLOWED_HOST_HEADER_RE = /^(127\.0\.0\.1|localhost)(:\d{1,5})?$/i;
+const ALLOWED_HOST_HEADER_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/i;
 
 const STATIC_ASSET_MAP = Object.freeze({
   '/assets/icon.svg': {
@@ -58,7 +58,7 @@ function buildPlaygroundHtml() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>RevClamp AdPulse - For Google Ads Transparency Center (MCP &amp; Apify Actor)</title>
+  <title>RevClamp AdPulse - Google Ads Transparency Scraper &amp; MCP</title>
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon-180.png">
   <link rel="stylesheet" href="/assets/playground.css">
@@ -70,7 +70,7 @@ function buildPlaygroundHtml() {
       <div class="brand-group">
         <img class="brand-logo" src="/assets/icon.svg" width="36" height="36" alt="RevClamp AdPulse shield icon">
         <div class="brand-titles">
-          <h1 class="brand-title">RevClamp AdPulse - For Google Ads Transparency Center (MCP &amp; Apify Actor)</h1>
+          <h1 class="brand-title">RevClamp AdPulse - Google Ads Transparency Scraper &amp; MCP</h1>
           <p class="brand-subtitle">Find Verified Advertiser Entities &amp; Extract Active or Historical Google Ads Creatives</p>
         </div>
       </div>

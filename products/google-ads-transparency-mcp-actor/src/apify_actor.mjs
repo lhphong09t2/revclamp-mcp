@@ -289,12 +289,13 @@ export async function loadApifyActorInput(
       if (res.status === 204 || res.status === 404) {
         return applyAtHomeSchemaDefaults({});
       }
+      return {};
     } finally {
       clearTimeout(timer);
     }
   }
 
-  return {};
+  return applyAtHomeSchemaDefaults({});
 }
 
 /**
@@ -393,7 +394,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
 
       hooks.loadCheckpoint = async () => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 250);
+        const timer = setTimeout(() => controller.abort(), 1500);
         try {
           const res = await fetchImpl(checkpointRecordUrl, {
             method: 'GET',
@@ -409,7 +410,11 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
           if (res.status >= 200 && res.status < 300) {
             const text = await res.text();
             const loaded = text && text.trim() ? JSON.parse(text) : null;
-            if (loaded && Array.isArray(loaded.chargedIds)) {
+            if (
+              loaded &&
+              Array.isArray(loaded.chargedIds) &&
+              (!loaded.runId || !runId || String(loaded.runId) === String(runId))
+            ) {
               cumulativeChargedInAdapter = loaded.chargedIds.length;
             }
             return loaded;
@@ -422,7 +427,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
 
       hooks.saveCheckpoint = async (snapshot) => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 250);
+        const timer = setTimeout(() => controller.abort(), 1500);
         try {
           const res = await fetchImpl(checkpointRecordUrl, {
             method: 'PUT',
@@ -443,7 +448,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
 
       hooks.saveOutput = async (outputRecord) => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 250);
+        const timer = setTimeout(() => controller.abort(), 1500);
         try {
           const res = await fetchImpl(outputRecordUrl, {
             method: 'PUT',
@@ -467,7 +472,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       const datasetItemsUrl = `${apiBase}/v2/datasets/${encodeURIComponent(datasetId)}/items`;
       hooks.listDeliveredIds = async () => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 500);
+        const timer = setTimeout(() => controller.abort(), 1500);
         try {
           const res = await fetchImpl(`${datasetItemsUrl}?fields=creativeId&clean=1`, {
             method: 'GET',
@@ -497,7 +502,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
 
       hooks.pushData = async (items) => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 500);
+        const timer = setTimeout(() => controller.abort(), 1500);
         try {
           const res = await fetchImpl(datasetItemsUrl, {
             method: 'POST',
@@ -590,6 +595,11 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
           };
         }
         const unitPriceMicros = Math.round(resolvedUnitPriceUsdc * 1_000_000);
+        if (!Number.isFinite(unitPriceMicros) || unitPriceMicros < 1) {
+          throw new Error(
+            `Invalid unitPriceUsdc (${String(resolvedUnitPriceUsdc)}): unitPriceMicros must be >= 1`
+          );
+        }
         const maxPayableEvents = hasMaxChargeUsd
           ? Math.floor(Math.max(0, maxBudgetMicros - startFeeMicros) / unitPriceMicros)
           : Infinity;
@@ -612,30 +622,91 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
           };
         }
 
-        const postChargeRequest = async (eventNameToPost, idempotencyKeyToPost, signal) =>
-          fetchImpl(chargeUrl, {
-            method: 'POST',
-            headers: {
-              authorization: `Bearer ${token}`,
-              'content-type': 'application/json; charset=utf-8',
-              'idempotency-key': idempotencyKeyToPost,
-            },
-            body: JSON.stringify({
-              eventName: eventNameToPost,
-              count: countToCharge,
-            }),
-            signal,
-          });
+        const chargeIdempotencyVerified =
+          env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED === '1' ||
+          env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED === 'true';
+        const maxChargeAttempts = chargeIdempotencyVerified ? 2 : 1;
+        const perAttemptTimeoutMs = 900;
+        const canStartChargePost = () =>
+          !Number.isFinite(receipt?.deadlineAtMs) ||
+          Date.now() + perAttemptTimeoutMs + 300 < receipt.deadlineAtMs;
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 600);
+        const postChargeRequestWithIdempotentRetry = async (
+          eventNameToPost,
+          idempotencyKeyToPost
+        ) => {
+          let lastPostErr = null;
+          for (let attempt = 1; attempt <= maxChargeAttempts; attempt += 1) {
+            if (attempt > 1 && !canStartChargePost()) {
+              break;
+            }
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), perAttemptTimeoutMs);
+            try {
+              const res = await fetchImpl(chargeUrl, {
+                method: 'POST',
+                headers: {
+                  authorization: `Bearer ${token}`,
+                  'content-type': 'application/json; charset=utf-8',
+                  'idempotency-key': idempotencyKeyToPost,
+                },
+                body: JSON.stringify({
+                  eventName: eventNameToPost,
+                  count: countToCharge,
+                }),
+                signal: controller.signal,
+              });
+              if (
+                attempt < maxChargeAttempts &&
+                (res.status === 429 || res.status >= 500) &&
+                canStartChargePost()
+              ) {
+                try {
+                  await res.body?.cancel?.();
+                } catch {
+                  // Ignore body cancel failure on retry
+                }
+                await new Promise((r) => setTimeout(r, 150));
+                continue;
+              }
+              const bodyText =
+                typeof res?.text === 'function'
+                  ? await Promise.race([
+                      res.text(),
+                      new Promise((_, reject) => {
+                        if (controller.signal.aborted) {
+                          reject(new Error('AbortError: charge response body timed out'));
+                          return;
+                        }
+                        controller.signal.addEventListener(
+                          'abort',
+                          () => reject(new Error('AbortError: charge response body timed out')),
+                          { once: true }
+                        );
+                      }),
+                    ])
+                  : '';
+              return { status: res.status, bodyText };
+            } catch (err) {
+              lastPostErr = err;
+              if (attempt < maxChargeAttempts && canStartChargePost()) {
+                await new Promise((r) => setTimeout(r, 150));
+                continue;
+              }
+              throw err;
+            } finally {
+              clearTimeout(timer);
+            }
+          }
+          throw lastPostErr || new Error('Charge POST exceeded run deadline');
+        };
+
         try {
           let effectiveEventName = primaryEventName;
           let effectiveIdempotencyKey = receipt.idempotencyKey;
-          let res = await postChargeRequest(
+          let res = await postChargeRequestWithIdempotentRetry(
             primaryEventName,
-            receipt.idempotencyKey,
-            controller.signal
+            receipt.idempotencyKey
           );
           if (
             res.status === 404 &&
@@ -649,10 +720,9 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
                 ? 'ad_transparency_creative_retrieved'
                 : 'ad-creative-scraped';
             const aliasIdempotencyKey = `${receipt.idempotencyKey}-${aliasEventName}`;
-            const fallbackRes = await postChargeRequest(
+            const fallbackRes = await postChargeRequestWithIdempotentRetry(
               aliasEventName,
-              aliasIdempotencyKey,
-              controller.signal
+              aliasIdempotencyKey
             );
             if (fallbackRes.status !== 404) {
               res = fallbackRes;
@@ -682,7 +752,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             let isUnmonetizedNotAllowed = res.status === 405;
             if (res.status === 403) {
               try {
-                const errText = await res.text();
+                const errText = res.bodyText || '';
                 const errJson = errText && errText.trim() ? JSON.parse(errText) : null;
                 isUnmonetizedNotAllowed = errJson?.error?.type === 'operation-not-allowed';
               } catch {
@@ -705,7 +775,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
           if (res.status < 200 || res.status >= 300) {
             let errSuffix = '';
             try {
-              const errText = await res.text();
+              const errText = res.bodyText || '';
               if (errText && errText.trim()) {
                 const errJson = JSON.parse(errText);
                 const errType = errJson?.error?.type;
@@ -718,7 +788,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             }
             throw new Error(`Apify Pay-per-Event charge HTTP ${res.status}${errSuffix}`);
           }
-          const rawText = await res.text();
+          const rawText = res.bodyText || '';
           const parsed = rawText && rawText.trim() ? JSON.parse(rawText) : {};
           const dataObj = parsed?.data && typeof parsed.data === 'object' ? parsed.data : parsed;
           // Apify REST `POST /v2/actor-runs/{runId}/charge` returns HTTP 201 Created with `{}` on success.
@@ -775,7 +845,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             ...(subsetIds ? { chargedCreativeIds: subsetIds } : {}),
           };
         } finally {
-          clearTimeout(timer);
+          // Per-attempt timeout timers are cleared inside postChargeRequestWithIdempotentRetry
         }
       };
     }
@@ -1818,6 +1888,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         }
         for (const c of paidSubset) {
           deliveredSet.add(c.creativeId);
+          delete stagedItemsById[c.creativeId];
           newlyDeliveredItems.push(c);
         }
         deliveredCount = deliveredSet.size;
@@ -1864,6 +1935,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         }
         for (const c of paidPrefix) {
           deliveredSet.add(c.creativeId);
+          delete stagedItemsById[c.creativeId];
           newlyDeliveredItems.push(c);
         }
         deliveredCount = deliveredSet.size;
@@ -1927,6 +1999,9 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         : finalStatus === 'DEADLINE_EXCEEDED_BEFORE_CHARGE'
           ? 'DEADLINE_EXCEEDED_HAS_MORE'
           : 'PARTIAL_BILLING_HALT';
+    effectiveIncompleteReason = finalStatus;
+  } else if (finalStatus === 'CHARGE_LIMIT_REACHED' && effectiveNextPageToken) {
+    effectivePaginationStatus = 'CHARGE_LIMIT_REACHED_HAS_MORE';
     effectiveIncompleteReason = finalStatus;
   }
 
