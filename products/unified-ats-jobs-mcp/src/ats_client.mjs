@@ -207,6 +207,231 @@ export const KNOWN_COMPANY_ATS_DIRECTORY = Object.freeze({
     companySlug: 'Equinox',
     companyName: 'Equinox',
   },
+  wayfair: {
+    atsProvider: 'SMARTRECRUITERS',
+    companySlug: 'wayfair',
+    companyName: 'Wayfair',
+  },
+  webflow: {
+    atsProvider: 'ASHBY',
+    companySlug: 'webflow',
+    companyName: 'Webflow',
+  },
+  drata: {
+    atsProvider: 'ASHBY',
+    companySlug: 'drata',
+    companyName: 'Drata',
+  },
+  vanta: {
+    atsProvider: 'ASHBY',
+    companySlug: 'vanta',
+    companyName: 'Vanta',
+  },
+  plaid: {
+    atsProvider: 'ASHBY',
+    companySlug: 'plaid',
+    companyName: 'Plaid',
+  },
+  snyk: {
+    atsProvider: 'ASHBY',
+    companySlug: 'snyk',
+    companyName: 'Snyk',
+  },
+  miro: {
+    atsProvider: 'ASHBY',
+    companySlug: 'miro',
+    companyName: 'Miro',
+  },
+  amplitude: {
+    atsProvider: 'ASHBY',
+    companySlug: 'amplitude',
+    companyName: 'Amplitude',
+  },
+  zapier: {
+    atsProvider: 'ASHBY',
+    companySlug: 'zapier',
+    companyName: 'Zapier',
+  },
+  benchling: {
+    atsProvider: 'ASHBY',
+    companySlug: 'benchling',
+    companyName: 'Benchling',
+  },
+  clickhouse: {
+    atsProvider: 'ASHBY',
+    companySlug: 'clickhouse',
+    companyName: 'ClickHouse',
+  },
+  vercel: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'vercel',
+    companyName: 'Vercel',
+  },
+  airtable: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'airtable',
+    companyName: 'Airtable',
+  },
+  mercury: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'mercury',
+    companyName: 'Mercury',
+  },
+  gusto: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'gusto',
+    companyName: 'Gusto',
+  },
+  gitlab: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'gitlab',
+    companyName: 'GitLab',
+  },
+  brex: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'brex',
+    companyName: 'Brex',
+  },
+  scaleai: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'scaleai',
+    companyName: 'Scale AI',
+  },
+  robinhood: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'robinhood',
+    companyName: 'Robinhood',
+  },
+  braze: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'braze',
+    companyName: 'Braze',
+  },
+  cockroachlabs: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'cockroachlabs',
+    companyName: 'Cockroach Labs',
+  },
+  calendly: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'calendly',
+    companyName: 'Calendly',
+  },
+  mixpanel: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'mixpanel',
+    companyName: 'Mixpanel',
+  },
+  intercom: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'intercom',
+    companyName: 'Intercom',
+  },
+  carta: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'carta',
+    companyName: 'Carta',
+  },
+  rubrik: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'rubrik',
+    companyName: 'Rubrik',
+  },
+  lattice: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'lattice',
+    companyName: 'Lattice',
+  },
+  asana: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'asana',
+    companyName: 'Asana',
+  },
+  dropbox: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'dropbox',
+    companyName: 'Dropbox',
+  },
+  duolingo: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'duolingo',
+    companyName: 'Duolingo',
+  },
+  elastic: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'elastic',
+    companyName: 'Elastic',
+  },
+  fastly: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'fastly',
+    companyName: 'Fastly',
+  },
+  instacart: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'instacart',
+    companyName: 'Instacart',
+  },
+  klaviyo: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'klaviyo',
+    companyName: 'Klaviyo',
+  },
+  mongodb: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'mongodb',
+    companyName: 'MongoDB',
+  },
+  netlify: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'netlify',
+    companyName: 'Netlify',
+  },
+  okta: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'okta',
+    companyName: 'Okta',
+  },
+  pagerduty: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'pagerduty',
+    companyName: 'PagerDuty',
+  },
+  pinterest: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'pinterest',
+    companyName: 'Pinterest',
+  },
+  reddit: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'reddit',
+    companyName: 'Reddit',
+  },
+  samsara: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'samsara',
+    companyName: 'Samsara',
+  },
+  squarespace: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'squarespace',
+    companyName: 'Squarespace',
+  },
+  toast: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'toast',
+    companyName: 'Toast',
+  },
+  twilio: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'twilio',
+    companyName: 'Twilio',
+  },
+  zscaler: {
+    atsProvider: 'GREENHOUSE',
+    companySlug: 'zscaler',
+    companyName: 'Zscaler',
+  },
 });
 
 /**
@@ -1283,10 +1508,20 @@ export async function executeAtsJsonRequest(url, options = {}) {
         if (lastStatusCode >= 300 && lastStatusCode < 400) {
           clearTimeout(timer);
           heldRedirectResponses.push(response);
-          const isRateLimitChallenge = /\/sorry\b|challenge|captcha|login/i.test(locationHeader);
+          const isCrossHostOrPrivateRedirect =
+            Boolean(locationHeader) &&
+            /^(?:https?:)?\/\//i.test(locationHeader) &&
+            !assertAllowedAtsEgress(locationHeader).safe;
+          const isRateLimitChallenge =
+            !isCrossHostOrPrivateRedirect &&
+            /\/sorry\b|challenge|captcha|login/i.test(locationHeader);
           return {
             ok: false,
-            status: isRateLimitChallenge ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_ERROR',
+            status: isCrossHostOrPrivateRedirect
+              ? 'SSRF_BLOCKED'
+              : isRateLimitChallenge
+                ? 'UPSTREAM_RATE_LIMITED'
+                : 'UPSTREAM_ERROR',
             statusCode: lastStatusCode,
             data: null,
             attempts: attempt + 1,
@@ -2257,77 +2492,145 @@ export async function resolveCompanyAtsBoard(options = {}) {
     ? [parsedTarget.atsProvider]
     : ['ASHBY', 'GREENHOUSE', 'LEVER', 'SMARTRECRUITERS'];
 
-  let totalAttempts = 0;
-  for (const candProvider of probeOrder) {
-    let probeUrl = '';
+  const buildProbeRequestUrl = (candProvider) => {
     if (candProvider === 'ASHBY') {
-      probeUrl = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}?includeCompensation=true`;
-    } else if (candProvider === 'GREENHOUSE') {
-      probeUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(slug)}/jobs?content=false`;
-    } else if (candProvider === 'LEVER') {
-      probeUrl = `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}?mode=json&limit=1`;
-    } else if (candProvider === 'SMARTRECRUITERS') {
-      probeUrl = `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(slug)}/postings?limit=1&offset=0`;
-    } else if (candProvider === 'WORKDAY') {
+      return `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}?includeCompensation=true`;
+    }
+    if (candProvider === 'GREENHOUSE') {
+      return `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(slug)}/jobs?content=false`;
+    }
+    if (candProvider === 'LEVER') {
+      return `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}?mode=json&limit=1`;
+    }
+    if (candProvider === 'SMARTRECRUITERS') {
+      return `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(slug)}/postings?limit=1&offset=0`;
+    }
+    if (candProvider === 'WORKDAY') {
       const tenant = parsedTarget.workdayTenant || slug.toLowerCase();
       const wdInst = parsedTarget.wdInstance || 'wd5';
       const site = parsedTarget.workdaySite || `${tenant}ExternalCareerSite`;
-      probeUrl = `https://${tenant}.${wdInst}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`;
+      return `https://${tenant}.${wdInst}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`;
     }
+    return '';
+  };
 
-    const reqRes = await executeAtsJsonRequest(probeUrl, {
-      ...options,
-      method: candProvider === 'WORKDAY' ? 'POST' : 'GET',
-      body:
-        candProvider === 'WORKDAY'
-          ? { appliedFacets: {}, limit: 1, offset: 0, searchText: '' }
-          : undefined,
-      maxRetries: 1,
-    });
-    totalAttempts += reqRes.attempts;
+  const probeResults = await Promise.all(
+    probeOrder.map(async (candProvider, orderIdx) => {
+      try {
+        const probeUrl = buildProbeRequestUrl(candProvider);
+        const reqRes = await executeAtsJsonRequest(probeUrl, {
+          ...options,
+          method: candProvider === 'WORKDAY' ? 'POST' : 'GET',
+          body:
+            candProvider === 'WORKDAY'
+              ? { appliedFacets: {}, limit: 1, offset: 0, searchText: '' }
+              : undefined,
+          maxRetries: 1,
+        });
+        const canary = reqRes.ok ? verifyAtsResponseSchemaCanary(candProvider, reqRes.data) : null;
+        return {
+          candProvider,
+          orderIdx,
+          reqRes,
+          canary,
+        };
+      } catch (err) {
+        return {
+          candProvider,
+          orderIdx,
+          reqRes: {
+            ok: false,
+            status: 'UPSTREAM_ERROR',
+            statusCode: 0,
+            data: null,
+            attempts: 1,
+            errorMessage: String(err?.message || 'Probe exception'),
+          },
+          canary: null,
+        };
+      }
+    })
+  );
 
-    if (reqRes.status === 'UPSTREAM_RATE_LIMITED' || reqRes.status === 'SSRF_BLOCKED') {
+  const totalAttempts = probeResults.reduce((acc, r) => acc + (r.reqRes.attempts || 0), 0);
+
+  // SSRF_BLOCKED is always fatal across all probes
+  const ssrfBlockedProbe = probeResults.find((r) => r.reqRes.status === 'SSRF_BLOCKED');
+  if (ssrfBlockedProbe) {
+    return {
+      ok: false,
+      status: 'SSRF_BLOCKED',
+      board: null,
+      boardTarget: null,
+      target: null,
+      probeAttempts: totalAttempts,
+      billableCount: 0,
+      reason: ssrfBlockedProbe.reqRes.errorMessage,
+    };
+  }
+
+  // Prefer boards with active job postings (canary.status === 'OK' && canary.billableCount > 0)
+  // in deterministic probeOrder so empty 0-job stub boards on Ashby/SmartRecruiters never shadow active boards,
+  // and a 429 on an unrelated provider does not block an active board already discovered on another provider.
+  const activeBoardMatch = probeResults.find(
+    (r) => r.reqRes.ok && r.canary?.ok && r.canary.status === 'OK' && r.canary.billableCount > 0
+  );
+
+  // If no active board was found and any provider was rate-limited, fail closed with UPSTREAM_RATE_LIMITED
+  if (!activeBoardMatch) {
+    const rateLimitedProbe = probeResults.find((r) => r.reqRes.status === 'UPSTREAM_RATE_LIMITED');
+    if (rateLimitedProbe) {
       return {
         ok: false,
-        status: reqRes.status,
+        status: 'UPSTREAM_RATE_LIMITED',
         board: null,
         boardTarget: null,
         target: null,
         probeAttempts: totalAttempts,
         billableCount: 0,
-        reason: reqRes.errorMessage,
+        reason: rateLimitedProbe.reqRes.errorMessage,
       };
     }
+  }
+  // When a single explicit provider was probed (probeOrder.length === 1), allow a valid empty board (EMPTY_RESULT);
+  // during multi-provider auto-discovery (probeOrder.length > 1), only fall back to an empty stub board when
+  // options.allowEmptyStubBoard === true (and never from SMARTRECRUITERS which returns 200 content:[] for any string).
+  const fallbackEmptyMatch =
+    probeOrder.length === 1
+      ? probeResults.find((r) => r.reqRes.ok && r.canary?.ok)
+      : options.allowEmptyStubBoard === true
+        ? probeResults.find(
+            (r) => r.reqRes.ok && r.canary?.ok && r.candProvider !== 'SMARTRECRUITERS'
+          )
+        : null;
 
-    if (reqRes.ok) {
-      const canary = verifyAtsResponseSchemaCanary(candProvider, reqRes.data);
-      if (canary.ok) {
-        const resolvedBoard = {
-          atsProvider: candProvider,
-          provider: candProvider,
-          companySlug: slug,
-          companyName: parsedTarget.companyName,
-          ...(candProvider === 'WORKDAY'
-            ? {
-                workdayTenant: parsedTarget.workdayTenant || slug.toLowerCase(),
-                workdaySite: parsedTarget.workdaySite,
-                wdInstance: parsedTarget.wdInstance || 'wd5',
-              }
-            : {}),
-          detectedFromUrl: parsedTarget.detectedFromUrl,
-          resolutionSource: 'LIVE_PROBE',
-        };
-        return {
-          ok: true,
-          status: 'OK',
-          board: resolvedBoard,
-          boardTarget: resolvedBoard,
-          target: resolvedBoard,
-          probeAttempts: totalAttempts,
-          billableCount: 0,
-        };
-      }
-    }
+  const winningProbe = activeBoardMatch || fallbackEmptyMatch;
+  if (winningProbe) {
+    const candProvider = winningProbe.candProvider;
+    const resolvedBoard = {
+      atsProvider: candProvider,
+      provider: candProvider,
+      companySlug: slug,
+      companyName: parsedTarget.companyName,
+      ...(candProvider === 'WORKDAY'
+        ? {
+            workdayTenant: parsedTarget.workdayTenant || slug.toLowerCase(),
+            workdaySite: parsedTarget.workdaySite,
+            wdInstance: parsedTarget.wdInstance || 'wd5',
+          }
+        : {}),
+      detectedFromUrl: parsedTarget.detectedFromUrl,
+      resolutionSource: 'LIVE_PROBE',
+    };
+    return {
+      ok: true,
+      status: 'OK',
+      board: resolvedBoard,
+      boardTarget: resolvedBoard,
+      target: resolvedBoard,
+      probeAttempts: totalAttempts,
+      billableCount: 0,
+    };
   }
 
   return {
@@ -2622,6 +2925,17 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
   );
   const isPagedProvider =
     atsProvider === 'WORKDAY' || atsProvider === 'SMARTRECRUITERS' || atsProvider === 'LEVER';
+  const isTightLeverDeadline = Boolean(
+    options.deadlineAtMs && options.deadlineAtMs - nowFn() < 12000
+  );
+  const leverCeiling = isTightLeverDeadline ? 15 : 25;
+  const requestedLeverPageSize =
+    options.leverPageSize !== undefined &&
+    options.leverPageSize !== null &&
+    Number.isFinite(Number(options.leverPageSize))
+      ? Math.max(1, Math.floor(Number(options.leverPageSize)))
+      : 15;
+  const leverMaxPageSize = Math.min(leverCeiling, requestedLeverPageSize);
   const pageSize =
     atsProvider === 'WORKDAY'
       ? 20
@@ -2631,8 +2945,8 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
           ? cursorCheck.isComposite && cursorCheck.pageSize
             ? cursorCheck.pageSize
             : hasActiveClientFilters
-              ? 25
-              : Math.min(25, Math.max(1, maxResults))
+              ? leverMaxPageSize
+              : Math.min(leverMaxPageSize, Math.max(1, maxResults))
           : maxResults;
 
   let currentPageOffset =

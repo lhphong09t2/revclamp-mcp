@@ -109,6 +109,7 @@ Every job posting across all 5 ATS providers is normalized into a deterministic 
 | **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Paddle`, `Lemon Squeezy`, `Shopify`) |
 | **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp)** | [`@revclamp/google-ads-transparency-mcp`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
 | **[RevClamp TalentPulse](https://apify.com/revclamp/unified-ats-jobs-mcp)** | [`@revclamp/unified-ats-jobs-mcp`](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) | Unified 5-in-1 B2B ATS job postings, salary ranges & tech-stack hiring signals (`Greenhouse`, `Workday CXS`, `Ashby`, `Lever`, `SmartRecruiters`) |
+| **[RevClamp ContactPulse](https://apify.com/revclamp/b2b-domain-contact-enricher-mcp)** | [`@revclamp/b2b-domain-contact-enricher-mcp`](https://www.npmjs.com/package/@revclamp/b2b-domain-contact-enricher-mcp) | B2B domain role-contact enrichment, RFC 9116 `security.txt` audit & DNS-over-HTTPS MX/SPF/DMARC deliverability posture |
 
 ---
 
