@@ -36,14 +36,14 @@ export const SUPPORTED_MCP_PROTOCOL_VERSIONS = Object.freeze([
   '2024-11-05',
 ]);
 
-const RAW_BRAND_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="rc-tp-title"><title id="rc-tp-title">RevClamp TalentPulse</title><defs><linearGradient id="rc-tp-bg" gradientUnits="userSpaceOnUse" x1="32" y1="6" x2="32" y2="58"><stop offset="0" stop-color="#111C38"/><stop offset="1" stop-color="#0B1020"/></linearGradient><linearGradient id="rc-tp-edge" gradientUnits="userSpaceOnUse" x1="10" y1="6" x2="54" y2="58"><stop offset="0" stop-color="#06B6D4"/><stop offset="1" stop-color="#10B981"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="#0B1020"/><path d="M32 6L53 13.5V31C53 44 44.5 52.5 32 58C19.5 52.5 11 44 11 31V13.5Z" fill="url(#rc-tp-bg)" stroke="url(#rc-tp-edge)" stroke-width="2" stroke-linejoin="round"/><rect x="19" y="23" width="26" height="19" rx="3.5" fill="#0B1020" stroke="#F8FAFC" stroke-width="2"/><path d="M26 23V19.5C26 18.1 27.1 17 28.5 17H35.5C36.9 17 38 18.1 38 19.5V23" stroke="#06B6D4" stroke-width="2" fill="none"/><path d="M19 30.5H45" stroke="#06B6D4" stroke-opacity="0.45" stroke-width="1.4"/><polyline points="23,33 27.5,33 29.8,28.5 32.8,37 35.2,31.5 37.5,33 41,33" fill="none" stroke="#10B981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44" cy="19" r="3.2" fill="#F59E0B"/></svg>`;
+const RAW_BRAND_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="rc-title"><title id="rc-title">RevClamp TalentPulse</title><defs><linearGradient id="rc-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#111C38"/><stop offset="100%" stop-color="#090E1D"/></linearGradient><linearGradient id="rc-edge" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06B6D4"/><stop offset="100%" stop-color="#10B981"/></linearGradient></defs><rect width="64" height="64" fill="#0B1020"/><path d="M32 10L50 16.5V31C50 42.5 42.5 49.5 32 54C21.5 49.5 14 42.5 14 31V16.5Z" fill="url(#rc-fill)" stroke="url(#rc-edge)" stroke-width="2.4" stroke-linejoin="round"/><path d="M32 12.8L47.4 18.4V30.8C47.4 40.4 41 46.7 32 50.8C23 46.7 16.6 40.4 16.6 30.8V18.4Z" fill="none" stroke="#F59E0B" stroke-opacity="0.45" stroke-width="0.9" stroke-linejoin="round"/><path d="M28 24.2V21.8C28 20.8 28.8 20 29.8 20H34.2C35.2 20 36 20.8 36 21.8V24.2" fill="none" stroke="#F8FAFC" stroke-width="1.8" stroke-linecap="round"/><rect x="21.5" y="24.2" width="21" height="14.6" rx="2.8" fill="#0B1020" stroke="#F8FAFC" stroke-width="1.8"/><path d="M24.2 31.6H27.4L29.2 28L32 34.8L34.2 29.8L35.8 31.6H39.8" fill="none" stroke="#10B981" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><circle cx="32" cy="16.4" r="1.5" fill="#F59E0B"/><circle cx="20.4" cy="19.7" r="1.5" fill="#06B6D4"/><circle cx="43.6" cy="19.7" r="1.5" fill="#06B6D4"/><circle cx="25" cy="42.2" r="1.5" fill="#10B981"/><circle cx="39" cy="42.2" r="1.5" fill="#10B981"/></svg>`;
 
 export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIComponent(RAW_BRAND_ICON_SVG)}`;
 
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'unified-ats-jobs-mcp',
   title: 'RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed',
-  version: '1.0.0',
+  version: '1.0.4',
   description:
     'Extract normalized B2B job postings, compensation ranges, workplace classification (REMOTE/HYBRID/ONSITE), and tech-stack hiring signals across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters. Independent hiring intelligence tool by RevClamp; not affiliated with any ATS vendor.',
   websiteUrl: 'https://revclamp.com',
@@ -54,12 +54,12 @@ export const MCP_SERVER_INFO = Object.freeze({
       sizes: ['any'],
     },
     {
-      src: 'https://revclamp.com/apple-touch-icon.png',
+      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/unified-ats-jobs-mcp/assets/icon-180.png',
       mimeType: 'image/png',
       sizes: ['180x180'],
     },
     {
-      src: 'https://revclamp.com/favicon.png',
+      src: 'https://raw.githubusercontent.com/lhphong09t2/revclamp-mcp/main/products/unified-ats-jobs-mcp/assets/icon-32.png',
       mimeType: 'image/png',
       sizes: ['32x32'],
     },
@@ -360,17 +360,19 @@ export function truncateMcpResponseEnvelope(
 
     if (cand.pagination && typeof cand.pagination === 'object') {
       delete cand.pagination.cursorResumeContext;
-      if (omittedCount > 0 && cursorResumeContext) {
+      if ((omittedCount > 0 || tier >= 4) && cursorResumeContext) {
         const rewoundToken = computeRewoundCursorForDeliveredPrefix(
           cursorResumeContext,
           returnedCount,
           originalNextPageToken
         );
         cand.pagination.nextPageToken = rewoundToken;
-        cand.pagination.hasMore = Boolean(rewoundToken) || omittedCount > 0;
+        cand.pagination.hasMore = Boolean(rewoundToken);
         cand.pagination.paginationStatus = rewoundToken
           ? 'TRUNCATED_HAS_MORE_MID_PAGE'
           : 'TRUNCATED_AT_BYTE_CEILING';
+      } else {
+        cand.pagination.hasMore = Boolean(cand.pagination.nextPageToken);
       }
       if (cand.deliveredCount !== undefined && Array.isArray(cand.items)) {
         cand.deliveredCount = cand.items.length;
@@ -529,20 +531,76 @@ export function truncateMcpResponseEnvelope(
     return tier4Candidate;
   }
 
-  return buildOrderedPayload(
+  const emergencyWithPagination = buildOrderedPayload(
     {
       ok: Boolean(work.ok),
       status: sliceUtf8Safe(work.status || 'OK', 32),
       items: [],
-      pagination: {
-        nextPageToken: originalNextPageToken,
-        hasMore: Boolean(originalNextPageToken) || originalItemCount > 0,
-        paginationStatus: 'TRUNCATED_AT_BYTE_CEILING',
-      },
+      ...(rawClone.pagination
+        ? {
+            pagination: {
+              nextPageToken: originalNextPageToken,
+              hasMore: Boolean(originalNextPageToken),
+              paginationStatus: 'TRUNCATED_AT_BYTE_CEILING',
+            },
+          }
+        : {}),
     },
     4,
     originalItemCount
   );
+  if (measureFullRpcBytes(emergencyWithPagination) <= safeMaxBytes) {
+    return emergencyWithPagination;
+  }
+
+  const emergencyNoToken = {
+    summary: `Truncated response to fit ${safeMaxBytes}-byte MCP ceiling (tier 4, returned 0, omitted ${originalItemCount} item(s)).`,
+    truncatedForMcpByteCeiling: true,
+    truncationTier: 4,
+    omittedItemCount: originalItemCount,
+    ok: Boolean(work.ok),
+    status: sliceUtf8Safe(work.status || 'OK', 32),
+    items: [],
+    ...(rawClone.pagination
+      ? {
+          pagination: {
+            nextPageToken: null,
+            hasMore: false,
+            paginationStatus: 'TRUNCATED_AT_BYTE_CEILING',
+          },
+        }
+      : {}),
+  };
+  if (measureFullRpcBytes(emergencyNoToken) <= safeMaxBytes) {
+    return emergencyNoToken;
+  }
+
+  const ultraMinimalWithPagination = {
+    ok: Boolean(work.ok),
+    status: sliceUtf8Safe(work.status || 'OK', 16),
+    truncatedForMcpByteCeiling: true,
+    truncationTier: 4,
+    omittedItemCount: originalItemCount,
+    items: [],
+    ...(rawClone.pagination
+      ? {
+          pagination: {
+            nextPageToken: null,
+            hasMore: false,
+          },
+        }
+      : {}),
+  };
+  if (measureFullRpcBytes(ultraMinimalWithPagination) <= safeMaxBytes) {
+    return ultraMinimalWithPagination;
+  }
+
+  return {
+    ok: Boolean(work.ok),
+    truncatedForMcpByteCeiling: true,
+    truncationTier: 4,
+    items: [],
+  };
 }
 
 /**
@@ -556,7 +614,11 @@ function validateJsonRpcRequestId(rawId) {
     return { valid: true, id: null };
   }
   if (typeof rawId === 'string') {
-    if (Buffer.byteLength(rawId, 'utf8') > MCP_MAX_REQ_ID_BYTES) {
+    if (
+      /[\u0000-\u001F\u007F]/.test(rawId) ||
+      Buffer.byteLength(rawId, 'utf8') > MCP_MAX_REQ_ID_BYTES ||
+      Buffer.byteLength(JSON.stringify(rawId), 'utf8') > MCP_MAX_REQ_ID_BYTES + 2
+    ) {
       return { valid: false, id: null };
     }
     return { valid: true, id: rawId };

@@ -21,6 +21,8 @@ import crypto from 'node:crypto';
 import {
   ALLOWED_ATS_API_HOSTS,
   WORKDAY_CXS_HOST_RE,
+  LIVE_SECRET_GUARD_RE,
+  containsLiveSecretToken,
   isAllowedAtsApiHost,
   verifyEgressUrlSsrfSafe,
   assertAllowedAtsEgress,
@@ -30,6 +32,8 @@ import {
 export {
   ALLOWED_ATS_API_HOSTS,
   WORKDAY_CXS_HOST_RE,
+  LIVE_SECRET_GUARD_RE,
+  containsLiveSecretToken,
   isAllowedAtsApiHost,
   verifyEgressUrlSsrfSafe,
   assertAllowedAtsEgress,
@@ -422,7 +426,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
       boundRowCap > 25000 ||
       !Number.isInteger(parsed.o) ||
       parsed.o < 0 ||
-      parsed.o > boundRowCap ||
+      parsed.o >= boundRowCap ||
       (parsed.qh !== undefined &&
         (typeof parsed.qh !== 'string' || !/^[0-9a-f]{12}$/.test(parsed.qh))) ||
       (parsed.aj !== undefined &&
@@ -598,6 +602,17 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
       companyName: '',
       detectedFromUrl: false,
       reason: `Query exceeds maximum length of ${MAX_QUERY_LENGTH} characters`,
+    };
+  }
+  if (containsLiveSecretToken(trimmed)) {
+    return {
+      ok: false,
+      atsProvider: null,
+      companySlug: '',
+      companyName: '',
+      detectedFromUrl: false,
+      reason:
+        'Outbound live secret guard: query contains a sensitive credential or API token pattern',
     };
   }
 
@@ -1617,7 +1632,9 @@ function normalizeCompensationInterval(rawInterval) {
  * @param {string} [params.plainText]
  * @returns {{minAmount: number, maxAmount: number, currency: string, interval: string, source: string}|null}
  */
-export function extractJobCompensation({ structuredComp = null, plainText = '' } = {}) {
+export function extractJobCompensation(params = {}) {
+  const { structuredComp = null, plainText = '' } =
+    params && typeof params === 'object' ? params : {};
   // 1. Check structured compensation (Ashby / Lever / SmartRecruiters)
   if (structuredComp && typeof structuredComp === 'object') {
     // Ashby format: { summaryComponents: [{ compensationType: 'Salary', interval: '1 YEAR', currencyCode: 'USD', minValue: 204000, maxValue: 264000 }] }
@@ -1676,7 +1693,7 @@ export function extractJobCompensation({ structuredComp = null, plainText = '' }
   if (!text) return null;
 
   const rangeRe =
-    /(?:(USD|EUR|GBP|CAD|AUD|SGD|CHF)\s*|(US\$|CA\$|C\$|A\$|\$|\u20AC|\u00A3))\s*(\d{2,3}(?:,\d{3})+|\d{2,3}(?:\.\d+)?\s*[kK]|\d{2,3})\s*(?:-|to|\u2013|\u2014)\s*(?:(?:USD|EUR|GBP|CAD|AUD|SGD|CHF|US\$|CA\$|C\$|A\$|\$|\u20AC|\u00A3)\s*)?(\d{2,3}(?:,\d{3})+|\d{2,3}(?:\.\d+)?\s*[kK]|\d{2,3})(?:\s*(?:per\s+|\/\s*)?(year|yr|annum|annual|annually|month|mo|hour|hr))?/gi;
+    /(?:\b(USD|EUR|GBP|CAD|AUD|SGD|CHF)\b\s*(?:US\$|CA\$|C\$|A\$|\$|\u20AC|\u00A3)?\s*|(US\$|CA\$|C\$|A\$|\$|\u20AC|\u00A3))\s*((?:\d{1,3}(?:,\d{3})+|\d{1,7})(?:\.\d+)?(?:\s*[kKmM]\b)?)(?![0-9,.])\s*(?:-|to|\u2013|\u2014)\s*(?:(?:\b(?:USD|EUR|GBP|CAD|AUD|SGD|CHF)\b\s*(?:US\$|CA\$|C\$|A\$|\$|\u20AC|\u00A3)?|US\$|CA\$|C\$|A\$|\$|\u20AC|\u00A3)\s*)?((?:\d{1,3}(?:,\d{3})+|\d{1,7})(?:\.\d+)?(?:\s*[kKmM]\b)?)(?![0-9,.])(?:\s*(?:per\s+|\/\s*)?(year|yr|annum|annual|annually|month|mo|hour|hr)\b)?/gi;
 
   let match;
   while ((match = rangeRe.exec(text)) !== null) {
@@ -1687,21 +1704,36 @@ export function extractJobCompensation({ structuredComp = null, plainText = '' }
     const rawMaxStr = match[4];
     const rawUnit = match[5] || '';
 
-    const parseAmountToken = (tok, fallbackHasK = false) => {
+    const parseAmountToken = (tok, fallbackMultiplier = 1) => {
       const clean = String(tok).replace(/,/g, '').trim();
-      const hasK = /[kK]$/.test(clean) || fallbackHasK;
-      const num = parseFloat(clean.replace(/[kK]$/, ''));
+      const hasM = /[mM]$/.test(clean);
+      const hasK = /[kK]$/.test(clean);
+      const multiplier = hasM ? 1_000_000 : hasK ? 1_000 : fallbackMultiplier;
+      const rawNumStr = clean.replace(/[kKmM]$/, '').trim();
+      const num = Number(rawNumStr);
       if (!Number.isFinite(num) || num <= 0) return null;
-      return hasK ? Math.round(num * 1000) : Math.round(num);
+      const scaled = num * multiplier;
+      return multiplier > 1 || Number.isInteger(scaled)
+        ? Math.round(scaled)
+        : Math.round(scaled * 100) / 100;
     };
 
-    const maxHasK = /[kK]$/.test(rawMaxStr.trim());
-    const minHasK = /[kK]$/.test(rawMinStr.trim());
-    const minAmount = parseAmountToken(
-      rawMinStr,
-      !minHasK && maxHasK && !rawMinStr.includes(',') && Number(rawMinStr) < 1000
-    );
-    const maxAmount = parseAmountToken(rawMaxStr, maxHasK);
+    const minClean = rawMinStr.trim();
+    const maxClean = rawMaxStr.trim();
+    const minHasSuffix = /[kKmM]$/.test(minClean);
+    const maxHasM = /[mM]$/.test(maxClean);
+    const maxHasK = /[kK]$/.test(maxClean);
+    let minFallbackMult = 1;
+    if (!minHasSuffix && !minClean.includes(',')) {
+      const minRawVal = Number(minClean);
+      if (maxHasM && minRawVal > 0 && minRawVal < 100) {
+        minFallbackMult = 1_000_000;
+      } else if (maxHasK && minRawVal > 0 && minRawVal < 1000) {
+        minFallbackMult = 1_000;
+      }
+    }
+    const minAmount = parseAmountToken(rawMinStr, minFallbackMult);
+    const maxAmount = parseAmountToken(rawMaxStr, 1);
 
     if (!minAmount || !maxAmount || maxAmount < minAmount) {
       continue;
@@ -1713,11 +1745,20 @@ export function extractJobCompensation({ structuredComp = null, plainText = '' }
         interval = 'HOUR';
       } else if (minAmount >= 2000 && maxAmount <= 25000) {
         interval = 'MONTH';
-      } else if (minAmount >= 25000 && maxAmount <= 2000000) {
+      } else if (minAmount >= 25000 && maxAmount <= 5000000) {
         interval = 'YEAR';
       } else {
         continue;
       }
+    }
+    if (interval !== 'HOUR') {
+      return {
+        minAmount: Math.round(minAmount),
+        maxAmount: Math.round(maxAmount),
+        currency,
+        interval,
+        source: 'DESCRIPTION_REGEX',
+      };
     }
 
     return {
@@ -1802,7 +1843,7 @@ export function inferCountryIso2(explicitCountry = '', locationRaw = '') {
   }
   if (/^(?:india|in)[-\s,]/i.test(loc)) return 'IN';
   if (/^(?:germany|de)[-\s,]/i.test(loc)) return 'DE';
-  if (/^(?:us|usa)[-\s,]/i.test(loc)) return 'US';
+  if (/^(?:us|usa)[-\s,]|[-\s,(](?:us|usa)(?:[-\s,)]|$)/i.test(loc)) return 'US';
 
   const parts = loc.split(',').map((p) => p.trim()).filter(Boolean);
   if (parts.length >= 2) {
@@ -1958,7 +1999,9 @@ function pinSafeAtsApplyUrl(candidateUrl, fallbackUrl) {
  * @param {object} [context]
  * @returns {object}
  */
-export function normalizeAtsJobRecord(atsProvider, rawJob, context = {}) {
+export function normalizeAtsJobRecord(atsProvider, rawJob = {}, context = {}) {
+  rawJob = rawJob && typeof rawJob === 'object' ? rawJob : {};
+  context = context && typeof context === 'object' ? context : {};
   const provider = String(atsProvider ?? '').toUpperCase();
   const prefix = PROVIDER_SHORT_PREFIX[provider] || 'ats';
   const companySlug = String(context.companySlug || 'company').trim();
@@ -2417,6 +2460,28 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
       reason: 'Parameter departmentKeyword exceeds maximum length of 128 characters',
     };
   }
+  if (
+    containsLiveSecretToken(departmentKeyword) ||
+    containsLiveSecretToken(String(options.query ?? options.company ?? ''))
+  ) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      board: null,
+      boardTarget: null,
+      jobs: [],
+      pagesFetched: 0,
+      httpAttempts: 0,
+      rpcAttempts: 0,
+      nextPageToken: null,
+      paginationStatus: 'INVALID_INPUT',
+      paginationIncompleteReason: null,
+      cursorResumeContext: null,
+      billableCount: 0,
+      reason:
+        'Outbound live secret guard: query or departmentKeyword contains a sensitive credential or API token pattern',
+    };
+  }
 
   let effectiveOptions = options;
   if (
@@ -2542,7 +2607,8 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
     if (departmentKeyword) {
       const kw = departmentKeyword.toLowerCase();
       const techStr = Array.isArray(job.techStackKeywords) ? job.techStackKeywords.join(' ') : '';
-      const hay = `${job.title || ''} ${job.department || ''} ${job.locationRaw || ''} ${techStr}`.toLowerCase();
+      const excerptStr = job.untrustedJobContent?.plainTextExcerpt || '';
+      const hay = `${job.title || ''} ${job.department || ''} ${job.locationRaw || ''} ${techStr} ${excerptStr}`.toLowerCase();
       if (!hay.includes(kw)) {
         return false;
       }
@@ -2577,7 +2643,7 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
 
   while (pagesFetched < (isPagedProvider ? maxPages : 1) && deduplicatedJobs.length < maxResults) {
     if (options.deadlineAtMs && nowFn() >= options.deadlineAtMs) {
-      if (pagesFetched > 0 && deduplicatedJobs.length > 0) {
+      if (pagesFetched > 0) {
         outputNextPageToken = encodeCompositeCursor({
           p: atsProvider,
           s: companySlug,
@@ -2664,9 +2730,7 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
       }
       if (
         pagesFetched > 0 &&
-        deduplicatedJobs.length > 0 &&
         reqRes.status !== 'SCHEMA_DRIFT_HALT' &&
-        reqRes.status !== 'UPSTREAM_RATE_LIMITED' &&
         reqRes.status !== 'SSRF_BLOCKED'
       ) {
         outputNextPageToken = encodeCompositeCursor({

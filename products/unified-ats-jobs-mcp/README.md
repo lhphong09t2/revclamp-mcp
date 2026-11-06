@@ -28,7 +28,15 @@ Extract normalized B2B job postings, structured and regex-parsed compensation ra
 Run directly via `npx`:
 
 ```bash
+# Run MCP stdio server
 npx @revclamp/unified-ats-jobs-mcp --mcp-stdio
+
+# Run instant zero-network local self-test & inspect MCP tools
+npx @revclamp/unified-ats-jobs-mcp --self-test
+npx @revclamp/unified-ats-jobs-mcp --list-tools
+
+# Call an MCP tool directly from the CLI
+npx @revclamp/unified-ats-jobs-mcp --call resolve_company_ats_board '{"query":"linear"}'
 ```
 
 ### Claude Desktop / Cursor Configuration (`claude_desktop_config.json`)
@@ -91,6 +99,16 @@ Every job posting across all 5 ATS providers is normalized into a deterministic 
   }
 }
 ```
+
+---
+
+## RevClamp B2B Intelligence Suite (Companion Tools)
+
+| Product | npm Package | Primary Use Case |
+| :--- | :--- | :--- |
+| **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Paddle`, `Lemon Squeezy`, `Shopify`) |
+| **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp-actor)** | [`@revclamp/google-ads-transparency-mcp-actor`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp-actor) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
+| **[RevClamp TalentPulse](https://apify.com/revclamp/unified-ats-jobs-mcp)** | [`@revclamp/unified-ats-jobs-mcp`](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) | Unified 5-in-1 B2B ATS job postings, salary ranges & tech-stack hiring signals (`Greenhouse`, `Workday CXS`, `Ashby`, `Lever`, `SmartRecruiters`) |
 
 ---
 

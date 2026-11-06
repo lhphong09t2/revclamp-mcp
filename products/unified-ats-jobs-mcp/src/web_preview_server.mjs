@@ -27,7 +27,7 @@ export const PLAYGROUND_CSP_HEADER =
 export const MAX_PLAYGROUND_BODY_BYTES = 65536;
 export const PLAYGROUND_REQUEST_TIMEOUT_MS = 25000;
 
-const ALLOWED_HOST_HEADER_RE = /^(127\.0\.0\.1|localhost)(:\d{1,5})?$/i;
+const ALLOWED_HOST_HEADER_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/i;
 
 const STATIC_ASSET_MAP = Object.freeze({
   '/assets/icon.svg': {

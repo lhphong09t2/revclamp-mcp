@@ -18,6 +18,20 @@ export const ALLOWED_ATS_API_HOSTS = new Set([
 
 export const WORKDAY_CXS_HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.wd[1-5]\.myworkdayjobs\.com$/i;
 
+export const LIVE_SECRET_GUARD_RE =
+  /\b(sk_live_[0-9a-zA-Z]{10,}|rk_live_[0-9a-zA-Z]{10,}|whsec_[0-9a-zA-Z]{10,}|shpat_[0-9a-fA-F]{10,}|shppa_[0-9a-fA-F]{10,}|ghp_[0-9a-zA-Z]{20,}|github_pat_[0-9a-zA-Z_]{20,}|apify_api_[0-9a-zA-Z]{16,}|rg_live_[0-9a-zA-Z_]{10,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9a-zA-Z-]{10,})\b/;
+
+/**
+ * Checks whether a free-text input accidentally contains a live API secret or credential token.
+ *
+ * @param {string} rawText
+ * @returns {boolean}
+ */
+export function containsLiveSecretToken(rawText) {
+  if (!rawText || typeof rawText !== 'string') return false;
+  return LIVE_SECRET_GUARD_RE.test(rawText);
+}
+
 const SSRF_BLOCKED_HOST_RE =
   /^(localhost|.*\.localhost|.*\.local|.*\.internal|.*\.arpa|.*\.nip\.io|.*\.sslip\.io|metadata\.google\.internal|\d+\.\d+\.\d+\.\d+|\[.*\])$/i;
 

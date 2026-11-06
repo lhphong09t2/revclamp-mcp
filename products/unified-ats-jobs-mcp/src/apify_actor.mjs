@@ -282,6 +282,7 @@ export async function loadApifyActorInput(
       if (res.status === 204 || res.status === 404) {
         return applyAtHomeSchemaDefaults({});
       }
+      return {};
     } finally {
       clearTimeout(timer);
     }
