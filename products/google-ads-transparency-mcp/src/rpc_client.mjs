@@ -57,6 +57,182 @@ const MIN_VALID_EPOCH_SEC = 946684800; // 2000-01-01T00:00:00Z
 const MAX_VALID_EPOCH_SEC = 4102444800; // 2100-01-01T00:00:00Z
 
 /**
+ * Curated directory of verified Google Ads Transparency legal entities (`AR...`)
+ * for top global brands so common queries resolve in 0 SearchSuggestions RPC calls
+ * and degrade gracefully if upstream SearchSuggestions encounters rate-limiting.
+ */
+export const KNOWN_ADVERTISER_DIRECTORY = Object.freeze({
+  nike: Object.freeze({
+    advertiserId: 'AR16735076323512287233',
+    advertiserName: 'Nike, Inc.',
+    regionCode: 'US',
+    minAds: 9000,
+    maxAds: 10000,
+  }),
+  stripe: Object.freeze({
+    advertiserId: 'AR16951989901585285121',
+    advertiserName: 'Stripe, Inc.',
+    regionCode: 'US',
+    minAds: 8000,
+    maxAds: 9000,
+  }),
+  shopify: Object.freeze({
+    advertiserId: 'AR01625195283841286145',
+    advertiserName: 'Shopify Inc.',
+    regionCode: 'CA',
+    minAds: 40000,
+    maxAds: 50000,
+  }),
+  apple: Object.freeze({
+    advertiserId: 'AR03186575737440174081',
+    advertiserName: 'Apple Inc.',
+    regionCode: 'US',
+    minAds: 1000,
+    maxAds: 2000,
+  }),
+  openai: Object.freeze({
+    advertiserId: 'AR02788840342533701633',
+    advertiserName: 'OpenAI OpCo, LLC',
+    regionCode: 'US',
+    minAds: 40000,
+    maxAds: 50000,
+  }),
+  hubspot: Object.freeze({
+    advertiserId: 'AR10072600183532683265',
+    advertiserName: 'Hubspot, Inc.',
+    regionCode: 'US',
+    minAds: 2000,
+    maxAds: 3000,
+  }),
+  google: Object.freeze({
+    advertiserId: 'AR00753945370957971457',
+    advertiserName: 'Google LLC',
+    regionCode: 'US',
+    minAds: 21,
+    maxAds: 21,
+  }),
+  microsoft: Object.freeze({
+    advertiserId: 'AR15495076796520464385',
+    advertiserName: 'Microsoft Corporation',
+    regionCode: 'US',
+    minAds: 60000,
+    maxAds: 70000,
+  }),
+  amazon: Object.freeze({
+    advertiserId: 'AR12815412684405080065',
+    advertiserName: 'Amazon',
+    regionCode: 'US',
+    minAds: 2000,
+    maxAds: 3000,
+  }),
+  meta: Object.freeze({
+    advertiserId: 'AR17753757646030110721',
+    advertiserName: 'Meta',
+    regionCode: 'US',
+    minAds: 500,
+    maxAds: 600,
+  }),
+  netflix: Object.freeze({
+    advertiserId: 'AR11279752625278418945',
+    advertiserName: 'Netflix, Inc.',
+    regionCode: 'US',
+    minAds: 9000,
+    maxAds: 10000,
+  }),
+  airbnb: Object.freeze({
+    advertiserId: 'AR15908226811872411649',
+    advertiserName: 'Airbnb, Inc.',
+    regionCode: 'US',
+    minAds: 1000000,
+    maxAds: 1100000,
+  }),
+  uber: Object.freeze({
+    advertiserId: 'AR10766558596670947329',
+    advertiserName: 'Uber B.V.',
+    regionCode: 'NL',
+    minAds: 20000,
+    maxAds: 30000,
+  }),
+  salesforce: Object.freeze({
+    advertiserId: 'AR14047752120044617729',
+    advertiserName: 'Salesforce, Inc.',
+    regionCode: 'US',
+    minAds: 20000,
+    maxAds: 30000,
+  }),
+  adobe: Object.freeze({
+    advertiserId: 'AR15000638237259595777',
+    advertiserName: 'Adobe, Inc',
+    regionCode: 'US',
+    minAds: 100000,
+    maxAds: 200000,
+  }),
+  cloudflare: Object.freeze({
+    advertiserId: 'AR10379917531786772481',
+    advertiserName: 'Cloudflare, Inc.',
+    regionCode: 'US',
+    minAds: 500,
+    maxAds: 600,
+  }),
+  datadog: Object.freeze({
+    advertiserId: 'AR02089091059349979137',
+    advertiserName: 'DATADOG, INC.',
+    regionCode: 'US',
+    minAds: 9000,
+    maxAds: 10000,
+  }),
+  datadoghq: Object.freeze({
+    advertiserId: 'AR02089091059349979137',
+    advertiserName: 'DATADOG, INC.',
+    regionCode: 'US',
+    minAds: 9000,
+    maxAds: 10000,
+  }),
+  vercel: Object.freeze({
+    advertiserId: 'AR03920035274037395457',
+    advertiserName: 'Vercel Inc.',
+    regionCode: 'US',
+    minAds: 200,
+    maxAds: 300,
+  }),
+  figma: Object.freeze({
+    advertiserId: 'AR15466204033491927041',
+    advertiserName: 'Figma INC',
+    regionCode: 'US',
+    minAds: 1000,
+    maxAds: 2000,
+  }),
+  atlassian: Object.freeze({
+    advertiserId: 'AR16220030717323640833',
+    advertiserName: 'Atlassian US, Inc.',
+    regionCode: 'US',
+    minAds: 20000,
+    maxAds: 30000,
+  }),
+  snowflake: Object.freeze({
+    advertiserId: 'AR00247099845179867137',
+    advertiserName: 'Snowflake Inc.',
+    regionCode: 'US',
+    minAds: 4000,
+    maxAds: 5000,
+  }),
+  twilio: Object.freeze({
+    advertiserId: 'AR18227580619968217089',
+    advertiserName: 'Twilio Inc.',
+    regionCode: 'US',
+    minAds: 1000,
+    maxAds: 2000,
+  }),
+  booking: Object.freeze({
+    advertiserId: 'AR02934798844673654785',
+    advertiserName: 'Booking.com',
+    regionCode: 'NL',
+    minAds: 16500000,
+    maxAds: 16600000,
+  }),
+});
+
+/**
  * Canonical Google Ads Geo Target Criterion IDs mapped by ISO 3166-1 alpha-2 country code.
  * Verified against live `LookupService/GetCreativeById` field `17` (`{ "1": 2840, "5": 20261104 }`)
  * and `SearchCreatives` context block `7` (`{ "1": 1, "2": 35, "3": 2702 }`).
@@ -1529,10 +1705,15 @@ export async function executeGoogleAdsRpcPost(endpointUrl, fReqPayload, options 
           headers: {
             'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
             accept: 'application/json, text/plain, */*',
+            'accept-language': 'en-US,en;q=0.9',
             origin: 'https://adstransparency.google.com',
             referer: 'https://adstransparency.google.com/',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'x-same-domain': '1',
             'user-agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
           },
           body: encodedBody,
           redirect: 'manual',
@@ -1942,6 +2123,35 @@ export async function resolveAdvertiserEntities(options = {}) {
     };
   }
 
+  // Match single-brand or domain stem against KNOWN_ADVERTISER_DIRECTORY when !includeSubsidiaries
+  const directoryKey =
+    queryMeta.brandTokens.length === 1 ? String(queryMeta.brandStem || '').toLowerCase() : '';
+  const rawKnownEntry = directoryKey ? KNOWN_ADVERTISER_DIRECTORY[directoryKey] || null : null;
+  const knownDirectoryEntity =
+    rawKnownEntry && (!rawCountry || rawCountry === 'ALL' || rawCountry === rawKnownEntry.regionCode)
+      ? scoreAdvertiserCandidate(rawKnownEntry, queryMeta, rawCountry)
+      : null;
+
+  const singleEntityDirectoryEligible = maxEntities === 1;
+  const shouldUseDirectoryBeforeRpc =
+    Boolean(knownDirectoryEntity) &&
+    singleEntityDirectoryEligible &&
+    options.preferDirectory === true;
+
+  if (shouldUseDirectoryBeforeRpc) {
+    return {
+      ok: true,
+      status: 'OK',
+      resolutionSource: 'KNOWN_ADVERTISER_DIRECTORY',
+      queryMeta,
+      primaryEntity: knownDirectoryEntity,
+      selectedEntities: [knownDirectoryEntity],
+      allCandidates: [knownDirectoryEntity],
+      rpcAttempts: 0,
+      billableCount: 0,
+    };
+  }
+
   // Multi-token domains (e.g. on-running.com) join all tokens ("on running") rather than truncating to first token
   const searchQueryStr = queryMeta.isDomainQuery
     ? queryMeta.brandTokens.length > 1
@@ -1957,6 +2167,24 @@ export async function resolveAdvertiserEntities(options = {}) {
   );
 
   if (!rpcRes.ok) {
+    if (
+      rpcRes.status === 'UPSTREAM_RATE_LIMITED' &&
+      knownDirectoryEntity &&
+      singleEntityDirectoryEligible &&
+      options.fallbackToDirectoryOnRateLimit !== false
+    ) {
+      return {
+        ok: true,
+        status: 'OK',
+        resolutionSource: 'KNOWN_ADVERTISER_DIRECTORY_FALLBACK',
+        queryMeta,
+        primaryEntity: knownDirectoryEntity,
+        selectedEntities: [knownDirectoryEntity],
+        allCandidates: [knownDirectoryEntity],
+        rpcAttempts: rpcRes.attempts,
+        billableCount: 0,
+      };
+    }
     return {
       ok: false,
       status: rpcRes.status,
@@ -2760,7 +2988,13 @@ export async function fetchAndExtractStaticAdCopy(previewUrl, options = {}) {
           method: 'GET',
           headers: {
             accept: 'application/javascript, text/javascript, text/plain, */*',
+            'accept-language': 'en-US,en;q=0.9',
             referer: 'https://adstransparency.google.com/',
+            'sec-fetch-dest': 'script',
+            'sec-fetch-mode': 'no-cors',
+            'sec-fetch-site': 'cross-site',
+            'user-agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
           },
           redirect: 'manual',
           signal: controller.signal,
