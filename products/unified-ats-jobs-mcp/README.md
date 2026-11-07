@@ -82,6 +82,13 @@ npx -y @revclamp/unified-ats-jobs-mcp --call resolve_company_ats_board '{"compan
 2. **`search_ats_job_postings`**: Fetch and normalize active job postings across any of the 5 supported ATS platforms with keyword, department, and workplace-type (`REMOTE`, `HYBRID`, `ONSITE`) filtering plus deterministic `rtp1_...` cursor pagination.
 3. **`get_ats_job_posting_detail`**: Retrieve a single normalized job posting by `jobId` (including full Workday CXS or SmartRecruiters detail enrichment, compensation breakdown, and `techStackKeywords`).
 
+### Supported Input Aliases & Smart Auto-Resolution
+
+- **Target Aliases (`query`, `company`, `domain`, `url`, `careerUrl`, `companySlug`):** Works identically across Apify Actor REST input, MCP tools, and Core Engine (including explicit `{ "query": "Bosch", "companySlug": "BoschGroup" }` slug override support).
+- **Country & Limit Aliases:** Accepts `countryCode`, `country`, or `region` (ISO-2, or `'ALL'`/`'ANY'` wildcards) and `maxResults`, `limit`, or `max_results` (`1..25`).
+- **Direct Career URL & 23+ B2B Subdomain Auto-Resolution:** Pasting `https://about.gitlab.com/jobs`, `https://join.stripe.com`, or any Greenhouse/Workday CXS/Ashby/Lever/SmartRecruiters board URL automatically strips non-root B2B subdomains (`about.`, `join.`, `careers.`, `jobs.`, `security.`, `ir.`) across 41 two-part ccTLDs while preserving multi-tenant hosts (`acme.github.io`, `status.vercel.app`).
+- **Corporate Legal Suffix Folding & `CONFLICTING_PARAMETER_ALIASES` Guard:** Automatically folds corporate legal suffixes (`"Stripe, Inc." -> stripe`, `"OpenAI OpCo, LLC" -> openai`) and fails closed with `INVALID_INPUT` / JSON-RPC `-32602` (`CONFLICTING_PARAMETER_ALIASES`, `$0.00` billed) on conflicting target, country, or limit aliases.
+
 ---
 
 ## Canonical Normalized Job Schema

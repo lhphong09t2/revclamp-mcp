@@ -45,9 +45,9 @@
       title: 'Search Unified 5-in-1 B2B ATS Job Postings',
       fields: {
         query: {
-          title: 'Company Slug, Brand Name, or Career URL',
-          placeholder: 'e.g. linear, stripe, nvidia, zoox, BoschGroup',
-          hint: 'Enter a company slug or career board URL across Greenhouse, Workday CXS, Ashby, Lever, or SmartRecruiters.',
+          title: 'Company Slug, Brand Name, Domain, or Career URL',
+          placeholder: 'e.g. linear, Stripe, Inc., stripe.com, or https://about.gitlab.com/jobs',
+          hint: 'Enter a company slug, legal name, B2B domain (auto-strips 23+ subdomains like about.gitlab.com -> gitlab), or direct Greenhouse/Workday/Ashby/Lever/SmartRecruiters URL.',
         },
         provider: {
           title: 'ATS Provider Override (Optional)',
@@ -77,6 +77,26 @@
           placeholder: 'e.g. Engineering, Product, Sales',
           hint: 'Case-insensitive substring filter on normalized department.',
         },
+        countryCode: {
+          title: 'Country Filter (ISO-2, Optional)',
+          placeholder: 'e.g. US, GB, DE',
+          hint: 'Optional 2-letter ISO-3166-1 alpha-2 country code filter.',
+        },
+        workdayTenant: {
+          title: 'Workday Tenant (Optional)',
+          placeholder: 'e.g. nvidia',
+          hint: 'Optional explicit Workday tenant subdomain when provider is WORKDAY.',
+        },
+        workdaySite: {
+          title: 'Workday Career Site (Optional)',
+          placeholder: 'e.g. NVIDIAExternalCareerSite',
+          hint: 'Optional explicit Workday CXS career site identifier.',
+        },
+        wdInstance: {
+          title: 'Workday Instance (Optional)',
+          placeholder: 'e.g. wd5, wd1',
+          hint: 'Optional Workday cluster instance (wd1, wd3, wd5, wd12).',
+        },
         limit: {
           title: 'Max Job Postings per Call',
           placeholder: '1 to 25',
@@ -93,9 +113,9 @@
       title: 'Resolve Company ATS Board & Provider',
       fields: {
         query: {
-          title: 'Company Slug, Brand Name, or Career URL',
-          placeholder: 'e.g. linear, stripe, nvidia, zoox, BoschGroup',
-          hint: 'Company slug or career URL to resolve into its canonical ATS provider and endpoint.',
+          title: 'Company Slug, Brand Name, Domain, or Career URL',
+          placeholder: 'e.g. linear, Stripe, Inc., stripe.com, or https://about.gitlab.com/jobs',
+          hint: 'Enter a company slug, legal name, B2B domain (auto-strips 23+ subdomains like about.gitlab.com -> gitlab), or direct Greenhouse/Workday/Ashby/Lever/SmartRecruiters URL.',
         },
         provider: {
           title: 'ATS Provider Override (Optional)',
@@ -110,6 +130,21 @@
           title: 'Direct Career Board URL (Optional)',
           placeholder: 'https://boards.greenhouse.io/stripe',
           hint: 'Optional direct HTTPS URL to a supported ATS career board.',
+        },
+        workdayTenant: {
+          title: 'Workday Tenant (Optional)',
+          placeholder: 'e.g. nvidia',
+          hint: 'Optional explicit Workday tenant subdomain.',
+        },
+        workdaySite: {
+          title: 'Workday Career Site (Optional)',
+          placeholder: 'e.g. NVIDIAExternalCareerSite',
+          hint: 'Optional explicit Workday CXS career site identifier.',
+        },
+        wdInstance: {
+          title: 'Workday Instance (Optional)',
+          placeholder: 'e.g. wd5, wd1',
+          hint: 'Optional Workday cluster instance (wd1, wd3, wd5, wd12).',
         },
       },
     },
@@ -134,6 +169,11 @@
           title: 'Company Slug (Optional)',
           placeholder: 'e.g. linear',
           hint: 'Optional explicit company slug.',
+        },
+        careerUrl: {
+          title: 'Direct Career Board URL (Optional)',
+          placeholder: 'https://jobs.ashbyhq.com/linear',
+          hint: 'Optional direct HTTPS URL to a supported ATS career board.',
         },
       },
     },
@@ -185,6 +225,9 @@
       .replace(/\bsearchKeyword\b/g, 'Role or Tech Keyword')
       .replace(/\bdepartmentKeyword\b/g, 'Department Filter')
       .replace(/\bpageToken\b/g, 'Pagination Cursor Token');
+    if (/CONFLICTING_PARAMETER_ALIASES/i.test(rawMsg)) {
+      return 'Conflicting input aliases provided. Please pass a single target or matching alias values.';
+    }
     if (code === -32602) {
       return `Invalid input: ${cleanMsg}`;
     }
@@ -242,7 +285,11 @@
       limit: '5',
     };
 
+    const allowedToolFields = TOOL_UI_META[state.selectedToolName]?.fields;
     for (const [fieldName, fieldSpec] of Object.entries(props)) {
+      if (allowedToolFields && !Object.prototype.hasOwnProperty.call(allowedToolFields, fieldName)) {
+        continue;
+      }
       if (fieldName === 'maxResults') {
         continue;
       }

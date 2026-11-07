@@ -1,7 +1,7 @@
 {
   "name": "@revclamp/unified-ats-jobs-mcp",
   "mcpName": "com.revclamp/unified-ats-jobs-mcp",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "description": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters with compensation extraction and tech-stack signals. Independent B2B tool by RevClamp.",
   "license": "MIT",
@@ -53,7 +53,7 @@
     "self-test": "node index.mjs --self-test",
     "list-tools": "node index.mjs --list-tools",
     "verify:config": "node ../mcp_actor_validator.mjs --verify actor_config.json",
-    "test": "node --test test/unified_ats_jobs.test.mjs test/metamorphic_and_mutation.test.mjs",
+    "test": "node --test test/unified_ats_jobs.test.mjs test/metamorphic_and_mutation.test.mjs test/cdp_zero_false_green_e2e.test.mjs",
     "test:e2e": "node --test test/cdp_zero_false_green_e2e.test.mjs",
     "test:all": "node --test test/unified_ats_jobs.test.mjs test/metamorphic_and_mutation.test.mjs test/cdp_zero_false_green_e2e.test.mjs",
     "release:audit": "node scripts/release_publisher.mjs --audit"
