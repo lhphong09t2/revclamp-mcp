@@ -3339,6 +3339,7 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
       ? Math.max(0, parseInt(cursorCheck.upstreamToken, 10) || 0)
       : 0;
   let initialRowOffset = cursorCheck.isComposite ? cursorCheck.rowOffset : 0;
+  const startOffset = currentPageOffset + initialRowOffset;
 
   while (pagesFetched < (isPagedProvider ? maxPages : 1) && deduplicatedJobs.length < maxResults) {
     if (options.deadlineAtMs && nowFn() >= options.deadlineAtMs) {
@@ -3708,10 +3709,12 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
       board: finalBoard,
       boardTarget: finalBoard,
       jobs: [],
+      offset: startOffset,
       pagesFetched,
       httpAttempts: totalHttpAttempts,
       rpcAttempts: totalHttpAttempts,
       nextPageToken: outputNextPageToken,
+      nextCursor: outputNextPageToken,
       paginationStatus,
       paginationIncompleteReason,
       cursorResumeContext,
@@ -3731,10 +3734,12 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
     board: finalBoard,
     boardTarget: finalBoard,
     jobs: deduplicatedJobs,
+    offset: startOffset,
     pagesFetched,
     httpAttempts: totalHttpAttempts,
     rpcAttempts: totalHttpAttempts,
     nextPageToken: outputNextPageToken,
+    nextCursor: outputNextPageToken,
     paginationStatus,
     paginationIncompleteReason,
     ...(warnings.length > 0 ? { warnings } : {}),

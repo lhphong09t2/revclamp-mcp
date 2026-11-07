@@ -1849,7 +1849,9 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
       unknownOutcomeIds: Array.from(unknownOutcomeSet),
       chargeReceipts: [],
       pagination: {
+        offset: jobsRes.offset ?? 0,
         nextPageToken: jobsRes.nextPageToken,
+        nextCursor: jobsRes.nextPageToken,
         paginationStatus: jobsRes.paginationStatus,
         paginationIncompleteReason: jobsRes.paginationIncompleteReason,
         pagesFetched: jobsRes.pagesFetched,
@@ -2262,7 +2264,9 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
   }
 
   const paginationMeta = {
+    offset: jobsRes.offset ?? 0,
     nextPageToken: effectiveNextPageToken,
+    nextCursor: effectiveNextPageToken,
     paginationStatus: effectivePaginationStatus,
     paginationIncompleteReason: effectiveIncompleteReason,
     pagesFetched: jobsRes.pagesFetched,

@@ -4,7 +4,7 @@
  * Exposes three deterministic tools sharing the 5-in-1 Unified ATS Job & Hiring Signal engine:
  *   - `search_ats_job_postings`: Resolves a company slug or career URL across Greenhouse, Workday CXS,
  *     Ashby, Lever, and SmartRecruiters and extracts normalized job postings (`limit <= 25`,
- *     `pageToken` continuation, full JSON-RPC UTF-8 envelope `<= 30,000` bytes with 4-tier
+ *     `cursor` / `pageToken` continuation, full JSON-RPC UTF-8 envelope `<= 30,000` bytes with 4-tier
  *     surrogate-safe degradation and automatic mid-page cursor rewind).
  *   - `resolve_company_ats_board`: Resolves a company slug or career page URL into its canonical
  *     ATS provider (`GREENHOUSE`, `WORKDAY`, `ASHBY`, `LEVER`, `SMARTRECRUITERS`) and public API metadata.
@@ -48,10 +48,10 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'unified-ats-jobs-mcp',
-  title: 'RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed',
+  title: 'Unified B2B ATS Jobs Scraper & MCP (Greenhouse, Workday, Lever, Ashby) | RevClamp TalentPulse',
   version: PKG_VERSION,
   description:
-    'Extract normalized B2B job postings, compensation ranges, workplace classification (REMOTE/HYBRID/ONSITE), and tech-stack hiring signals across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters. Independent hiring intelligence tool by RevClamp; not affiliated with any ATS vendor.',
+    'Unified B2B ATS Jobs Scraper & MCP across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters with salary normalization, hiring velocity signals, and tech-stack extraction. Independent B2B intelligence tool by RevClamp.',
   websiteUrl: 'https://revclamp.com',
   icons: [
     {
@@ -214,12 +214,18 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           deprecated: true,
           description: 'Snake_case alias for limit (1 to 25).',
         },
+        cursor: {
+          title: 'Pagination Cursor (Optional)',
+          type: 'string',
+          maxLength: 2048,
+          description:
+            'Opaque pagination cursor token returned from a previous search response (pagination.nextCursor or pagination.nextPageToken).',
+        },
         pageToken: {
           title: 'Pagination Cursor Token (Optional)',
           type: 'string',
           maxLength: 2048,
-          description:
-            'Optional opaque deterministic continuation cursor (rtp1_...) returned by a previous call.',
+          description: 'Alias for cursor (backward-compatible pagination token).',
         },
       },
       additionalProperties: false,
@@ -458,11 +464,13 @@ export function truncateMcpResponseEnvelope(
           originalNextPageToken
         );
         cand.pagination.nextPageToken = rewoundToken;
+        cand.pagination.nextCursor = rewoundToken;
         cand.pagination.hasMore = Boolean(rewoundToken);
         cand.pagination.paginationStatus = rewoundToken
           ? 'TRUNCATED_HAS_MORE_MID_PAGE'
           : 'TRUNCATED_AT_BYTE_CEILING';
       } else {
+        cand.pagination.nextCursor = cand.pagination.nextPageToken ?? null;
         cand.pagination.hasMore = Boolean(cand.pagination.nextPageToken);
       }
       if (cand.deliveredCount !== undefined && Array.isArray(cand.items)) {
@@ -747,6 +755,7 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'maxResults',
   'max_results',
   'pageToken',
+  'cursor',
 ]);
 
 const RESOLVE_ALLOWED_ARG_KEYS = new Set([
@@ -808,7 +817,7 @@ export function validateMcpToolArguments(toolName, rawArgs) {
     }
   }
 
-  for (const aliasKey of ['company', 'domain', 'url']) {
+  for (const aliasKey of ['company', 'domain', 'url', 'cursor']) {
     if (args[aliasKey] !== undefined && typeof args[aliasKey] !== 'string') {
       return { ok: false, message: `Invalid ${aliasKey}: expected a string` };
     }

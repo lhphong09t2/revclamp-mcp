@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.revclamp/unified-ats-jobs-mcp",
-  "title": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Jobs & Signals",
-  "description": "Unified 5-in-1 B2B ATS job and signal feed: Greenhouse, Workday, Ashby, Lever, SmartRecruiters.",
-  "version": "1.0.11",
+  "title": "Unified B2B ATS Jobs Scraper & MCP (Greenhouse, Workday, Lever, Ashby) | RevClamp TalentPulse",
+  "description": "Unified 5-in-1 B2B ATS job scraper & signal MCP: Greenhouse, Workday, Ashby, Lever, SmartRecruiters.",
+  "version": "1.0.12",
   "websiteUrl": "https://revclamp.com",
   "repository": {
     "url": "https://github.com/lhphong09t2/revclamp-mcp",
@@ -27,7 +27,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@revclamp/unified-ats-jobs-mcp",
-      "version": "1.0.11",
+      "version": "1.0.12",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

@@ -1,4 +1,4 @@
-# RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed
+# Unified B2B ATS Jobs Scraper & MCP (Greenhouse, Workday, Lever, Ashby) | RevClamp TalentPulse
 
 [![RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed](https://revclamp.com/assets/revclamp-product-banner.png)](https://revclamp.com)
 
