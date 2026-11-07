@@ -23,7 +23,7 @@
   "manifest": {
     "name": "unified-ats-jobs-mcp",
     "title": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed",
-    "version": "1.0.10",
+    "version": "1.0.11",
     "websiteUrl": "https://revclamp.com",
     "description": "Unified 5-in-1 B2B ATS job and hiring signal feed across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters with compensation extraction, tech-stack signals, and prompt-injection sanitization.",
     "minMemoryMbytes": 256,
