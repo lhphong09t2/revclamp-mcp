@@ -19,9 +19,9 @@
       "editor": "textfield"
     },
     "domains": {
-      "title": "Target B2B Domains Array or CSV (Alias)",
-      "type": ["array", "string"],
-      "description": "Alias for query (array of B2B domains or comma-separated string).",
+      "title": "Target B2B Domains Array (Alias)",
+      "type": "array",
+      "description": "Alias for query (array of B2B domain strings; use query for comma-separated strings).",
       "editor": "stringList"
     },
     "company": {
@@ -108,12 +108,12 @@
       "type": "boolean",
       "description": "When true, prefer deterministic offline sample fixtures for curated domains."
     },
-    "pageToken": {
-      "title": "Pagination Cursor Token (Optional)",
+    "cursor": {
+      "title": "Pagination Cursor (Optional)",
       "type": "string",
       "description": "Opaque deterministic pagination cursor (rcd1_...) returned by a previous call to resume fetching the next slice.",
-      "editor": "textfield",
-      "default": ""
+      "maxLength": 2048,
+      "editor": "textfield"
     }
   },
   "required": []

@@ -50,21 +50,29 @@ export function computeRunEconomicsTelemetry({
   requestCount = 1,
   unitPriceUsdc = ACTOR_PRICING_CONTRACT.priceUsdc,
   actorStartFeeUsdc = ACTOR_PRICING_CONTRACT.actorStartFeeUsdc,
+  pricingDeterministic,
 } = {}) {
   const safeCount = Math.max(0, Math.floor(Number(billableCount) || 0));
   const safeChargedCount = Math.max(0, Math.floor(Number(chargedEventCount) || 0));
   const safeDurationMs = Math.max(1, Number(durationMs) || 1);
   const safeMemoryMb = Math.min(1024, Math.max(64, Number(memoryMb) || 256));
   const safeRequests = Math.max(1, Math.floor(Number(requestCount) || 1));
-  const resolvedUnitPriceUsdc =
-    Number.isFinite(Number(unitPriceUsdc)) && Number(unitPriceUsdc) > 0
+  const unitPriceUnresolved = unitPriceUsdc === null;
+  const startFeeUnresolved = actorStartFeeUsdc === null;
+  const isPricingUnresolved =
+    pricingDeterministic === false || unitPriceUnresolved || startFeeUnresolved;
+  const resolvedUnitPriceUsdc = unitPriceUnresolved
+    ? null
+    : Number.isFinite(Number(unitPriceUsdc)) && Number(unitPriceUsdc) > 0
       ? Number(unitPriceUsdc)
       : ACTOR_PRICING_CONTRACT.priceUsdc;
-  const resolvedNetPriceUsdc = Number(
-    (resolvedUnitPriceUsdc * (1 - ACTOR_PRICING_CONTRACT.platformFeeRate)).toFixed(6)
-  );
-  const resolvedStartFeeUsdc =
-    Number.isFinite(Number(actorStartFeeUsdc)) && Number(actorStartFeeUsdc) >= 0
+  const resolvedNetPriceUsdc =
+    resolvedUnitPriceUsdc === null
+      ? null
+      : Number((resolvedUnitPriceUsdc * (1 - ACTOR_PRICING_CONTRACT.platformFeeRate)).toFixed(6));
+  const resolvedStartFeeUsdc = startFeeUnresolved
+    ? null
+    : Number.isFinite(Number(actorStartFeeUsdc)) && Number(actorStartFeeUsdc) >= 0
       ? Number(actorStartFeeUsdc)
       : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
 
@@ -73,18 +81,21 @@ export function computeRunEconomicsTelemetry({
     (safeMemoryMb / 1024) * computeHours * ACTOR_PRICING_CONTRACT.computeRatePerGbHourUsdc;
   const networkOverheadUsdc = safeRequests * 0.0000002;
   const totalRunCostUsdc = Number((computeCostUsdc + networkOverheadUsdc).toFixed(8));
-  const configuredFloorMultiplier = Number(
-    (resolvedNetPriceUsdc / ACTOR_PRICING_CONTRACT.costCeilingUsdc).toFixed(2)
-  );
+  const configuredFloorMultiplier =
+    isPricingUnresolved || resolvedNetPriceUsdc === null
+      ? null
+      : Number((resolvedNetPriceUsdc / ACTOR_PRICING_CONTRACT.costCeilingUsdc).toFixed(2));
 
   if (safeCount === 0) {
     return {
       economicsStatus: 'NO_BILLABLE_EVENTS',
+      pricingDeterministic: !isPricingUnresolved,
       billableCount: 0,
       chargedEventCount: safeChargedCount,
       durationMs: safeDurationMs,
       memoryMb: safeMemoryMb,
       requestCount: safeRequests,
+      unitPriceUsdc: resolvedUnitPriceUsdc,
       actorStartFeeUsdc: resolvedStartFeeUsdc,
       totalRunCostUsdc,
       actualCostPerEventUsdc: 0,
@@ -99,23 +110,49 @@ export function computeRunEconomicsTelemetry({
   }
 
   const actualCostPerEventUsdc = Number((totalRunCostUsdc / safeCount).toFixed(8));
+  const withinCostCeiling = actualCostPerEventUsdc <= ACTOR_PRICING_CONTRACT.costCeilingUsdc;
+
+  if (isPricingUnresolved) {
+    return {
+      economicsStatus: 'UNRESOLVED_TIER_PRICING',
+      pricingDeterministic: false,
+      billableCount: safeCount,
+      chargedEventCount: safeChargedCount,
+      durationMs: safeDurationMs,
+      memoryMb: safeMemoryMb,
+      requestCount: safeRequests,
+      unitPriceUsdc: resolvedUnitPriceUsdc,
+      actorStartFeeUsdc: resolvedStartFeeUsdc,
+      totalRunCostUsdc,
+      actualCostPerEventUsdc,
+      costCeilingUsdc: ACTOR_PRICING_CONTRACT.costCeilingUsdc,
+      withinCostCeiling,
+      grossRevenueUsdc: null,
+      netRevenueUsdc: null,
+      configuredFloorMultiplier: null,
+      effectiveMarginMultiplier: null,
+      marginPositive: false,
+    };
+  }
+
   const grossRevenueUsdc = Number((safeCount * resolvedUnitPriceUsdc).toFixed(6));
   const netRevenueUsdc = Number((safeCount * resolvedNetPriceUsdc).toFixed(6));
   const effectiveMarginMultiplier =
     actualCostPerEventUsdc > 0
       ? Number((resolvedNetPriceUsdc / actualCostPerEventUsdc).toFixed(2))
       : configuredFloorMultiplier;
-  const withinCostCeiling = actualCostPerEventUsdc <= ACTOR_PRICING_CONTRACT.costCeilingUsdc;
   const marginPositive =
     withinCostCeiling && configuredFloorMultiplier >= ACTOR_PRICING_CONTRACT.minMarginMultiplier;
 
   return {
     economicsStatus: marginPositive ? 'PROFITABLE' : 'COST_CEILING_EXCEEDED',
+    pricingDeterministic: true,
     billableCount: safeCount,
     chargedEventCount: safeChargedCount,
     durationMs: safeDurationMs,
     memoryMb: safeMemoryMb,
     requestCount: safeRequests,
+    unitPriceUsdc: resolvedUnitPriceUsdc,
     actorStartFeeUsdc: resolvedStartFeeUsdc,
     totalRunCostUsdc,
     actualCostPerEventUsdc,
@@ -181,13 +218,20 @@ export async function loadApifyActorInput(
       delete next.maxResults;
     }
     if (
+      (next.pageToken === undefined || next.pageToken === null || String(next.pageToken).trim() === '') &&
+      typeof next.cursor === 'string' &&
+      next.cursor.trim() !== ''
+    ) {
+      next.pageToken = next.cursor;
+    }
+    if (
       isAtHome &&
       !Object.prototype.hasOwnProperty.call(next, 'query') &&
       !Object.prototype.hasOwnProperty.call(next, 'domains') &&
       !Object.prototype.hasOwnProperty.call(next, 'domain') &&
       !Object.prototype.hasOwnProperty.call(next, 'company') &&
       !Object.prototype.hasOwnProperty.call(next, 'url') &&
-      !Object.prototype.hasOwnProperty.call(next, 'pageToken')
+      !hasNonEmptyAlias(['pageToken', 'cursor'])
     ) {
       return {
         query: DEFAULT_SCHEMA_QUERY,
@@ -276,6 +320,158 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
   const localStorageDir =
     env?.ACTOR_STORAGE_DIR || env?.APIFY_LOCAL_STORAGE_DIR || env?.CRAWLEE_STORAGE_DIR;
 
+  let pricingInfoChargeEvents = null;
+  let resolvedUserTier = String(
+    env?.APIFY_USER_PLAN_TIER || env?.APIFY_PRICING_TIER || ''
+  )
+    .trim()
+    .toUpperCase();
+  const rawPricingInfoEnv = env?.APIFY_ACTOR_PRICING_INFO || env?.ACTOR_PRICING_INFO;
+  if (rawPricingInfoEnv) {
+    try {
+      const parsedPricing = JSON.parse(String(rawPricingInfoEnv));
+      const eventsObj = parsedPricing?.pricingPerEvent?.actorChargeEvents;
+      if (eventsObj && typeof eventsObj === 'object') {
+        pricingInfoChargeEvents = eventsObj;
+      }
+      const parsedTier = String(parsedPricing?.userTier || parsedPricing?.tier || '').trim();
+      if (parsedTier) {
+        resolvedUserTier = parsedTier.toUpperCase();
+      }
+    } catch {
+      pricingInfoChargeEvents = null;
+    }
+  }
+  const rawMaxChargeStr =
+    env?.ACTOR_MAX_TOTAL_CHARGE_USD !== undefined && env?.ACTOR_MAX_TOTAL_CHARGE_USD !== null
+      ? String(env.ACTOR_MAX_TOTAL_CHARGE_USD).trim()
+      : '';
+  const maxTotalChargeUsdRaw = rawMaxChargeStr !== '' ? Number(rawMaxChargeStr) : NaN;
+  const hasMaxChargeUsd = Number.isFinite(maxTotalChargeUsdRaw) && maxTotalChargeUsdRaw >= 0;
+  const isPayingFlag = String(env?.APIFY_USER_IS_PAYING ?? '')
+    .trim()
+    .toLowerCase();
+  const isExplicitlyFreeUser = isPayingFlag === '0' || isPayingFlag === 'false';
+  const isExplicitlyPayingUser = isPayingFlag === '1' || isPayingFlag === 'true';
+  const resolveTieredEventPriceInfo = (eventObj, { allowZero = false } = {}) => {
+    if (!eventObj || typeof eventObj !== 'object') {
+      return { priceUsd: NaN, deterministic: true };
+    }
+    const isValidPrice = (n) => Number.isFinite(n) && (allowZero ? n >= 0 : n > 0);
+    const flat = Number(eventObj.eventPriceUsd);
+    if (isValidPrice(flat)) {
+      return { priceUsd: flat, deterministic: true };
+    }
+    const tiered = eventObj.eventTieredPricingUsd;
+    if (!tiered || typeof tiered !== 'object' || Array.isArray(tiered)) {
+      return { priceUsd: NaN, deterministic: true };
+    }
+    if (resolvedUserTier && tiered[resolvedUserTier]) {
+      const explicitPrice = Number(tiered[resolvedUserTier]?.tieredEventPriceUsd);
+      if (isValidPrice(explicitPrice)) {
+        return { priceUsd: explicitPrice, deterministic: true };
+      }
+    }
+    if (isExplicitlyFreeUser) {
+      const freePrice = Number(tiered.FREE?.tieredEventPriceUsd);
+      if (isValidPrice(freePrice)) {
+        return { priceUsd: freePrice, deterministic: true };
+      }
+    }
+    const candidatePrices = Object.entries(tiered)
+      .filter(([k]) => (isExplicitlyPayingUser ? k !== 'FREE' : true))
+      .map(([, v]) => Number(v?.tieredEventPriceUsd))
+      .filter(isValidPrice);
+    const distinctPrices = Array.from(new Set(candidatePrices));
+    if (distinctPrices.length === 1) {
+      return { priceUsd: distinctPrices[0], deterministic: true };
+    }
+    return {
+      priceUsd: NaN,
+      deterministic: false,
+    };
+  };
+  let userTierProbeDone = false;
+  const ensureUserTierResolved = async () => {
+    if (userTierProbeDone || resolvedUserTier || isExplicitlyFreeUser || !token || typeof fetchImpl !== 'function') {
+      return resolvedUserTier;
+    }
+    userTierProbeDone = true;
+    const apiBase = resolveSafeApifyApiBaseUrl(
+      env?.APIFY_API_BASE_URL,
+      env?.APIFY_API_PUBLIC_BASE_URL
+    );
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    try {
+      const res = await fetchImpl(`${apiBase}/v2/users/me`, {
+        method: 'GET',
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
+      if (res && res.status >= 200 && res.status < 300) {
+        let body = null;
+        if (typeof res.json === 'function') {
+          body = await res.json();
+        } else if (typeof res.text === 'function') {
+          const txt = await res.text();
+          body = txt && txt.trim() ? JSON.parse(txt) : null;
+        }
+        const fetchedTier = String(
+          body?.data?.plan?.tier ||
+            body?.data?.userTier ||
+            body?.plan?.tier ||
+            ''
+        )
+          .trim()
+          .toUpperCase();
+        if (fetchedTier) {
+          resolvedUserTier = fetchedTier;
+        }
+      }
+    } catch {
+      // Leave resolvedUserTier empty on network/mock failure
+    } finally {
+      clearTimeout(timer);
+    }
+    if (resolvedUserTier && hooksObj) {
+      const refreshed = computeCurrentPricingState();
+      hooksObj.unitPriceUsdc = refreshed.unitPriceUsdc;
+      hooksObj.actorStartFeeUsdc = refreshed.actorStartFeeUsdc;
+      hooksObj.pricingDeterministic = refreshed.deterministic;
+    }
+    return resolvedUserTier;
+  };
+  const computeCurrentPricingState = () => {
+    const startInfo = resolveTieredEventPriceInfo(
+      pricingInfoChargeEvents?.['apify-actor-start'],
+      { allowZero: true }
+    );
+    const actorStartFeeUsdc = !startInfo.deterministic
+      ? null
+      : Number.isFinite(startInfo.priceUsd) && startInfo.priceUsd >= 0
+        ? startInfo.priceUsd
+        : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
+    const primaryInfo = resolveTieredEventPriceInfo(
+      pricingInfoChargeEvents?.[ACTOR_PRICING_CONTRACT.eventName],
+      { allowZero: false }
+    );
+    const unitPriceUsdc = !primaryInfo.deterministic
+      ? null
+      : Number.isFinite(primaryInfo.priceUsd) && primaryInfo.priceUsd > 0
+        ? primaryInfo.priceUsd
+        : ACTOR_PRICING_CONTRACT.priceUsdc;
+    return {
+      actorStartFeeUsdc,
+      unitPriceUsdc,
+      deterministic: startInfo.deterministic && primaryInfo.deterministic,
+    };
+  };
+  const initialPricingState = computeCurrentPricingState();
+
   const memStore = new Map();
   const memDataset = [];
 
@@ -360,9 +556,13 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
     return null;
   };
 
-  return {
+  const hooksObj = {
     runId,
     isAtHome,
+    unitPriceUsdc: initialPricingState.unitPriceUsdc,
+    actorStartFeeUsdc: initialPricingState.actorStartFeeUsdc,
+    pricingDeterministic: initialPricingState.deterministic,
+    resolveUserTier: ensureUserTierResolved,
     async loadCheckpoint() {
       return (await getKvsRecord(ACTOR_PRICING_CONTRACT.checkpointKey)) || {
         chargedIds: [],
@@ -416,6 +616,14 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       return { pushedCount: batch.length };
     },
     async chargeEvent({ eventName, count, idempotencyKey }) {
+      let currentPricing = computeCurrentPricingState();
+      if (!currentPricing.deterministic && !userTierProbeDone) {
+        await ensureUserTierResolved();
+        currentPricing = computeCurrentPricingState();
+      }
+      hooksObj.unitPriceUsdc = currentPricing.unitPriceUsdc;
+      hooksObj.actorStartFeeUsdc = currentPricing.actorStartFeeUsdc;
+      hooksObj.pricingDeterministic = currentPricing.deterministic;
       const requested = Math.max(0, Math.floor(Number(count) || 0));
       if (requested === 0 || !isAtHome) {
         return { chargedCount: 0, eventChargeLimitReached: false };
@@ -476,6 +684,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       await putKvsRecord('OUTPUT', outputRecord);
     },
   };
+  return hooksObj;
 }
 
 export async function runDomainContactEnricherActor(input = {}, options = {}) {
@@ -499,6 +708,8 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
       chargedEventCount: 0,
       durationMs,
       requestCount: 1,
+      unitPriceUsdc: hooks.unitPriceUsdc,
+      actorStartFeeUsdc: hooks.actorStartFeeUsdc,
     });
     const failPayload = {
       ok: false,
@@ -570,6 +781,8 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
           chargedEventCount: 0,
           durationMs,
           requestCount: Math.max(1, extractedItems.length),
+          unitPriceUsdc: hooks.unitPriceUsdc,
+          actorStartFeeUsdc: hooks.actorStartFeeUsdc,
         });
         const unknownChargePayload = {
           ok: false,
@@ -653,6 +866,8 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
     chargedEventCount,
     durationMs,
     requestCount: Math.max(1, extractedItems.length),
+    unitPriceUsdc: hooks.unitPriceUsdc,
+    actorStartFeeUsdc: hooks.actorStartFeeUsdc,
   });
 
   const status = partialBillingFailure
