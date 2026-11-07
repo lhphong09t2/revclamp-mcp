@@ -3,7 +3,7 @@
   "name": "com.revclamp/google-ads-transparency-mcp",
   "title": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP",
   "description": "Google Ads Transparency Center advertiser & creative intelligence MCP server by RevClamp.",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "websiteUrl": "https://revclamp.com",
   "repository": {
     "url": "https://github.com/lhphong09t2/revclamp-mcp",
@@ -27,7 +27,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@revclamp/google-ads-transparency-mcp",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

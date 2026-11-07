@@ -85,21 +85,29 @@ export function computeRunEconomicsTelemetry({
   requestCount = 1,
   unitPriceUsdc = ACTOR_PRICING_CONTRACT.priceUsdc,
   actorStartFeeUsdc = ACTOR_PRICING_CONTRACT.actorStartFeeUsdc,
+  pricingDeterministic,
 } = {}) {
   const safeCount = Math.max(0, Math.floor(Number(billableCount) || 0));
   const safeChargedCount = Math.max(0, Math.floor(Number(chargedEventCount) || 0));
   const safeDurationMs = Math.max(1, Number(durationMs) || 1);
   const safeMemoryMb = Math.min(1024, Math.max(64, Number(memoryMb) || 256));
   const safeRequests = Math.max(1, Math.floor(Number(requestCount) || 1));
-  const resolvedUnitPriceUsdc =
-    Number.isFinite(Number(unitPriceUsdc)) && Number(unitPriceUsdc) > 0
+  const unitPriceUnresolved = unitPriceUsdc === null;
+  const startFeeUnresolved = actorStartFeeUsdc === null;
+  const isPricingUnresolved =
+    pricingDeterministic === false || unitPriceUnresolved || startFeeUnresolved;
+  const resolvedUnitPriceUsdc = unitPriceUnresolved
+    ? null
+    : Number.isFinite(Number(unitPriceUsdc)) && Number(unitPriceUsdc) > 0
       ? Number(unitPriceUsdc)
       : ACTOR_PRICING_CONTRACT.priceUsdc;
-  const resolvedNetPriceUsdc = Number(
-    (resolvedUnitPriceUsdc * (1 - ACTOR_PRICING_CONTRACT.platformFeeRate)).toFixed(6)
-  );
-  const resolvedStartFeeUsdc =
-    Number.isFinite(Number(actorStartFeeUsdc)) && Number(actorStartFeeUsdc) >= 0
+  const resolvedNetPriceUsdc =
+    resolvedUnitPriceUsdc === null
+      ? null
+      : Number((resolvedUnitPriceUsdc * (1 - ACTOR_PRICING_CONTRACT.platformFeeRate)).toFixed(6));
+  const resolvedStartFeeUsdc = startFeeUnresolved
+    ? null
+    : Number.isFinite(Number(actorStartFeeUsdc)) && Number(actorStartFeeUsdc) >= 0
       ? Number(actorStartFeeUsdc)
       : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
 
@@ -110,18 +118,21 @@ export function computeRunEconomicsTelemetry({
   const networkOverheadUsdc = safeRequests * 0.0000002;
   const totalRunCostUsdc = Number((computeCostUsdc + networkOverheadUsdc).toFixed(8));
 
-  const configuredFloorMultiplier = Number(
-    (resolvedNetPriceUsdc / ACTOR_PRICING_CONTRACT.costCeilingUsdc).toFixed(2)
-  );
+  const configuredFloorMultiplier =
+    isPricingUnresolved || resolvedNetPriceUsdc === null
+      ? null
+      : Number((resolvedNetPriceUsdc / ACTOR_PRICING_CONTRACT.costCeilingUsdc).toFixed(2));
 
   if (safeCount === 0) {
     return {
       economicsStatus: 'NO_BILLABLE_EVENTS',
+      pricingDeterministic: !isPricingUnresolved,
       billableCount: 0,
       chargedEventCount: safeChargedCount,
       durationMs: safeDurationMs,
       memoryMb: safeMemoryMb,
       requestCount: safeRequests,
+      unitPriceUsdc: resolvedUnitPriceUsdc,
       actorStartFeeUsdc: resolvedStartFeeUsdc,
       totalRunCostUsdc,
       actualCostPerEventUsdc: 0,
@@ -136,6 +147,31 @@ export function computeRunEconomicsTelemetry({
   }
 
   const actualCostPerEventUsdc = Number((totalRunCostUsdc / safeCount).toFixed(8));
+  const withinCostCeiling = actualCostPerEventUsdc <= ACTOR_PRICING_CONTRACT.costCeilingUsdc;
+
+  if (isPricingUnresolved) {
+    return {
+      economicsStatus: 'UNRESOLVED_TIER_PRICING',
+      pricingDeterministic: false,
+      billableCount: safeCount,
+      chargedEventCount: safeChargedCount,
+      durationMs: safeDurationMs,
+      memoryMb: safeMemoryMb,
+      requestCount: safeRequests,
+      unitPriceUsdc: resolvedUnitPriceUsdc,
+      actorStartFeeUsdc: resolvedStartFeeUsdc,
+      totalRunCostUsdc,
+      actualCostPerEventUsdc,
+      costCeilingUsdc: ACTOR_PRICING_CONTRACT.costCeilingUsdc,
+      withinCostCeiling,
+      grossRevenueUsdc: null,
+      netRevenueUsdc: null,
+      configuredFloorMultiplier: null,
+      effectiveMarginMultiplier: null,
+      marginPositive: false,
+    };
+  }
+
   const grossRevenueUsdc = Number((safeCount * resolvedUnitPriceUsdc).toFixed(6));
   const netRevenueUsdc = Number((safeCount * resolvedNetPriceUsdc).toFixed(6));
   const effectiveMarginMultiplier =
@@ -143,18 +179,19 @@ export function computeRunEconomicsTelemetry({
       ? Number((resolvedNetPriceUsdc / actualCostPerEventUsdc).toFixed(2))
       : configuredFloorMultiplier;
 
-  const withinCostCeiling = actualCostPerEventUsdc <= ACTOR_PRICING_CONTRACT.costCeilingUsdc;
   const marginPositive =
     withinCostCeiling &&
     configuredFloorMultiplier >= ACTOR_PRICING_CONTRACT.minMarginMultiplier;
 
   return {
     economicsStatus: marginPositive ? 'PROFITABLE' : 'COST_CEILING_EXCEEDED',
+    pricingDeterministic: true,
     billableCount: safeCount,
     chargedEventCount: safeChargedCount,
     durationMs: safeDurationMs,
     memoryMb: safeMemoryMb,
     requestCount: safeRequests,
+    unitPriceUsdc: resolvedUnitPriceUsdc,
     actorStartFeeUsdc: resolvedStartFeeUsdc,
     totalRunCostUsdc,
     actualCostPerEventUsdc,
@@ -234,6 +271,13 @@ export async function loadApifyActorInput(
       delete next.maxResults;
     }
     if (
+      (next.pageToken === undefined || next.pageToken === null || String(next.pageToken).trim() === '') &&
+      typeof next.cursor === 'string' &&
+      next.cursor.trim() !== ''
+    ) {
+      next.pageToken = next.cursor;
+    }
+    if (
       isAtHome &&
       !Object.prototype.hasOwnProperty.call(next, 'query') &&
       !Object.prototype.hasOwnProperty.call(next, 'domain') &&
@@ -243,7 +287,7 @@ export async function loadApifyActorInput(
       !Object.prototype.hasOwnProperty.call(next, 'url') &&
       !Object.prototype.hasOwnProperty.call(next, 'advertiserId') &&
       !Object.prototype.hasOwnProperty.call(next, 'creativeId') &&
-      !Object.prototype.hasOwnProperty.call(next, 'pageToken')
+      !hasNonEmptyAlias(['pageToken', 'cursor'])
     ) {
       return { query: 'Stripe', ...next };
     }
@@ -362,6 +406,11 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       env?.APIFY_API_PUBLIC_BASE_URL
     );
     let pricingInfoChargeEvents = null;
+    let resolvedUserTier = String(
+      env?.APIFY_USER_PLAN_TIER || env?.APIFY_PRICING_TIER || ''
+    )
+      .trim()
+      .toUpperCase();
     const rawPricingInfoEnv = env?.APIFY_ACTOR_PRICING_INFO || env?.ACTOR_PRICING_INFO;
     if (rawPricingInfoEnv) {
       try {
@@ -369,6 +418,10 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
         const eventsObj = parsedPricing?.pricingPerEvent?.actorChargeEvents;
         if (eventsObj && typeof eventsObj === 'object') {
           pricingInfoChargeEvents = eventsObj;
+        }
+        const parsedTier = String(parsedPricing?.userTier || parsedPricing?.tier || '').trim();
+        if (parsedTier) {
+          resolvedUserTier = parsedTier.toUpperCase();
         }
       } catch {
         pricingInfoChargeEvents = null;
@@ -380,32 +433,152 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
         : '';
     const maxTotalChargeUsdRaw = rawMaxChargeStr !== '' ? Number(rawMaxChargeStr) : NaN;
     const hasMaxChargeUsd = Number.isFinite(maxTotalChargeUsdRaw) && maxTotalChargeUsdRaw >= 0;
+    const isPayingFlag = String(env?.APIFY_USER_IS_PAYING ?? '')
+      .trim()
+      .toLowerCase();
+    const isExplicitlyFreeUser = isPayingFlag === '0' || isPayingFlag === 'false';
+    const isExplicitlyPayingUser = isPayingFlag === '1' || isPayingFlag === 'true';
+    const resolveTieredEventPriceInfo = (eventObj, { allowZero = false } = {}) => {
+      if (!eventObj || typeof eventObj !== 'object') {
+        return { priceUsd: NaN, deterministic: true };
+      }
+      const isValidPrice = (n) => Number.isFinite(n) && (allowZero ? n >= 0 : n > 0);
+      const flat = Number(eventObj.eventPriceUsd);
+      if (isValidPrice(flat)) {
+        return { priceUsd: flat, deterministic: true };
+      }
+      const tiered = eventObj.eventTieredPricingUsd;
+      if (!tiered || typeof tiered !== 'object' || Array.isArray(tiered)) {
+        return { priceUsd: NaN, deterministic: true };
+      }
+      if (resolvedUserTier && tiered[resolvedUserTier]) {
+        const explicitPrice = Number(tiered[resolvedUserTier]?.tieredEventPriceUsd);
+        if (isValidPrice(explicitPrice)) {
+          return { priceUsd: explicitPrice, deterministic: true };
+        }
+      }
+      if (isExplicitlyFreeUser) {
+        const freePrice = Number(tiered.FREE?.tieredEventPriceUsd);
+        if (isValidPrice(freePrice)) {
+          return { priceUsd: freePrice, deterministic: true };
+        }
+      }
+      const candidatePrices = Object.entries(tiered)
+        .filter(([k]) => (isExplicitlyPayingUser ? k !== 'FREE' : true))
+        .map(([, v]) => Number(v?.tieredEventPriceUsd))
+        .filter(isValidPrice);
+      const distinctPrices = Array.from(new Set(candidatePrices));
+      if (distinctPrices.length === 1) {
+        return { priceUsd: distinctPrices[0], deterministic: true };
+      }
+      return {
+        priceUsd: NaN,
+        deterministic: false,
+      };
+    };
+    let userTierProbeDone = false;
+    const ensureUserTierResolved = async () => {
+      if (userTierProbeDone || resolvedUserTier || isExplicitlyFreeUser || !token || typeof fetchImpl !== 'function') {
+        return resolvedUserTier;
+      }
+      userTierProbeDone = true;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1500);
+      try {
+        const res = await fetchImpl(`${apiBase}/v2/users/me`, {
+          method: 'GET',
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: 'application/json',
+          },
+          signal: controller.signal,
+        });
+        if (res && res.status >= 200 && res.status < 300) {
+          let body = null;
+          if (typeof res.json === 'function') {
+            body = await res.json();
+          } else if (typeof res.text === 'function') {
+            const txt = await res.text();
+            body = txt && txt.trim() ? JSON.parse(txt) : null;
+          }
+          const fetchedTier = String(
+            body?.data?.plan?.tier ||
+              body?.data?.userTier ||
+              body?.plan?.tier ||
+              ''
+          )
+            .trim()
+            .toUpperCase();
+          if (fetchedTier) {
+            resolvedUserTier = fetchedTier;
+          }
+        }
+      } catch {
+        // Leave resolvedUserTier empty on network/mock failure
+      } finally {
+        clearTimeout(timer);
+      }
+      if (resolvedUserTier) {
+        const refreshedStart = computeStartFeeState();
+        hooks.actorStartFeeUsdc = refreshedStart.feeUsd;
+        const primaryInfo = resolveTieredEventPriceInfo(
+          pricingInfoChargeEvents?.[ACTOR_PRICING_CONTRACT.eventName],
+          { allowZero: false }
+        );
+        if (Number.isFinite(primaryInfo.priceUsd) && primaryInfo.priceUsd > 0) {
+          hooks.unitPriceUsdc = primaryInfo.priceUsd;
+        }
+        hooks.pricingDeterministic = refreshedStart.deterministic && primaryInfo.deterministic;
+      }
+      return resolvedUserTier;
+    };
+    hooks.resolveUserTier = ensureUserTierResolved;
     const includeStartFeeFlag = String(env?.ACTOR_INCLUDE_START_FEE ?? '1')
       .trim()
       .toLowerCase();
     const includeStartFee = includeStartFeeFlag !== '0' && includeStartFeeFlag !== 'false';
-    const pricingInfoStartFeeUsd = Number(
-      pricingInfoChargeEvents?.['apify-actor-start']?.eventPriceUsd
-    );
-    const explicitStartFeeUsd =
-      env?.ACTOR_START_FEE_USD !== undefined &&
-      env?.ACTOR_START_FEE_USD !== null &&
-      String(env.ACTOR_START_FEE_USD).trim() !== ''
-        ? Number(env.ACTOR_START_FEE_USD)
-        : Number.isFinite(pricingInfoStartFeeUsd) && pricingInfoStartFeeUsd >= 0
-          ? pricingInfoStartFeeUsd
+    const computeStartFeeState = () => {
+      const hasExplicitEnvStart =
+        env?.ACTOR_START_FEE_USD !== undefined &&
+        env?.ACTOR_START_FEE_USD !== null &&
+        String(env.ACTOR_START_FEE_USD).trim() !== '';
+      if (hasExplicitEnvStart) {
+        const val = Number(env.ACTOR_START_FEE_USD);
+        const valid = Number.isFinite(val) && val >= 0;
+        const feeUsd = valid ? val : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
+        return {
+          feeUsd: includeStartFee ? feeUsd : 0,
+          micros: includeStartFee ? Math.round(feeUsd * 1_000_000) : 0,
+          deterministic: true,
+        };
+      }
+      const startInfo = resolveTieredEventPriceInfo(
+        pricingInfoChargeEvents?.['apify-actor-start'],
+        { allowZero: true }
+      );
+      if (!startInfo.deterministic) {
+        return {
+          feeUsd: includeStartFee ? null : 0,
+          micros: 0,
+          deterministic: !includeStartFee,
+        };
+      }
+      const feeUsd =
+        Number.isFinite(startInfo.priceUsd) && startInfo.priceUsd >= 0
+          ? startInfo.priceUsd
           : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
-    const startFeeMicros =
-      includeStartFee && Number.isFinite(explicitStartFeeUsd) && explicitStartFeeUsd >= 0
-        ? Math.round(explicitStartFeeUsd * 1_000_000)
-        : 0;
+      return {
+        feeUsd: includeStartFee ? feeUsd : 0,
+        micros: includeStartFee ? Math.round(feeUsd * 1_000_000) : 0,
+        deterministic: true,
+      };
+    };
+    const initialStartState = computeStartFeeState();
     const maxBudgetMicros = hasMaxChargeUsd ? Math.round(maxTotalChargeUsdRaw * 1_000_000) : 0;
     let cumulativeChargedInAdapter = 0;
     let adapterChargeLimitLatched = false;
-    hooks.actorStartFeeUsdc =
-      includeStartFee && Number.isFinite(explicitStartFeeUsd) && explicitStartFeeUsd >= 0
-        ? explicitStartFeeUsd
-        : 0;
+    hooks.actorStartFeeUsdc = initialStartState.feeUsd;
+    hooks.pricingDeterministic = initialStartState.deterministic;
 
     if (kvsId) {
       const checkpointRecordUrl = `${apiBase}/v2/key-value-stores/${encodeURIComponent(kvsId)}/records/${ACTOR_PRICING_CONTRACT.checkpointKey}`;
@@ -579,21 +752,47 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             }
             return candidate;
           })();
-        const rawEventPrice = Number(pricingInfoChargeEvents?.[effectiveName]?.eventPriceUsd);
-        const unitPriceUsdc =
-          Number.isFinite(rawEventPrice) && rawEventPrice > 0
-            ? rawEventPrice
+        const evInfo = resolveTieredEventPriceInfo(
+          pricingInfoChargeEvents?.[effectiveName],
+          { allowZero: false }
+        );
+        const unitPriceUsdc = !evInfo.deterministic
+          ? null
+          : Number.isFinite(evInfo.priceUsd) && evInfo.priceUsd > 0
+            ? evInfo.priceUsd
             : ACTOR_PRICING_CONTRACT.priceUsdc;
-        return { eventName: effectiveName, unitPriceUsdc };
+        return {
+          eventName: effectiveName,
+          unitPriceUsdc,
+          deterministic: evInfo.deterministic,
+        };
       };
-      hooks.unitPriceUsdc = resolvePlatformEventAndPrice(
+      const initialPrimaryPrice = resolvePlatformEventAndPrice(
         ACTOR_PRICING_CONTRACT.eventName
-      ).unitPriceUsdc;
+      );
+      hooks.unitPriceUsdc = initialPrimaryPrice.unitPriceUsdc;
+      hooks.pricingDeterministic =
+        initialStartState.deterministic && initialPrimaryPrice.deterministic;
       hooks.chargeEvent = async (receipt) => {
         const requestedCount = Math.max(0, Number(receipt?.count) || 0);
-        const { eventName: primaryEventName, unitPriceUsdc: resolvedUnitPriceUsdc } =
-          resolvePlatformEventAndPrice(receipt?.eventName);
+        let {
+          eventName: primaryEventName,
+          unitPriceUsdc: resolvedUnitPriceUsdc,
+          deterministic: eventPriceDeterministic,
+        } = resolvePlatformEventAndPrice(receipt?.eventName);
+        let startState = computeStartFeeState();
+        if ((!eventPriceDeterministic || !startState.deterministic) && !userTierProbeDone) {
+          await ensureUserTierResolved();
+          ({
+            eventName: primaryEventName,
+            unitPriceUsdc: resolvedUnitPriceUsdc,
+            deterministic: eventPriceDeterministic,
+          } = resolvePlatformEventAndPrice(receipt?.eventName));
+          startState = computeStartFeeState();
+        }
         hooks.unitPriceUsdc = resolvedUnitPriceUsdc;
+        hooks.actorStartFeeUsdc = startState.feeUsd;
+        hooks.pricingDeterministic = eventPriceDeterministic && startState.deterministic;
         if (unbilledOwnerTestLatched) {
           return {
             chargedCount: 0,
@@ -602,6 +801,7 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             chargedCreativeIds: [],
             eventName: primaryEventName,
             unitPriceUsdc: resolvedUnitPriceUsdc,
+            pricingDeterministic: hooks.pricingDeterministic,
           };
         }
         if (adapterChargeLimitLatched) {
@@ -611,16 +811,20 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             chargedCreativeIds: [],
             eventName: primaryEventName,
             unitPriceUsdc: resolvedUnitPriceUsdc,
+            pricingDeterministic: hooks.pricingDeterministic,
           };
         }
-        const unitPriceMicros = Math.round(resolvedUnitPriceUsdc * 1_000_000);
-        if (!Number.isFinite(unitPriceMicros) || unitPriceMicros < 1) {
+        const unitPriceMicros =
+          resolvedUnitPriceUsdc === null ? NaN : Math.round(resolvedUnitPriceUsdc * 1_000_000);
+        if (eventPriceDeterministic && (!Number.isFinite(unitPriceMicros) || unitPriceMicros < 1)) {
           throw new Error(
             `Invalid unitPriceUsdc (${String(resolvedUnitPriceUsdc)}): unitPriceMicros must be >= 1`
           );
         }
-        const maxPayableEvents = hasMaxChargeUsd
-          ? Math.floor(Math.max(0, maxBudgetMicros - startFeeMicros) / unitPriceMicros)
+        const canEnforceLocalBudgetCap =
+          hasMaxChargeUsd && eventPriceDeterministic && startState.deterministic;
+        const maxPayableEvents = canEnforceLocalBudgetCap
+          ? Math.floor(Math.max(0, maxBudgetMicros - startState.micros) / unitPriceMicros)
           : Infinity;
         const remainingAllowance = Number.isFinite(maxPayableEvents)
           ? Math.max(0, maxPayableEvents - cumulativeChargedInAdapter)
@@ -1820,8 +2024,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: Math.max(1, totalRpcRequests),
-        unitPriceUsdc: hooks?.unitPriceUsdc ?? ACTOR_PRICING_CONTRACT.priceUsdc,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
         actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1845,7 +2051,8 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     }
   };
 
-  let lastResolvedUnitPriceUsdc = hooks?.unitPriceUsdc ?? ACTOR_PRICING_CONTRACT.priceUsdc;
+  let lastResolvedUnitPriceUsdc =
+    hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc;
   for (let offset = 0; offset < newBillableCandidates.length; offset += chunkSize) {
     const effectiveChunkDeadlineMs = hasChargeHook
       ? deadlineAtMs - step4ReserveMs
@@ -1957,9 +2164,11 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         ? chargeResult.eventName
         : receipt.eventName;
     const resolvedReceiptUnitPriceUsdc =
-      Number.isFinite(Number(chargeResult?.unitPriceUsdc)) && Number(chargeResult.unitPriceUsdc) > 0
-        ? Number(chargeResult.unitPriceUsdc)
-        : receipt.unitPriceUsdc;
+      chargeResult && 'unitPriceUsdc' in chargeResult && chargeResult.unitPriceUsdc === null
+        ? null
+        : Number.isFinite(Number(chargeResult?.unitPriceUsdc)) && Number(chargeResult.unitPriceUsdc) > 0
+          ? Number(chargeResult.unitPriceUsdc)
+          : receipt.unitPriceUsdc;
     lastResolvedUnitPriceUsdc = resolvedReceiptUnitPriceUsdc;
     const resolvedReceiptIdempotencyKey =
       typeof chargeResult?.idempotencyKey === 'string' && chargeResult.idempotencyKey
@@ -1970,7 +2179,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       idempotencyKey: resolvedReceiptIdempotencyKey,
       eventName: resolvedReceiptEventName,
       unitPriceUsdc: resolvedReceiptUnitPriceUsdc,
-      chunkAmountUsdc: Number((actualChargedCount * resolvedReceiptUnitPriceUsdc).toFixed(6)),
+      chunkAmountUsdc:
+        resolvedReceiptUnitPriceUsdc === null
+          ? null
+          : Number((actualChargedCount * resolvedReceiptUnitPriceUsdc).toFixed(6)),
       chargedCount: actualChargedCount,
       ...extra,
     });

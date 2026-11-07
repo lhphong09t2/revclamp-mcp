@@ -130,10 +130,10 @@
       "minimum": 1,
       "maximum": 200
     },
-    "pageToken": {
-      "title": "Next-Page Cursor Token (Optional)",
+    "cursor": {
+      "title": "Next-Page Pagination Cursor (Optional)",
       "type": "string",
-      "description": "Optional continuation token returned by a previous run to resume from the next creative.",
+      "description": "Optional continuation cursor returned by a previous run to resume from the next creative.",
       "maxLength": 2048,
       "editor": "textfield"
     }

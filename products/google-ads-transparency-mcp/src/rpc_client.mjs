@@ -2618,6 +2618,28 @@ export function normalizeAdPulseInputAliases(rawInput = {}) {
     normalized.limit = chosenLimit;
   }
 
+  // Cursor / pageToken alias group
+  const hasPageToken =
+    rawInput.pageToken !== undefined &&
+    rawInput.pageToken !== null &&
+    String(rawInput.pageToken).trim() !== '';
+  const hasCursor =
+    rawInput.cursor !== undefined &&
+    rawInput.cursor !== null &&
+    String(rawInput.cursor).trim() !== '';
+  if (hasPageToken && hasCursor && String(rawInput.pageToken).trim() !== String(rawInput.cursor).trim()) {
+    return {
+      ok: false,
+      normalized,
+      status: 'INVALID_INPUT',
+      errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+      reason: `Conflicting pagination cursor parameters: 'pageToken' and 'cursor' do not match`,
+    };
+  }
+  if (!hasPageToken && hasCursor) {
+    normalized.pageToken = rawInput.cursor;
+  }
+
   return { ok: true, normalized };
 }
 
