@@ -12,6 +12,8 @@
 import fs from 'node:fs';
 import {
   SUPPORTED_CONTACT_ROLES,
+  validateBoundedIntegerParam,
+  normalizeContactPulseInputAliases,
   resolveB2bDomainContactsBatch,
   enrichSingleB2bDomain,
   verifyEmailDeliverabilityPosture,
@@ -111,6 +113,12 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 512,
           description: 'Alias for query (B2B website URL, e.g. "https://stripe.com").',
         },
+        company: {
+          title: 'Target Company Name or Domain (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company name or domain, e.g. "Stripe" or "stripe.com").',
+        },
         roleFilter: {
           title: 'Contact Role Filter (Optional)',
           type: 'string',
@@ -146,6 +154,19 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           deprecated: true,
           description: 'Alias for limit (1 to 25).',
         },
+        max_results: {
+          title: 'Max Domain Profiles per Call (Snake-Case Alias)',
+          type: 'integer',
+          minimum: 1,
+          maximum: 25,
+          deprecated: true,
+          description: 'Alias for limit (1 to 25).',
+        },
+        useSampleFixtures: {
+          title: 'Use Deterministic Sample Fixtures (Optional)',
+          type: 'boolean',
+          description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
+        },
         pageToken: {
           title: 'Pagination Cursor Token (Optional)',
           type: 'string',
@@ -177,11 +198,28 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 256,
           description: 'Alias for domain.',
         },
+        domains: {
+          title: 'Target B2B Domain Array or CSV (Alias)',
+          type: ['array', 'string'],
+          items: { type: 'string' },
+          description: 'Alias for domain.',
+        },
+        company: {
+          title: 'Target Company Name or Domain (Alias)',
+          type: 'string',
+          maxLength: 256,
+          description: 'Alias for domain (e.g. "Stripe" or "stripe.com").',
+        },
         url: {
           title: 'Target B2B URL (Alias)',
           type: 'string',
           maxLength: 512,
           description: 'Alias for domain (e.g. "https://stripe.com").',
+        },
+        useSampleFixtures: {
+          title: 'Use Deterministic Sample Fixtures (Optional)',
+          type: 'boolean',
+          description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
       },
       additionalProperties: false,
@@ -208,6 +246,18 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 256,
           description: 'Optional domain when email is omitted.',
         },
+        domains: {
+          title: 'Target B2B Domain Array or CSV (Alias)',
+          type: ['array', 'string'],
+          items: { type: 'string' },
+          description: 'Alias for domain.',
+        },
+        company: {
+          title: 'Target Company Name or Domain (Alias)',
+          type: 'string',
+          maxLength: 256,
+          description: 'Alias for domain.',
+        },
         query: {
           title: 'Target Email or Domain (Alias)',
           type: 'string',
@@ -219,6 +269,11 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           type: 'string',
           maxLength: 512,
           description: 'Alias for domain.',
+        },
+        useSampleFixtures: {
+          title: 'Use Deterministic Sample Fixtures (Optional)',
+          type: 'boolean',
+          description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
       },
       additionalProperties: false,
@@ -302,52 +357,109 @@ export function truncateMcpResponseEnvelope(
 
 export function validateMcpToolArguments(toolName, rawArgs) {
   if (rawArgs !== undefined && (typeof rawArgs !== 'object' || rawArgs === null || Array.isArray(rawArgs))) {
-    return { ok: false, reason: 'Tool arguments must be a JSON object' };
+    return { ok: false, errorCode: 'INVALID_INPUT', reason: 'Tool arguments must be a JSON object' };
   }
   const args = { ...(rawArgs || {}) };
   const serialized = JSON.stringify(args);
   if (containsLiveSecretToken(serialized)) {
-    return { ok: false, reason: 'Arguments rejected by Zero-Trust live secret guard' };
+    return { ok: false, errorCode: 'INVALID_INPUT', reason: 'Arguments rejected by Zero-Trust live secret guard' };
   }
   const manifest = MCP_TOOLS_MANIFEST.find((t) => t.name === toolName);
   if (!manifest) {
-    return { ok: false, reason: `Unknown MCP tool '${toolName}'` };
+    return { ok: false, errorCode: 'INVALID_INPUT', reason: `Unknown MCP tool '${toolName}'` };
   }
   const allowedProps = new Set(Object.keys(manifest.inputSchema.properties || {}));
   for (const key of Object.keys(args)) {
     if (!allowedProps.has(key)) {
-      return { ok: false, reason: `Unknown argument '${key}' for tool '${toolName}'` };
+      return { ok: false, errorCode: 'INVALID_INPUT', reason: `Unknown argument '${key}' for tool '${toolName}'` };
     }
   }
+
+  for (const strKey of ['query', 'domain', 'company', 'url', 'email', 'roleFilter', 'pageToken']) {
+    if (args[strKey] !== undefined && typeof args[strKey] !== 'string') {
+      return {
+        ok: false,
+        errorCode: 'INVALID_INPUT',
+        reason: `Parameter '${strKey}' must be a string`,
+      };
+    }
+  }
+  if (
+    args.domains !== undefined &&
+    typeof args.domains !== 'string' &&
+    !Array.isArray(args.domains)
+  ) {
+    return {
+      ok: false,
+      errorCode: 'INVALID_INPUT',
+      reason: "Parameter 'domains' must be an array of strings or a comma-separated string",
+    };
+  }
+  for (const boolKey of ['includeDnsPosture', 'includeSecurityTxt', 'useSampleFixtures']) {
+    if (args[boolKey] !== undefined && typeof args[boolKey] !== 'boolean') {
+      return {
+        ok: false,
+        errorCode: 'INVALID_INPUT',
+        reason: `Parameter '${boolKey}' must be a boolean`,
+      };
+    }
+  }
+
+  const aliasNorm = normalizeContactPulseInputAliases(
+    args,
+    toolName === 'verify_email_deliverability_posture' ? 'verify' : 'batch'
+  );
+  if (!aliasNorm.ok) {
+    return {
+      ok: false,
+      errorCode: aliasNorm.errorCode || 'INVALID_INPUT',
+      reason: aliasNorm.reason,
+    };
+  }
+  Object.assign(args, aliasNorm.normalized);
+
   if (toolName === 'resolve_b2b_domain_contacts') {
-    const hasQuery = typeof args.query === 'string' && args.query.trim().length > 0;
-    if (!hasQuery) {
-      if (Array.isArray(args.domains)) {
-        const joined = args.domains
-          .map((d) => String(d ?? '').trim())
-          .filter(Boolean)
-          .join(', ');
-        if (joined) args.query = joined;
-      } else if (typeof args.domains === 'string' && args.domains.trim()) {
-        args.query = args.domains.trim();
-      } else if (typeof args.domain === 'string' && args.domain.trim()) {
-        args.query = args.domain.trim();
-      } else if (typeof args.url === 'string' && args.url.trim()) {
-        args.query = args.url.trim();
+    if (args.limit !== undefined || args.maxResults !== undefined || args.max_results !== undefined) {
+      const limCheck = validateBoundedIntegerParam(
+        args.limit ?? args.maxResults ?? args.max_results,
+        5,
+        1,
+        MCP_MAX_ITEMS_LIMIT,
+        'limit'
+      );
+      if (!limCheck.ok) {
+        return { ok: false, errorCode: 'INVALID_INPUT', reason: limCheck.reason };
       }
+      args.limit = limCheck.value;
+    }
+    const hasQuery = typeof args.query === 'string' && args.query.trim().length > 0;
+    const hasDomains = Array.isArray(args.domains) && args.domains.length > 0;
+    if (!hasQuery && !hasDomains) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_INPUT',
+        reason: "Missing required target domain parameter ('query', 'domain', 'domains', 'company', or 'url')",
+      };
     }
   } else if (toolName === 'inspect_domain_dns_and_security_txt') {
     const hasDomain = typeof args.domain === 'string' && args.domain.trim().length > 0;
     if (!hasDomain) {
-      if (typeof args.query === 'string' && args.query.trim()) {
-        args.domain = args.query.trim();
-      } else if (typeof args.url === 'string' && args.url.trim()) {
-        args.domain = args.url.trim();
-      }
+      return {
+        ok: false,
+        errorCode: 'INVALID_INPUT',
+        reason: "Missing required target domain parameter ('domain', 'query', 'company', or 'url')",
+      };
     }
   } else if (toolName === 'verify_email_deliverability_posture') {
-    if (!args.email && !args.domain && !args.query && typeof args.url === 'string' && args.url.trim()) {
-      args.domain = args.url.trim();
+    const hasEmail = typeof args.email === 'string' && args.email.trim().length > 0;
+    const hasDomain = typeof args.domain === 'string' && args.domain.trim().length > 0;
+    const hasQuery = typeof args.query === 'string' && args.query.trim().length > 0;
+    if (!hasEmail && !hasDomain && !hasQuery) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_INPUT',
+        reason: "Missing required parameter ('email', 'domain', 'query', 'company', or 'url')",
+      };
     }
   }
   return { ok: true, args };
@@ -423,7 +535,7 @@ export async function handleMcpJsonRpcRequest(req, options = {}) {
       return truncateMcpResponseEnvelope(reqId, {
         ok: false,
         status: 'INVALID_INPUT',
-        errorCode: 'INVALID_INPUT',
+        errorCode: val.errorCode || 'INVALID_INPUT',
         reason: val.reason,
       });
     }
@@ -435,7 +547,7 @@ export async function handleMcpJsonRpcRequest(req, options = {}) {
     }
 
     if (toolName === 'inspect_domain_dns_and_security_txt') {
-      const target = String(args.domain || args.query || 'stripe.com').trim();
+      const target = String(args.domain || args.query || args.company || args.url || '').trim();
       const singleRes = await enrichSingleB2bDomain(target, {
         includeDnsPosture: true,
         includeSecurityTxt: true,

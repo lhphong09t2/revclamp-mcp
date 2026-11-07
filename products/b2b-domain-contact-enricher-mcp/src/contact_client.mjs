@@ -600,6 +600,77 @@ export function validateBoundedIntegerParam(rawVal, defaultVal, min, max, paramN
   return { ok: true, value: num };
 }
 
+const TWO_PART_CCTLD_SUFFIXES = new Set([
+  'co.uk',
+  'org.uk',
+  'ac.uk',
+  'gov.uk',
+  'com.au',
+  'net.au',
+  'org.au',
+  'co.jp',
+  'ne.jp',
+  'or.jp',
+  'co.nz',
+  'org.nz',
+  'co.in',
+  'net.in',
+  'org.in',
+  'co.kr',
+  'or.kr',
+  'co.za',
+  'org.za',
+  'com.br',
+  'net.br',
+  'org.br',
+  'com.sg',
+  'edu.sg',
+  'com.mx',
+  'org.mx',
+  'com.hk',
+  'org.hk',
+  'com.tw',
+  'org.tw',
+  'com.cn',
+  'net.cn',
+  'org.cn',
+  'com.tr',
+  'co.il',
+  'com.ar',
+  'com.co',
+  'com.my',
+  'com.ph',
+  'com.vn',
+]);
+
+const MULTI_TENANT_HOSTING_SUFFIXES = new Set([
+  'github.io',
+  'vercel.app',
+  'netlify.app',
+  'pages.dev',
+  'onrender.com',
+  'herokuapp.com',
+  'myshopify.com',
+  'appspot.com',
+  'web.app',
+  'firebaseapp.com',
+  'gitlab.io',
+]);
+
+const RFC2606_TEST_PARENT_DOMAINS = new Set([
+  'example.org',
+  'example.com',
+  'example.net',
+]);
+
+function isTwoPartCcTldSuffix(lastTwo) {
+  const lower = String(lastTwo || '').toLowerCase();
+  return (
+    TWO_PART_CCTLD_SUFFIXES.has(lower) ||
+    /^(?:co|com|org|net|ac|gov|edu|or|ne|go|gob|mil)\.[a-z]{2}$/i.test(lower)
+  );
+}
+
 /**
  * Normalizes a raw domain or URL string into a canonical registrable/host domain (lowercase, no www.).
  *
@@ -615,6 +686,26 @@ export function normalizeTargetB2bDomain(rawInput) {
     return { ok: false, reason: 'Input rejected by Zero-Trust live secret guard' };
   }
   let candidateUrl = trimmed;
+  if (!candidateUrl.includes('/') && !candidateUrl.includes(':') && (/[\s,]/.test(candidateUrl) || !candidateUrl.includes('.'))) {
+    const strippedCorp = candidateUrl
+      .replace(/[,()]/g, ' ')
+      .replace(
+        /\b(?:inc|incorporated|llc|ltd|limited|corp|corporation|co|company|gmbh|plc|ag|sa|srl|bv|nv|pty|opco|holdco|holdings|hq|group|international|global|technologies|technology|tech|labs|software|systems|platforms)\b\.?/gi,
+        ' '
+      )
+      .trim();
+    if (strippedCorp && !strippedCorp.includes(' ')) {
+      const bareLower = strippedCorp.toLowerCase();
+      const matchedCurated = Object.keys(CURATED_B2B_DOMAIN_DIRECTORY).find(
+        (dom) => dom.split('.')[0] === bareLower
+      );
+      if (matchedCurated) {
+        candidateUrl = matchedCurated;
+      } else if (bareLower.includes('.')) {
+        candidateUrl = bareLower;
+      }
+    }
+  }
   if (/^http:\/\//i.test(candidateUrl)) {
     candidateUrl = candidateUrl.replace(/^http:\/\//i, 'https://');
   } else if (!/^https:\/\//i.test(candidateUrl)) {
@@ -628,12 +719,41 @@ export function normalizeTargetB2bDomain(rawInput) {
     return { ok: false, reason: ssrf.reason || `Unsafe domain '${trimmed}'` };
   }
   let cleanHost = ssrf.hostname.replace(/^www\./i, '');
-  const nonRootSubdomainMatch =
-    /^(?:careers|jobs|docs|blog|app|support|help|status|developers)\.([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)$/i.exec(
+  while (
+    /^(?:www|app|careers|jobs|boards|work|talent|hiring|join|apply|people|about|security|press|news|newsroom|trust|ir|investors|legal|privacy|status|docs|blog|developers|developer|support|help|portal|console|dashboard|team|company|corp|global|mail|contact|info|hello|hq|api|auth|login|id|account|accounts|billing|pay|checkout|shop|store|cloud|platform|marketing|events|community|forum|learn|academy|training|partners|partner|affiliates|media|brand|assets|cdn|static)\./i.test(
       cleanHost
-    );
-  if (nonRootSubdomainMatch) {
-    cleanHost = nonRootSubdomainMatch[1].toLowerCase();
+    )
+  ) {
+    const hostParts = cleanHost.split('.').filter(Boolean);
+    if (hostParts.length < 3) break;
+    const tailTwo = `${hostParts[hostParts.length - 2]}.${hostParts[hostParts.length - 1]}`.toLowerCase();
+    const minRootLabels =
+      isTwoPartCcTldSuffix(tailTwo) ||
+      MULTI_TENANT_HOSTING_SUFFIXES.has(tailTwo) ||
+      RFC2606_TEST_PARENT_DOMAINS.has(tailTwo)
+        ? 3
+        : 2;
+    if (hostParts.length <= minRootLabels) break;
+    cleanHost = cleanHost.replace(/^[^.]+\./, '');
+  }
+  const hostLabels = cleanHost.split('.').filter(Boolean);
+  if (hostLabels.length >= 3) {
+    const lastTwo = `${hostLabels[hostLabels.length - 2]}.${hostLabels[hostLabels.length - 1]}`.toLowerCase();
+    if (
+      isTwoPartCcTldSuffix(lastTwo) ||
+      MULTI_TENANT_HOSTING_SUFFIXES.has(lastTwo) ||
+      RFC2606_TEST_PARENT_DOMAINS.has(lastTwo)
+    ) {
+      cleanHost = hostLabels.slice(-3).join('.');
+    } else {
+      cleanHost = hostLabels.slice(-2).join('.');
+    }
+  } else if (
+    hostLabels.length === 2 &&
+    (TWO_PART_CCTLD_SUFFIXES.has(cleanHost.toLowerCase()) ||
+      MULTI_TENANT_HOSTING_SUFFIXES.has(cleanHost.toLowerCase()))
+  ) {
+    return { ok: false, reason: `Invalid bare public suffix '${cleanHost}'` };
   }
   if (!cleanHost || !cleanHost.includes('.')) {
     return { ok: false, reason: `Invalid public B2B domain '${cleanHost}'` };
@@ -652,9 +772,14 @@ export function normalizeTargetB2bDomain(rawInput) {
  * @returns {{ok: boolean, domains: string[], rejected: Array<{input: string, reason: string}>, reason?: string}}
  */
 export function parseDomainBatchInput(rawQuery) {
+  const stripCorpSuffixes = (s) =>
+    String(s ?? '').replace(
+      /,?\s+\b(?:inc|incorporated|llc|ltd|limited|corp|corporation|co|company|gmbh|plc|ag|sa|srl|bv|nv|pty|opco|holdco|holdings|hq|group)\b\.?/gi,
+      ''
+    );
   const tokens = Array.isArray(rawQuery)
-    ? rawQuery.flatMap((item) => String(item ?? '').split(/[\s,;]+/))
-    : String(rawQuery ?? '').split(/[\s,;]+/);
+    ? rawQuery.flatMap((item) => stripCorpSuffixes(item).split(/[\s,;]+/))
+    : stripCorpSuffixes(rawQuery).split(/[\s,;]+/);
   const cleanedTokens = tokens.map((t) => t.trim()).filter(Boolean);
   if (cleanedTokens.length === 0) {
     return { ok: false, domains: [], rejected: [], reason: 'No target B2B domains provided in query' };
@@ -1748,12 +1873,260 @@ export async function queryDohJsonRecords(
   return [];
 }
 
+const CONTACT_TARGET_ALIAS_KEYS_BATCH = Object.freeze([
+  'query',
+  'domain',
+  'domains',
+  'company',
+  'url',
+]);
+const CONTACT_TARGET_ALIAS_KEYS_VERIFY = Object.freeze([
+  'email',
+  'domain',
+  'domains',
+  'query',
+  'company',
+  'url',
+]);
+const CONTACT_LIMIT_ALIAS_KEYS = Object.freeze(['limit', 'maxResults', 'max_results']);
+
+function computeCanonicalContactTargetSignature(rawVal) {
+  if (Array.isArray(rawVal)) {
+    const parsed = parseDomainBatchInput(rawVal);
+    if (parsed.ok && parsed.domains.length > 0) {
+      return parsed.domains.join(',');
+    }
+    return rawVal
+      .map((x) => String(x ?? '').trim().toLowerCase())
+      .filter(Boolean)
+      .join(',');
+  }
+  const str = String(rawVal ?? '').trim();
+  if (!str) return '';
+  if (str.includes('@') && !str.includes(' ') && !str.includes(',')) {
+    const domPart = str.split('@').slice(1).join('@').trim().toLowerCase();
+    const normDom = normalizeTargetB2bDomain(domPart);
+    return normDom.ok ? normDom.domain : domPart;
+  }
+  const parsed = parseDomainBatchInput(str);
+  if (parsed.ok && parsed.domains.length > 0) {
+    return parsed.domains.join(',');
+  }
+  return str.toLowerCase();
+}
+
+/**
+ * Normalizes cross-layer parameter aliases (`query`/`domain`/`domains`/`company`/`url`/`email` and
+ * `limit`/`maxResults`/`max_results`) across ContactPulse Core Engine, Apify Actor, and MCP Server.
+ * Fails closed with `errorCode: 'CONFLICTING_PARAMETER_ALIASES'` when multiple aliases in the same
+ * group resolve to different values.
+ *
+ * @param {unknown} rawInput
+ * @param {'batch'|'single'|'verify'} [mode='batch']
+ * @returns {{ok: boolean, normalized: object, status?: string, errorCode?: string, reason?: string}}
+ */
+export function normalizeContactPulseInputAliases(rawInput = {}, mode = 'batch') {
+  if (typeof rawInput === 'string') {
+    const trimmed = rawInput.trim();
+    return {
+      ok: true,
+      normalized: {
+        query: trimmed,
+        domain: trimmed,
+        ...(trimmed.includes('@') ? { email: trimmed } : {}),
+      },
+    };
+  }
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    return {
+      ok: false,
+      normalized: {},
+      status: 'INVALID_INPUT',
+      errorCode: 'INVALID_INPUT',
+      reason: 'Input parameters must be a JSON object',
+    };
+  }
+  const normalized = { ...rawInput };
+  const targetKeys =
+    mode === 'verify' ? CONTACT_TARGET_ALIAS_KEYS_VERIFY : CONTACT_TARGET_ALIAS_KEYS_BATCH;
+
+  const providedTargets = [];
+  for (const key of targetKeys) {
+    const val = rawInput[key];
+    if (val === undefined || val === null) continue;
+    if (key === 'domains') {
+      if (typeof val !== 'string' && !Array.isArray(val)) {
+        return {
+          ok: false,
+          normalized,
+          status: 'INVALID_INPUT',
+          errorCode: 'INVALID_PARAMETER_TYPE',
+          reason: `Parameter 'domains' must be a string or array of strings`,
+        };
+      }
+      if (Array.isArray(val)) {
+        if (val.some((item) => typeof item !== 'string')) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'INVALID_PARAMETER_TYPE',
+            reason: `All items in 'domains' array must be strings`,
+          };
+        }
+        const nonEmptyItems = val.map((x) => x.trim()).filter(Boolean);
+        if (nonEmptyItems.length > 0) {
+          providedTargets.push({
+            key,
+            val: nonEmptyItems,
+            display: nonEmptyItems.join(', '),
+            sig: computeCanonicalContactTargetSignature(nonEmptyItems),
+          });
+        }
+      } else {
+        const trimmed = val.trim();
+        if (trimmed.length > 0) {
+          providedTargets.push({
+            key,
+            val: trimmed,
+            display: trimmed,
+            sig: computeCanonicalContactTargetSignature(trimmed),
+          });
+        }
+      }
+    } else {
+      if (typeof val !== 'string') {
+        return {
+          ok: false,
+          normalized,
+          status: 'INVALID_INPUT',
+          errorCode: 'INVALID_PARAMETER_TYPE',
+          reason: `Parameter '${key}' must be a string`,
+        };
+      }
+      const trimmed = val.trim();
+      if (trimmed.length > 0) {
+        const isSingleEmail =
+          trimmed.includes('@') && !trimmed.includes(' ') && !trimmed.includes(',');
+        providedTargets.push({
+          key,
+          val: trimmed,
+          display: trimmed,
+          sig: computeCanonicalContactTargetSignature(trimmed),
+          emailLower: isSingleEmail ? trimmed.toLowerCase() : null,
+        });
+      }
+    }
+  }
+
+  if (providedTargets.length > 1) {
+    const first = providedTargets[0];
+    for (let i = 1; i < providedTargets.length; i += 1) {
+      const other = providedTargets[i];
+      const emailConflict =
+        Boolean(first.emailLower && other.emailLower) &&
+        first.emailLower !== other.emailLower;
+      if (first.sig !== other.sig || emailConflict) {
+        return {
+          ok: false,
+          normalized,
+          status: 'INVALID_INPUT',
+          errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+          reason: `Conflicting target parameters: '${first.key}' ("${first.display}") and '${other.key}' ("${other.display}") resolve to different targets`,
+        };
+      }
+    }
+  }
+
+  if (providedTargets.length > 0) {
+    const primaryDisplay = providedTargets[0].display;
+    if (typeof normalized.query !== 'string' || !normalized.query.trim()) {
+      normalized.query = primaryDisplay;
+    }
+    if (typeof normalized.domain !== 'string' || !normalized.domain.trim()) {
+      normalized.domain = primaryDisplay;
+    }
+    if (mode === 'verify') {
+      const emailTarget = providedTargets.find((t) => t.display.includes('@'));
+      if (emailTarget) {
+        if (typeof normalized.email !== 'string' || !normalized.email.trim()) {
+          normalized.email = emailTarget.display;
+        }
+        normalized.query = emailTarget.display;
+      }
+    }
+  }
+
+  // Limit / maxResults / max_results alias group
+  const providedLimits = [];
+  for (const key of CONTACT_LIMIT_ALIAS_KEYS) {
+    const val = rawInput[key];
+    if (val === undefined || val === null || val === '') continue;
+    providedLimits.push({ key, val });
+  }
+
+  if (providedLimits.length > 1) {
+    const first = providedLimits[0];
+    const firstNum = Number(first.val);
+    for (let i = 1; i < providedLimits.length; i += 1) {
+      const other = providedLimits[i];
+      const otherNum = Number(other.val);
+      if (
+        typeof first.val === 'boolean' ||
+        typeof other.val === 'boolean' ||
+        !Number.isFinite(firstNum) ||
+        !Number.isFinite(otherNum) ||
+        firstNum !== otherNum
+      ) {
+        return {
+          ok: false,
+          normalized,
+          status: 'INVALID_INPUT',
+          errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+          reason: `Conflicting limit parameters: '${first.key}' (${String(first.val)}) and '${other.key}' (${String(other.val)}) do not match`,
+        };
+      }
+    }
+  }
+
+  if (providedLimits.length > 0) {
+    const chosenLimit = providedLimits[0].val;
+    normalized.limit = chosenLimit;
+    normalized.maxResults = chosenLimit;
+  }
+
+  return { ok: true, normalized };
+}
+
 /**
  * Builds a normalized B2B Domain Contact & Deliverability Profile for a single domain.
  */
-export async function enrichSingleB2bDomain(
-  rawDomain,
-  {
+export async function enrichSingleB2bDomain(rawDomain, options = {}) {
+  let effectiveRawDomain = rawDomain;
+  let effectiveOptions = options || {};
+  if (rawDomain && typeof rawDomain === 'object' && !Array.isArray(rawDomain)) {
+    const aliasNorm = normalizeContactPulseInputAliases(rawDomain, 'single');
+    if (!aliasNorm.ok) {
+      return {
+        ok: false,
+        status: 'INVALID_INPUT',
+        errorCode: aliasNorm.errorCode || 'INVALID_INPUT',
+        reason: aliasNorm.reason,
+      };
+    }
+    const normObj = aliasNorm.normalized;
+    effectiveRawDomain =
+      normObj.domain ?? normObj.query ?? normObj.company ?? normObj.url ?? '';
+    effectiveOptions = {
+      ...normObj,
+      ...effectiveOptions,
+      preferCurated:
+        effectiveOptions.preferCurated === true ||
+        normObj.preferCurated === true ||
+        normObj.useSampleFixtures === true,
+    };
+  }
+  const {
     roleFilter = 'ANY',
     includeDnsPosture = true,
     includeSecurityTxt = true,
@@ -1762,11 +2135,16 @@ export async function enrichSingleB2bDomain(
     nowMs = Date.now(),
     deadlineAtMs = undefined,
     preferCurated = false,
-  } = {}
-) {
-  const norm = normalizeTargetB2bDomain(rawDomain);
+  } = effectiveOptions;
+
+  const norm = normalizeTargetB2bDomain(effectiveRawDomain);
   if (!norm.ok) {
-    return { ok: false, status: 'INVALID_INPUT', reason: norm.reason };
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: 'INVALID_INPUT',
+      reason: norm.reason,
+    };
   }
   const domain = norm.domain;
   const normalizedRoleFilter = String(roleFilter || 'ANY').trim().toUpperCase();
@@ -2067,7 +2445,19 @@ export async function enrichSingleB2bDomain(
  * Batch-enriches 1 to 25 B2B domains with deterministic `rcd1_` cursor pagination.
  */
 export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
-  const rawQuery = input?.query ?? input?.domains ?? input?.domain ?? 'stripe.com';
+  const aliasNorm = normalizeContactPulseInputAliases(input, 'batch');
+  if (!aliasNorm.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasNorm.errorCode || 'INVALID_INPUT',
+      reason: aliasNorm.reason,
+      items: [],
+    };
+  }
+  input = aliasNorm.normalized;
+  const rawQuery =
+    input?.query ?? input?.domains ?? input?.domain ?? input?.company ?? input?.url ?? '';
   const roleFilter = String(input?.roleFilter || 'ANY').trim().toUpperCase();
   if (roleFilter !== 'ANY' && !SUPPORTED_CONTACT_ROLES.includes(roleFilter)) {
     return {
@@ -2209,7 +2599,19 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
  * Evaluates a single email address or domain for deliverability posture and role-account risk.
  */
 export async function verifyEmailDeliverabilityPosture(input = {}, options = {}) {
-  const rawTarget = String(input?.email ?? input?.domain ?? input?.query ?? '').trim();
+  const aliasNorm = normalizeContactPulseInputAliases(input, 'verify');
+  if (!aliasNorm.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasNorm.errorCode || 'INVALID_INPUT',
+      reason: aliasNorm.reason,
+    };
+  }
+  input = aliasNorm.normalized;
+  const rawTarget = String(
+    input?.email ?? input?.domain ?? input?.query ?? input?.company ?? input?.url ?? ''
+  ).trim();
   if (!rawTarget) {
     return {
       ok: false,

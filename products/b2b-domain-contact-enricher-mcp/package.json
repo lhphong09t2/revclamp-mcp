@@ -1,7 +1,7 @@
 {
   "name": "@revclamp/b2b-domain-contact-enricher-mcp",
   "mcpName": "com.revclamp/b2b-domain-contact-enricher-mcp",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "description": "RevClamp ContactPulse - Deterministic B2B Domain Contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC Deliverability Enricher. Independent B2B intelligence tool by RevClamp.",
   "license": "MIT",

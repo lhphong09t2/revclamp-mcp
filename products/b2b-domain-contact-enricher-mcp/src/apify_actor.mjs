@@ -10,6 +10,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {
   DEFAULT_RUN_DEADLINE_MS,
+  normalizeContactPulseInputAliases,
   resolveB2bDomainContactsBatch,
   computeRewoundCursorForDeliveredPrefix,
 } from './contact_client.mjs';
@@ -156,24 +157,45 @@ export async function loadApifyActorInput(
   }
 
   const isAtHome = env?.APIFY_IS_AT_HOME === '1' || env?.APIFY_IS_AT_HOME === 'true';
+  const DEFAULT_SCHEMA_QUERY =
+    'stripe.com, linear.app, cloudflare.com, shopify.com, github.com';
   const applyAtHomeSchemaDefaults = (parsedInput) => {
+    if (!parsedInput || typeof parsedInput !== 'object' || Array.isArray(parsedInput)) {
+      return parsedInput;
+    }
+    const next = { ...parsedInput };
+    const hasNonEmptyAlias = (keys) =>
+      keys.some((k) => {
+        const v = next[k];
+        if (v === undefined || v === null) return false;
+        if (Array.isArray(v)) return v.length > 0;
+        return String(v).trim() !== '';
+      });
+    if (
+      next.query === DEFAULT_SCHEMA_QUERY &&
+      hasNonEmptyAlias(['domains', 'domain', 'company', 'url'])
+    ) {
+      delete next.query;
+    }
+    if (next.maxResults === 5 && hasNonEmptyAlias(['limit', 'max_results'])) {
+      delete next.maxResults;
+    }
     if (
       isAtHome &&
-      parsedInput &&
-      typeof parsedInput === 'object' &&
-      !Array.isArray(parsedInput) &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'query') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'domains') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'domain') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'pageToken')
+      !Object.prototype.hasOwnProperty.call(next, 'query') &&
+      !Object.prototype.hasOwnProperty.call(next, 'domains') &&
+      !Object.prototype.hasOwnProperty.call(next, 'domain') &&
+      !Object.prototype.hasOwnProperty.call(next, 'company') &&
+      !Object.prototype.hasOwnProperty.call(next, 'url') &&
+      !Object.prototype.hasOwnProperty.call(next, 'pageToken')
     ) {
       return {
-        query: 'stripe.com, linear.app, cloudflare.com, shopify.com, github.com',
+        query: DEFAULT_SCHEMA_QUERY,
         maxResults: 5,
-        ...parsedInput,
+        ...next,
       };
     }
-    return parsedInput;
+    return next;
   };
 
   if (env?.APIFY_INPUT_PATH && fs.existsSync(env.APIFY_INPUT_PATH)) {
