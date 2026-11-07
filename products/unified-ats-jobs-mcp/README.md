@@ -23,20 +23,44 @@ Extract normalized B2B job postings, structured and regex-parsed compensation ra
 
 ---
 
-## Quick Start (MCP Server for Claude Desktop, Cursor, Windsurf)
+## 1. Apify Store Cloud, Clay / n8n & REST API Quick Start
 
-Run directly via `npx`:
+Run **RevClamp TalentPulse** in the cloud on [Apify Store (`revclamp/unified-ats-jobs-mcp`)](https://apify.com/revclamp/unified-ats-jobs-mcp) with zero local installation, or trigger it directly from **Clay**, **n8n**, **Make**, or any HTTP workflow via the Apify REST API:
+
+```bash
+curl -s -X POST \
+  "https://api.apify.com/v2/acts/revclamp~unified-ats-jobs-mcp/run-sync-get-dataset-items" \
+  -H "Authorization: Bearer $APIFY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "stripe",
+    "workplaceType": "ANY",
+    "maxResults": 10
+  }'
+```
+
+### Transparent Pay-per-Event Pricing & Free-Tier Credit Math
+
+- **Event Price:** `$0.0015` per normalized job posting (`job-posting-normalized`).
+- **What `$1.00` in Free Apify Credits Gets You:** Approximately **`~660` normalized B2B job postings** across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters (including salary range extraction, `workplaceType`, and `techStackKeywords`).
+- **Zero-Waste Billing Guarantee:** You pay **`$0.00`** on `EMPTY_RESULT` (`0` matching jobs), `INVALID_INPUT`, or upstream rate limits (`UPSTREAM_RATE_LIMITED`). Charges apply strictly to verified, deduplicated job postings delivered to your Dataset.
+
+---
+
+## 2. Local AI Agent & MCP Server Quick Start (Claude Desktop, Cursor, Windsurf)
+
+Run directly via `npx` (supports natural parameter aliases `query`, `company`, `domain`, or `url`):
 
 ```bash
 # Run MCP stdio server
-npx @revclamp/unified-ats-jobs-mcp --mcp-stdio
+npx -y @revclamp/unified-ats-jobs-mcp --mcp-stdio
 
 # Run instant zero-network local self-test & inspect MCP tools
-npx @revclamp/unified-ats-jobs-mcp --self-test
-npx @revclamp/unified-ats-jobs-mcp --list-tools
+npx -y @revclamp/unified-ats-jobs-mcp --self-test
+npx -y @revclamp/unified-ats-jobs-mcp --list-tools
 
 # Call an MCP tool directly from the CLI
-npx @revclamp/unified-ats-jobs-mcp --call resolve_company_ats_board '{"query":"linear"}'
+npx -y @revclamp/unified-ats-jobs-mcp --call resolve_company_ats_board '{"company":"stripe"}'
 ```
 
 ### Claude Desktop / Cursor Configuration (`claude_desktop_config.json`)

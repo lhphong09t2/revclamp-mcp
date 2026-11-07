@@ -13,6 +13,7 @@
  *     and SmartRecruiters detail enrichment, compensation breakdown, and `techStackKeywords`.
  */
 
+import fs from 'node:fs';
 import {
   resolveAtsBoardTarget,
   getAtsJobPostingDetail,
@@ -25,6 +26,10 @@ import {
   computeRewoundCursorForDeliveredPrefix,
 } from './ats_client.mjs';
 import { runUnifiedAtsJobsActor } from './apify_actor.mjs';
+
+const PKG_VERSION = JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+).version;
 
 export const MCP_MAX_ENVELOPE_BYTES = 30000;
 export const MCP_MAX_ITEMS_LIMIT = 25;
@@ -43,7 +48,7 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'unified-ats-jobs-mcp',
   title: 'RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed',
-  version: '1.0.6',
+  version: PKG_VERSION,
   description:
     'Extract normalized B2B job postings, compensation ranges, workplace classification (REMOTE/HYBRID/ONSITE), and tech-stack hiring signals across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters. Independent hiring intelligence tool by RevClamp; not affiliated with any ATS vendor.',
   websiteUrl: 'https://revclamp.com',
@@ -89,6 +94,24 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 512,
           description:
             'Company slug (e.g. "linear", "stripe", "nvidia", "zoox", "BoschGroup") or direct career board URL.',
+        },
+        company: {
+          title: 'Company Name or Slug (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company name or slug, e.g. "stripe", "linear").',
+        },
+        domain: {
+          title: 'Company Domain (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company domain, e.g. "stripe.com", "linear.app").',
+        },
+        url: {
+          title: 'Career Board URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query / careerUrl (direct career board URL).',
         },
         provider: {
           title: 'ATS Provider Override (Optional)',
@@ -191,6 +214,24 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           description:
             'Company slug or career URL to resolve (e.g. "linear", "stripe", "nvidia", "zoox", "BoschGroup").',
         },
+        company: {
+          title: 'Company Name or Slug (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company name or slug, e.g. "stripe", "linear").',
+        },
+        domain: {
+          title: 'Company Domain (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company domain, e.g. "stripe.com", "linear.app").',
+        },
+        url: {
+          title: 'Career Board URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query / careerUrl (direct career board URL).',
+        },
         provider: {
           title: 'ATS Provider Override (Optional)',
           type: 'string',
@@ -229,7 +270,6 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           description: 'Optional Workday CXS cluster subdomain (wd1..wd5).',
         },
       },
-      required: ['query'],
       additionalProperties: false,
     },
   },
@@ -635,6 +675,9 @@ function validateJsonRpcRequestId(rawId) {
 
 const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'query',
+  'company',
+  'domain',
+  'url',
   'provider',
   'companySlug',
   'careerUrl',
@@ -651,6 +694,9 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
 
 const RESOLVE_ALLOWED_ARG_KEYS = new Set([
   'query',
+  'company',
+  'domain',
+  'url',
   'provider',
   'companySlug',
   'careerUrl',
@@ -662,6 +708,9 @@ const RESOLVE_ALLOWED_ARG_KEYS = new Set([
 const DETAIL_ALLOWED_ARG_KEYS = new Set([
   'jobId',
   'query',
+  'company',
+  'domain',
+  'url',
   'provider',
   'companySlug',
   'careerUrl',
@@ -678,7 +727,7 @@ export function validateMcpToolArguments(toolName, rawArgs) {
   if (rawArgs !== undefined && (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs))) {
     return { ok: false, message: 'Tool arguments must be a JSON object' };
   }
-  const args = rawArgs || {};
+  const args = { ...(rawArgs || {}) };
   const allowedSet =
     toolName === 'search_ats_job_postings'
       ? SEARCH_ALLOWED_ARG_KEYS
@@ -692,6 +741,20 @@ export function validateMcpToolArguments(toolName, rawArgs) {
         ok: false,
         message: `Unknown argument '${sliceUtf8Safe(key, 48)}' for tool '${toolName}'`,
       };
+    }
+  }
+
+  for (const aliasKey of ['company', 'domain', 'url']) {
+    if (args[aliasKey] !== undefined && typeof args[aliasKey] !== 'string') {
+      return { ok: false, message: `Invalid ${aliasKey}: expected a string` };
+    }
+  }
+  if (args.query === undefined || args.query === null || String(args.query).trim() === '') {
+    const aliasValue = [args.company, args.domain, args.url].find(
+      (v) => typeof v === 'string' && v.trim().length > 0
+    );
+    if (aliasValue) {
+      args.query = aliasValue.trim();
     }
   }
 

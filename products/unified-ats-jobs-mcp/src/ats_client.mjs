@@ -960,12 +960,18 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
     }
   }
 
-  // 2. Clean company slug or domain name (e.g. "stripe.com" -> "stripe", "linear.app" -> "linear")
+  // 2. Clean company slug or domain name (e.g. "stripe.com" -> "stripe", "careers.stripe.com" -> "stripe", "linear.app" -> "linear")
   let cleanedSlug = trimmed
     .replace(/^https?:\/\//i, '')
     .split('/')[0]
     .replace(/^www\./i, '');
-  if (cleanedSlug.includes('.')) {
+  const careerSubdomainMatch =
+    /^(?:careers|jobs|join|work|talent|hiring|apply|boards|people)\.([a-z0-9-]+)\./i.exec(
+      cleanedSlug
+    );
+  if (careerSubdomainMatch) {
+    cleanedSlug = careerSubdomainMatch[1];
+  } else if (cleanedSlug.includes('.')) {
     cleanedSlug = cleanedSlug.split('.')[0];
   }
   cleanedSlug = cleanedSlug.replace(/[^A-Za-z0-9_-]/g, '');
@@ -2641,7 +2647,7 @@ export async function resolveCompanyAtsBoard(options = {}) {
     target: null,
     probeAttempts: totalAttempts,
     billableCount: 0,
-    reason: `No active public ATS board matched '${slug}' across Ashby, Greenhouse, Lever, or SmartRecruiters`,
+    reason: `No active public ATS board matched '${slug}' across Ashby, Greenhouse, Lever, or SmartRecruiters (Tip: For custom Workday boards, pass the full *.wd1..5.myworkdayjobs.com career URL.)`,
   };
 }
 
