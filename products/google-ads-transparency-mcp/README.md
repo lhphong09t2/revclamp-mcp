@@ -1,4 +1,4 @@
-# RevClamp AdPulse - Google Ads Transparency Scraper & MCP
+# Google Ads Transparency Center Scraper & MCP | RevClamp AdPulse
 
 [![RevClamp AdPulse - Google Ads Transparency Intelligence](https://revclamp.com/assets/revclamp-product-banner.png)](https://revclamp.com)
 

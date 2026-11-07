@@ -1,8 +1,9 @@
 {
   "actorSpecification": 1,
   "name": "google-ads-transparency-mcp",
-  "title": "RevClamp AdPulse - Google Ads Transparency Scraper & MCP",
-  "description": "Resolve verified Google Ads advertiser entities from any brand or domain and extract active or historical ad creatives (Text, Image, Video), ad copy, and run dates with zero browser overhead. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.",
+  "title": "Google Ads Transparency Center Scraper & MCP | RevClamp AdPulse",
+  "description": "Google Ads Transparency Center and Google Ad Library scraper & MCP server. Find verified advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent tool by RevClamp.",
+  "categories": ["LEAD_GENERATION", "AI", "BUSINESS", "MARKETING"],
   "version": "1.0",
   "buildTag": "latest",
   "minMemoryMbytes": 256,

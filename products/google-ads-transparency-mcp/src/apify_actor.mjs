@@ -2013,7 +2013,9 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       unknownOutcomeIds: Array.from(unknownOutcomeSet),
       chargeReceipts: [],
       pagination: {
+        offset: creativesRes.offset ?? 0,
         nextPageToken: creativesRes.nextPageToken,
+        nextCursor: creativesRes.nextPageToken,
         paginationStatus: creativesRes.paginationStatus,
         paginationIncompleteReason: creativesRes.paginationIncompleteReason,
         pagesFetched: creativesRes.pagesFetched,
@@ -2432,7 +2434,9 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
   }
 
   const paginationMeta = {
+    offset: creativesRes.offset ?? 0,
     nextPageToken: effectiveNextPageToken,
+    nextCursor: effectiveNextPageToken,
     paginationStatus: effectivePaginationStatus,
     paginationIncompleteReason: effectiveIncompleteReason,
     pagesFetched: creativesRes.pagesFetched,

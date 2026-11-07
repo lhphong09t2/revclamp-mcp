@@ -84,10 +84,11 @@
           placeholder: '1 to 25',
           hint: 'Maximum number of creatives returned in a single call (1 to 25).',
         },
-        pageToken: {
-          title: 'Next-Page Cursor Token (Optional)',
-          placeholder: 'Paste continuation token from a previous run',
-          hint: 'Optional continuation token returned by a previous call to load the next page.',
+        cursor: {
+          label: 'Pagination Cursor (Optional)',
+          title: 'Pagination Cursor (Optional)',
+          placeholder: 'Paste pagination.nextCursor to fetch next page...',
+          hint: 'Auto-clears whenever you edit filters above.',
         },
       },
     },
@@ -193,7 +194,7 @@
       .replace(/\bincludeSubsidiaries\b/g, 'Include Regional Subsidiaries')
       .replace(/\bincludeCreativeDetails\b/g, 'Include Creative Region & Legal Details')
       .replace(/\bmaxEntities\b/g, 'Max Advertiser Entities')
-      .replace(/\bpageToken\b/g, 'Next-Page Cursor Token');
+      .replace(/\b(?:cursor|pageToken)\b/g, 'Pagination Cursor');
     if (/CONFLICTING_PARAMETER_ALIASES/i.test(rawMsg)) {
       return 'Conflicting input aliases provided. Please pass a single target or matching alias values.';
     }
@@ -223,15 +224,15 @@
   }
 
   function resetStalePaginationCursorOnFilterEdit(changedFieldName) {
-    if (changedFieldName === 'pageToken') return;
+    if (changedFieldName === 'cursor' || changedFieldName === 'pageToken') return;
     state.activeRequestToken += 1;
     if (els.statusBanner && els.statusBanner.dataset.state === 'pending') {
       els.statusBanner.dataset.state = 'idle';
       els.statusBanner.textContent = 'Ready - filter updated; click Run to execute.';
     }
-    const pageTokenInput = document.getElementById('field-pageToken');
-    if (pageTokenInput && pageTokenInput.value) {
-      pageTokenInput.value = '';
+    const cursorInput = document.getElementById('field-cursor') || document.getElementById('field-pageToken');
+    if (cursorInput && cursorInput.value) {
+      cursorInput.value = '';
     }
     state.lastNextPageToken = null;
     if (els.nextPageBtn) {
@@ -695,7 +696,7 @@
         structured.pagination?.paginationStatus || structured.status || 'OK';
       els.paginationStatusValue.textContent = pagStatus;
 
-      const nextToken = structured.pagination?.nextPageToken || null;
+      const nextToken = structured.pagination?.nextCursor || structured.pagination?.nextPageToken || null;
       state.lastNextPageToken = nextToken;
       els.nextPageBtn.hidden = !nextToken;
 
@@ -786,9 +787,9 @@
 
     els.nextPageBtn.addEventListener('click', () => {
       if (!state.lastNextPageToken) return;
-      const pageTokenInput = document.getElementById('field-pageToken');
-      if (pageTokenInput) {
-        pageTokenInput.value = state.lastNextPageToken;
+      const cursorInput = document.getElementById('field-cursor') || document.getElementById('field-pageToken');
+      if (cursorInput) {
+        cursorInput.value = state.lastNextPageToken;
       }
       executeSelectedTool();
     });

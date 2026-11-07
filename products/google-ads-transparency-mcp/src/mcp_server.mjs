@@ -3,7 +3,7 @@
  *
  * Exposes three deterministic tools sharing the Google Ads Transparency RPC engine:
  *   - `search_google_ads_transparency`: Disambiguates advertiser entities and extracts
- *     normalized ad creatives (`limit <= 25`, `pageToken` continuation, full JSON-RPC
+ *     normalized ad creatives (`limit <= 25`, `cursor` / `pageToken` continuation, full JSON-RPC
  *     UTF-8 envelope `<= 30,000` bytes with 4-tier surrogate-safe degradation and
  *     automatic mid-page cursor rewind when items are popped for byte ceiling).
  *   - `resolve_google_ads_advertiser`: Resolves a brand name or domain into ranked
@@ -49,10 +49,10 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'google-ads-transparency-mcp',
-  title: 'RevClamp AdPulse - Google Ads Transparency Scraper & MCP',
+  title: 'Google Ads Transparency Center Scraper & MCP | RevClamp AdPulse',
   version: PKG_VERSION,
   description:
-    'Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.',
+    'Google Ads Transparency Center and Google Ad Library scraper & MCP server. Find verified advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent tool by RevClamp.',
   // Forward-compatible MCP Registry & Glama metadata extensions (ignored by older stdio clients)
   websiteUrl: 'https://revclamp.com',
   icons: [
@@ -199,12 +199,18 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maximum: 25,
           description: 'Alias for limit (1 to 25).',
         },
+        cursor: {
+          title: 'Pagination Cursor (Optional)',
+          type: 'string',
+          maxLength: 2048,
+          description:
+            'Opaque pagination cursor token returned from a previous search response (pagination.nextCursor or pagination.nextPageToken).',
+        },
         pageToken: {
           title: 'Next-Page Cursor Token (Optional)',
           type: 'string',
           maxLength: 2048,
-          description:
-            'Optional opaque continuation cursor (upstream token or composite rcp1_ token, max 2048 chars) returned by a previous call.',
+          description: 'Alias for cursor (backward-compatible pagination token).',
         },
       },
       additionalProperties: false,
@@ -448,11 +454,13 @@ export function truncateMcpResponseEnvelope(
           originalNextPageToken
         );
         cand.pagination.nextPageToken = rewoundToken;
+        cand.pagination.nextCursor = rewoundToken;
         cand.pagination.hasMore = Boolean(rewoundToken);
         cand.pagination.paginationStatus = rewoundToken
           ? 'TRUNCATED_HAS_MORE_MID_PAGE'
           : 'TRUNCATED_AT_BYTE_CEILING';
       } else {
+        cand.pagination.nextCursor = cand.pagination.nextPageToken ?? null;
         cand.pagination.hasMore = Boolean(cand.pagination.nextPageToken);
       }
       if (cand.deliveredCount !== undefined && Array.isArray(cand.items)) {
@@ -800,6 +808,7 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'max_results',
   'maxPages',
   'pageToken',
+  'cursor',
 ]);
 
 const RESOLVE_ALLOWED_ARG_KEYS = new Set([
@@ -858,7 +867,7 @@ export function validateMcpToolArguments(toolName, rawArgs) {
     }
   }
 
-  for (const aliasKey of ['domain', 'brand', 'company', 'advertiser', 'url', 'country', 'region']) {
+  for (const aliasKey of ['domain', 'brand', 'company', 'advertiser', 'url', 'country', 'region', 'cursor']) {
     if (args[aliasKey] !== undefined && args[aliasKey] !== null && typeof args[aliasKey] !== 'string') {
       return { ok: false, message: `Invalid ${aliasKey}: expected a string` };
     }

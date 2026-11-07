@@ -4246,6 +4246,12 @@ export async function fetchAdvertiserCreatives(options = {}) {
   const seenCreativeIds = new Set();
   let currentUpstreamToken = cursorCheck.upstreamToken;
   let initialRowOffset = cursorCheck.isComposite ? cursorCheck.rowOffset : 0;
+  const startOffset =
+    cursorCheck.isComposite && cursorCheck.rowOffset > 0
+      ? cursorCheck.rowOffset
+      : cursorCheck.upstreamToken
+        ? pageSize
+        : 0;
   const seenPageTokens = new Set([currentUpstreamToken].filter(Boolean));
 
   const nowFn = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
@@ -4515,9 +4521,11 @@ export async function fetchAdvertiserCreatives(options = {}) {
       ok: true,
       status: 'EMPTY_RESULT',
       creatives: [],
+      offset: startOffset,
       pagesFetched,
       rpcAttempts: totalRpcAttempts,
       nextPageToken: outputNextPageToken,
+      nextCursor: outputNextPageToken,
       paginationStatus,
       paginationIncompleteReason,
       cursorResumeContext,
@@ -4529,9 +4537,11 @@ export async function fetchAdvertiserCreatives(options = {}) {
     ok: true,
     status: 'OK',
     creatives: deduplicatedCreatives,
+    offset: startOffset,
     pagesFetched,
     rpcAttempts: totalRpcAttempts,
     nextPageToken: outputNextPageToken,
+    nextCursor: outputNextPageToken,
     paginationStatus,
     paginationIncompleteReason,
     ...(warnings.length > 0 ? { warnings } : {}),
