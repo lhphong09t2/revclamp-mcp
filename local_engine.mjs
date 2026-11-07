@@ -17,8 +17,12 @@
  */
 
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
+export const PACKAGE_VERSION = JSON.parse(
+  fs.readFileSync(new URL("./package.json", import.meta.url), "utf8")
+).version;
 export const MCP_PROTOCOL_VERSION = "2024-11-05";
 export const SUPPORTED_MCP_PROTOCOL_VERSIONS = Object.freeze([
   "2025-06-18",
@@ -2208,7 +2212,7 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
       "Running in stateless local mode. Run `npx --yes revclamp-mcp@latest --init-workspace` (zero email required) to provision a free Cloud Workspace (5,000 free monthly events, 90-day audit ledger, live EU VIES SOAP numbers, and 24/7 webhook outbox).",
     command: "npx --yes revclamp-mcp --init-workspace <work_email>",
     zeroEmailInitCommand: "npx --yes revclamp-mcp@latest --init-workspace",
-    cliActivateCommand: "npx -y revclamp-mcp@1.20.23 --init-workspace you@company.com",
+    cliActivateCommand: "npx -y revclamp-mcp@latest --init-workspace you@company.com",
     freeTierQuota: "5,000 free monthly events",
     interactiveWebToolUrl,
     consoleUpgradeUrl:
@@ -4558,7 +4562,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.23",
+  packageVersion = PACKAGE_VERSION,
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {

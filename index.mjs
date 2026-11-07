@@ -21,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  PACKAGE_VERSION,
   LOCAL_MCP_TOOLS,
   MCP_PROTOCOL_VERSION,
   MCP_TOOL_TO_WEB_SLUG_MAP,
@@ -31,6 +32,7 @@ import {
 } from "./local_engine.mjs";
 
 export {
+  PACKAGE_VERSION,
   LOCAL_MCP_TOOLS,
   MCP_PROTOCOL_VERSION,
   MCP_TOOL_TO_WEB_SLUG_MAP,
@@ -40,7 +42,6 @@ export {
   executeLocalMcpJsonRpc,
 };
 
-export const PACKAGE_VERSION = "1.20.23";
 export const DEFAULT_MCP_ENDPOINT = "https://api.revclamp.com/api/mcp";
 export const ALLOWED_MCP_ORIGINS = Object.freeze(
   new Set([
