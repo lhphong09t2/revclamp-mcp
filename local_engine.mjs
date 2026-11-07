@@ -61,11 +61,29 @@ const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
   revclamp_validate_eu_vat_vies: Object.freeze([
     Object.freeze({
       canonical: "sellerCountry",
-      aliases: Object.freeze(["sellerCountryCode", "seller_country", "seller_country_code"]),
+      aliases: Object.freeze([
+        "sellerCountryCode",
+        "seller_country",
+        "seller_country_code",
+        "merchantCountry",
+        "merchant_country",
+        "originCountry",
+        "origin_country",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "buyerCountry",
+      aliases: Object.freeze([
+        "countryCode",
+        "country",
+        "vatCountryCode",
+        "buyer_country",
+        "buyerCountryCode",
+      ]),
     }),
     Object.freeze({
       canonical: "buyerVatId",
-      aliases: Object.freeze(["vatId", "buyer_vat_id"]),
+      aliases: Object.freeze(["vatId", "buyer_vat_id", "vatNumber", "vat_number", "vat"]),
     }),
     Object.freeze({
       canonical: "viesMode",
@@ -121,6 +139,82 @@ export function normalizeMcpToolArgs(toolName, rawArgs) {
         delete normalized[aliasKey];
       }
     }
+  }
+  if (
+    toolName === "revclamp_validate_eu_vat_vies" &&
+    Object.hasOwn(normalized, "buyerCountry") &&
+    normalized.buyerCountry !== undefined
+  ) {
+    if (typeof normalized.buyerCountry !== "string") {
+      return {
+        ok: false,
+        error: "INVALID_BUYER_COUNTRY",
+        message:
+          "Invalid params: countryCode/buyerCountry must be a valid 2-letter EU/XI VIES member state code",
+      };
+    }
+    const rawBuyerCountry = normalized.buyerCountry
+      .trim()
+      .toUpperCase()
+      .replace(/[\s.\-/:_]+/g, "");
+    const normBuyerCountry =
+      rawBuyerCountry === "GR"
+        ? "EL"
+        : rawBuyerCountry === "GBNIR" || rawBuyerCountry === "GB_NIR"
+          ? "XI"
+          : rawBuyerCountry;
+    if (!Object.prototype.hasOwnProperty.call(EU_VIES_FORMAT_RULES, normBuyerCountry)) {
+      return {
+        ok: false,
+        error: "INVALID_BUYER_COUNTRY",
+        message:
+          "Invalid params: countryCode/buyerCountry must be a valid 2-letter EU/XI VIES member state code",
+      };
+    }
+    if (typeof normalized.buyerVatId === "string") {
+      const compactVat = normalized.buyerVatId
+        .trim()
+        .toUpperCase()
+        .replace(/[\s.\-/:_]+/g, "");
+      if (compactVat.length > 0) {
+        const asPrefixed = normalizeVatId(compactVat);
+        const asBody = normalizeVatId(`${normBuyerCountry}${compactVat}`);
+        if (asPrefixed.validFormat) {
+          if (asPrefixed.memberState !== normBuyerCountry) {
+            return {
+              ok: false,
+              error: "CONFLICTING_PARAMETER_ALIASES",
+              canonicalKey: "buyerVatId",
+              conflictKey: "buyerCountry",
+              message: `Invalid params: conflicting buyer country code ('${normBuyerCountry}') vs buyerVatId prefix ('${compactVat.slice(0, 2)}')`,
+            };
+          }
+          normalized.buyerVatId = asPrefixed.fullVatId;
+        } else if (asBody.validFormat) {
+          normalized.buyerVatId = asBody.fullVatId;
+        } else {
+          const existingPrefix = compactVat.slice(0, 2);
+          const normExistingPrefix = existingPrefix === "GR" ? "EL" : existingPrefix;
+          if (
+            compactVat.length >= 4 &&
+            Object.prototype.hasOwnProperty.call(EU_VIES_FORMAT_RULES, normExistingPrefix) &&
+            normExistingPrefix !== normBuyerCountry
+          ) {
+            return {
+              ok: false,
+              error: "CONFLICTING_PARAMETER_ALIASES",
+              canonicalKey: "buyerVatId",
+              conflictKey: "buyerCountry",
+              message: `Invalid params: conflicting buyer country code ('${normBuyerCountry}') vs buyerVatId prefix ('${existingPrefix}')`,
+            };
+          }
+          if (normExistingPrefix !== normBuyerCountry) {
+            normalized.buyerVatId = `${normBuyerCountry}${compactVat}`;
+          }
+        }
+      }
+    }
+    delete normalized.buyerCountry;
   }
   return { ok: true, args: normalized };
 }
@@ -1233,7 +1327,7 @@ function normalizeCountryCode(raw) {
   return clean;
 }
 
-function normalizeVatId(rawVat) {
+export function normalizeVatId(rawVat) {
   let compact = String(rawVat || "")
     .toUpperCase()
     .replace(/[\s.\-/:_]+/g, "");
@@ -2099,7 +2193,7 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
       "Running in stateless local mode. Run `npx --yes revclamp-mcp@latest --init-workspace` (zero email required) to provision a free Cloud Workspace (5,000 free monthly events, 90-day audit ledger, live EU VIES SOAP numbers, and 24/7 webhook outbox).",
     command: "npx --yes revclamp-mcp --init-workspace <work_email>",
     zeroEmailInitCommand: "npx --yes revclamp-mcp@latest --init-workspace",
-    cliActivateCommand: "npx -y revclamp-mcp@1.20.21 --init-workspace you@company.com",
+    cliActivateCommand: "npx -y revclamp-mcp@1.20.22 --init-workspace you@company.com",
     freeTierQuota: "5,000 free monthly events",
     interactiveWebToolUrl,
     consoleUpgradeUrl:
@@ -4449,7 +4543,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.21",
+  packageVersion = "1.20.22",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
