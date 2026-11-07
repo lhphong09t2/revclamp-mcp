@@ -13,6 +13,41 @@
       "prefill": "Stripe",
       "example": "nike.com"
     },
+    "domain": {
+      "title": "Brand Domain (Optional Alias)",
+      "type": "string",
+      "description": "Optional alias for query (advertiser domain, e.g. 'nike.com', 'stripe.com').",
+      "maxLength": 512,
+      "editor": "textfield"
+    },
+    "brand": {
+      "title": "Brand Name (Optional Alias)",
+      "type": "string",
+      "description": "Optional alias for query (brand name, e.g. 'Nike', 'Stripe').",
+      "maxLength": 512,
+      "editor": "textfield"
+    },
+    "company": {
+      "title": "Company Name (Optional Alias)",
+      "type": "string",
+      "description": "Optional alias for query (company name, e.g. 'Stripe', 'Shopify').",
+      "maxLength": 512,
+      "editor": "textfield"
+    },
+    "advertiser": {
+      "title": "Advertiser Name (Optional Alias)",
+      "type": "string",
+      "description": "Optional alias for query (advertiser name, e.g. 'Nike, Inc.', 'Stripe, Inc.').",
+      "maxLength": 512,
+      "editor": "textfield"
+    },
+    "url": {
+      "title": "Website or Transparency URL (Optional Alias)",
+      "type": "string",
+      "description": "Optional alias for query (website URL or adstransparency.google.com URL).",
+      "maxLength": 512,
+      "editor": "textfield"
+    },
     "advertiserId": {
       "title": "Advertiser ID (Optional)",
       "type": "string",
@@ -23,6 +58,18 @@
       "title": "Country Filter (Optional)",
       "type": "string",
       "description": "Optional 2-letter ISO country code filter (e.g. 'US'). Leave blank for all regions.",
+      "editor": "textfield"
+    },
+    "country": {
+      "title": "Country Code (Optional Alias)",
+      "type": "string",
+      "description": "Optional alias for countryCode (2-letter ISO country code, e.g. 'US').",
+      "editor": "textfield"
+    },
+    "region": {
+      "title": "Region Code (Optional Alias)",
+      "type": "string",
+      "description": "Optional alias for countryCode (2-letter ISO country code or 'ALL').",
       "editor": "textfield"
     },
     "formatFilter": {
@@ -68,6 +115,20 @@
       "maximum": 200,
       "default": 40,
       "prefill": 5
+    },
+    "limit": {
+      "title": "Max Creatives Limit (Optional Alias)",
+      "type": "integer",
+      "description": "Optional alias for maxResults (1 to 200).",
+      "minimum": 1,
+      "maximum": 200
+    },
+    "max_results": {
+      "title": "Max Results (Optional Snake-Case Alias)",
+      "type": "integer",
+      "description": "Optional snake_case alias for maxResults (1 to 200).",
+      "minimum": 1,
+      "maximum": 200
     },
     "pageToken": {
       "title": "Next-Page Cursor Token (Optional)",

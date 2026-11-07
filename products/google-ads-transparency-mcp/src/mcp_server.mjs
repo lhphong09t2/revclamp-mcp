@@ -14,6 +14,8 @@
 
 import fs from 'node:fs';
 import {
+  normalizeAdPulseInputAliases,
+  parseGoogleAdsTransparencyUrl,
   resolveAdvertiserEntities,
   getCreativeDetailsById,
   ADVERTISER_ID_RE,
@@ -113,6 +115,12 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 512,
           description: 'Alias for query (company name, e.g. "Stripe", "Shopify").',
         },
+        advertiser: {
+          title: 'Advertiser Name (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (advertiser name, e.g. "Nike, Inc.", "Stripe, Inc.").',
+        },
         url: {
           title: 'Advertiser or Transparency URL (Alias)',
           type: 'string',
@@ -129,6 +137,16 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           title: 'Country Filter (Optional)',
           type: 'string',
           description: 'Optional 2-letter ISO country code filter (e.g. "US").',
+        },
+        country: {
+          title: 'Country Filter (Alias)',
+          type: 'string',
+          description: 'Alias for countryCode (2-letter ISO country code, e.g. "US").',
+        },
+        region: {
+          title: 'Region Filter (Alias)',
+          type: 'string',
+          description: 'Alias for countryCode (2-letter ISO country code or "ALL").',
         },
         formatFilter: {
           title: 'Ad Format',
@@ -174,6 +192,13 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           deprecated: true,
           description: 'Deprecated alias for limit (1 to 25).',
         },
+        max_results: {
+          title: 'Max Creatives per Call (Snake-Case Alias)',
+          type: 'integer',
+          minimum: 1,
+          maximum: 25,
+          description: 'Alias for limit (1 to 25).',
+        },
         pageToken: {
           title: 'Next-Page Cursor Token (Optional)',
           type: 'string',
@@ -218,16 +243,38 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 512,
           description: 'Alias for query (company name, e.g. "Stripe", "Shopify").',
         },
+        advertiser: {
+          title: 'Advertiser Name (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (advertiser name, e.g. "Nike, Inc.", "Stripe, Inc.").',
+        },
         url: {
           title: 'Advertiser or Transparency URL (Alias)',
           type: 'string',
           maxLength: 512,
           description: 'Alias for query (website URL or adstransparency.google.com URL).',
         },
+        advertiserId: {
+          title: 'Advertiser ID (Optional)',
+          type: 'string',
+          description:
+            'Optional canonical Google Ads Transparency Advertiser ID (e.g. "AR16735076323512287233").',
+        },
         countryCode: {
           title: 'Preferred Country (Optional)',
           type: 'string',
           description: 'Optional 2-letter ISO country code preference (e.g. "US").',
+        },
+        country: {
+          title: 'Preferred Country (Alias)',
+          type: 'string',
+          description: 'Alias for countryCode (2-letter ISO country code, e.g. "US").',
+        },
+        region: {
+          title: 'Preferred Region (Alias)',
+          type: 'string',
+          description: 'Alias for countryCode (2-letter ISO country code or "ALL").',
         },
         includeSubsidiaries: {
           title: 'Include Regional Subsidiaries',
@@ -251,7 +298,7 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
     name: 'get_google_ads_creative_detail',
     title: 'Get Google Ads Creative Detail',
     description:
-      'Fetches detailed metadata for a single verified Google Ads Transparency creative (AR... + CR...), including regional presence (Geo Target Criterion IDs mapped to ISO countries), advertiser legal name, and preview assets.',
+      'Fetches detailed metadata for a single verified Google Ads Transparency creative (AR... + CR... or full adstransparency.google.com creative URL), including regional presence (Geo Target Criterion IDs mapped to ISO countries), advertiser legal name, and preview assets.',
     annotations: READ_ONLY_TOOL_ANNOTATIONS,
     inputSchema: {
       type: 'object',
@@ -260,16 +307,48 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           title: 'Advertiser ID',
           type: 'string',
           description:
-            'Canonical Google Ads Transparency Advertiser ID (e.g. "AR16735076323512287233").',
+            'Canonical Google Ads Transparency Advertiser ID (e.g. "AR16735076323512287233"). Optional when url is provided.',
         },
         creativeId: {
           title: 'Creative ID',
           type: 'string',
           description:
-            'Canonical Google Ads Transparency Creative ID (e.g. "CR02320987639562076161").',
+            'Canonical Google Ads Transparency Creative ID (e.g. "CR02320987639562076161"). Optional when url is provided.',
+        },
+        url: {
+          title: 'Google Ads Transparency Creative URL (Optional)',
+          type: 'string',
+          description:
+            'Full Google Ads Transparency creative URL (e.g. "https://adstransparency.google.com/advertiser/AR.../creative/CR...?region=anywhere"). Automatically extracts advertiserId, creativeId, and region.',
+        },
+        query: {
+          title: 'Google Ads Transparency Creative URL Alias (Optional)',
+          type: 'string',
+          description: 'Alias for url when passing a full creative detail URL.',
+        },
+        region: {
+          title: 'Region Filter (Optional)',
+          type: 'string',
+          description: 'Optional region or 2-letter ISO country code (e.g. "US" or "ALL").',
+        },
+        country: {
+          title: 'Country Filter (Optional Alias)',
+          type: 'string',
+          description: 'Alias for region / countryCode.',
+        },
+        countryCode: {
+          title: 'Country Code (Optional Alias)',
+          type: 'string',
+          description: 'Alias for region / countryCode.',
+        },
+        includeAdCopy: {
+          title: 'Include Static Ad Copy (Optional)',
+          type: 'boolean',
+          default: false,
+          description: 'When true, extracts static ad copy from allowlisted preview scripts.',
         },
       },
-      required: ['advertiserId', 'creativeId'],
+      required: [],
       additionalProperties: false,
     },
   },
@@ -705,9 +784,12 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'domain',
   'brand',
   'company',
+  'advertiser',
   'url',
   'advertiserId',
   'countryCode',
+  'country',
+  'region',
   'formatFilter',
   'includeSubsidiaries',
   'includeCreativeDetails',
@@ -715,6 +797,7 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'maxEntities',
   'limit',
   'maxResults',
+  'max_results',
   'maxPages',
   'pageToken',
 ]);
@@ -724,20 +807,33 @@ const RESOLVE_ALLOWED_ARG_KEYS = new Set([
   'domain',
   'brand',
   'company',
+  'advertiser',
   'url',
+  'advertiserId',
   'countryCode',
+  'country',
+  'region',
   'includeSubsidiaries',
   'maxEntities',
 ]);
 
-const DETAIL_ALLOWED_ARG_KEYS = new Set(['advertiserId', 'creativeId', 'includeAdCopy']);
+const DETAIL_ALLOWED_ARG_KEYS = new Set([
+  'advertiserId',
+  'creativeId',
+  'url',
+  'query',
+  'region',
+  'country',
+  'countryCode',
+  'includeAdCopy',
+]);
 
 /**
  * Validates MCP tool arguments strictly before invoking engine functions (`-32602 Invalid params`).
  *
  * @param {string} toolName
  * @param {unknown} rawArgs
- * @returns {{ok: boolean, args?: object, message?: string}}
+ * @returns {{ok: boolean, args?: object, errorCode?: string, message?: string}}
  */
 export function validateMcpToolArguments(toolName, rawArgs) {
   if (rawArgs !== undefined && (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs))) {
@@ -762,34 +858,38 @@ export function validateMcpToolArguments(toolName, rawArgs) {
     }
   }
 
-  for (const aliasKey of ['domain', 'brand', 'company', 'url']) {
-    if (args[aliasKey] !== undefined && typeof args[aliasKey] !== 'string') {
+  for (const aliasKey of ['domain', 'brand', 'company', 'advertiser', 'url', 'country', 'region']) {
+    if (args[aliasKey] !== undefined && args[aliasKey] !== null && typeof args[aliasKey] !== 'string') {
       return { ok: false, message: `Invalid ${aliasKey}: expected a string` };
     }
   }
-  if (args.query === undefined || args.query === null || String(args.query).trim() === '') {
-    const aliasValue = [args.domain, args.brand, args.company, args.url].find(
-      (v) => typeof v === 'string' && v.trim().length > 0
-    );
-    if (aliasValue) {
-      args.query = aliasValue.trim();
-    }
-  }
 
-  if (toolName === 'get_google_ads_creative_detail') {
+  const aliasNorm = normalizeAdPulseInputAliases(args);
+  if (!aliasNorm.ok) {
+    return {
+      ok: false,
+      errorCode: aliasNorm.errorCode,
+      message: aliasNorm.reason,
+    };
+  }
+  Object.assign(args, aliasNorm.normalized);
+
+  if (canonicalToolName === 'get_google_ads_creative_detail') {
     if (
       typeof args.advertiserId !== 'string' ||
       !ADVERTISER_ID_RE.test(args.advertiserId.trim())
     ) {
       return {
         ok: false,
-        message: 'Invalid advertiserId: expected canonical AR... format (e.g. AR16735076323512287233)',
+        message:
+          'Invalid or missing advertiserId: expected canonical AR... format (e.g. AR16735076323512287233) or a full Google Ads Transparency creative URL',
       };
     }
     if (typeof args.creativeId !== 'string' || !CREATIVE_ID_RE.test(args.creativeId.trim())) {
       return {
         ok: false,
-        message: 'Invalid creativeId: expected canonical CR... format (e.g. CR02320987639562076161)',
+        message:
+          'Invalid or missing creativeId: expected canonical CR... format (e.g. CR02320987639562076161) or a full Google Ads Transparency creative URL',
       };
     }
     if (args.includeAdCopy !== undefined && typeof args.includeAdCopy !== 'boolean') {
@@ -802,9 +902,10 @@ export function validateMcpToolArguments(toolName, rawArgs) {
   }
 
   if (args.countryCode !== undefined && args.countryCode !== null && args.countryCode !== '') {
+    const normCountry = typeof args.countryCode === 'string' ? args.countryCode.trim().toUpperCase() : '';
     if (
       typeof args.countryCode !== 'string' ||
-      !ISO_COUNTRY_RE.test(args.countryCode.trim().toUpperCase())
+      (normCountry !== 'ALL' && !ISO_COUNTRY_RE.test(normCountry))
     ) {
       return {
         ok: false,
@@ -851,14 +952,17 @@ export function validateMcpToolArguments(toolName, rawArgs) {
     }
   }
 
-  if (toolName === 'resolve_google_ads_advertiser') {
-    if (typeof args.query !== 'string' || !args.query.trim()) {
+  if (canonicalToolName === 'resolve_google_ads_advertiser') {
+    const hasResolveQuery = typeof args.query === 'string' && args.query.trim().length > 0;
+    const hasResolveAdvId =
+      typeof args.advertiserId === 'string' && args.advertiserId.trim().length > 0;
+    if (!hasResolveQuery && !hasResolveAdvId) {
       return {
         ok: false,
         message: 'Missing or invalid required parameter: query (non-empty string)',
       };
     }
-    if (args.query.trim().length > MAX_QUERY_LENGTH) {
+    if (hasResolveQuery && args.query.trim().length > MAX_QUERY_LENGTH) {
       return {
         ok: false,
         message: `Invalid query: exceeds maximum length of ${MAX_QUERY_LENGTH} characters`,
@@ -1081,6 +1185,12 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
         error: {
           code: -32602,
           message: `Invalid params: ${argValidation.message}`,
+          ...(argValidation.errorCode
+            ? {
+                errorCode: argValidation.errorCode,
+                data: { errorCode: argValidation.errorCode, status: 'INVALID_INPUT' },
+              }
+            : {}),
         },
       };
     }
@@ -1090,10 +1200,15 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
     const deadlineAtMs = Date.now() + (Number(options.deadlineMs) || DEFAULT_RUN_DEADLINE_MS);
 
     try {
-      if (rawToolName === 'get_google_ads_creative_detail') {
+      if (canonicalToolName === 'get_google_ads_creative_detail') {
         const res = await getCreativeDetailsById({
           advertiserId: args.advertiserId,
           creativeId: args.creativeId,
+          url: args.url,
+          query: args.query,
+          region: args.region,
+          country: args.country,
+          countryCode: args.countryCode,
           includeAdCopy: args.includeAdCopy === true,
           fetchImpl: options.fetchImpl,
           timeoutMs: options.timeoutMs,
@@ -1107,6 +1222,8 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
           {
             ok: res.ok,
             status: res.status,
+            ...(res.errorCode ? { errorCode: res.errorCode } : {}),
+            ...(res.requestedRegion ? { requestedRegion: res.requestedRegion } : {}),
             reason: res.reason,
             detail: detailRecord,
             items: detailRecord ? [detailRecord] : [],
@@ -1126,9 +1243,10 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
         };
       }
 
-      if (rawToolName === 'resolve_google_ads_advertiser') {
+      if (canonicalToolName === 'resolve_google_ads_advertiser') {
         const res = await resolveAdvertiserEntities({
           query: args.query,
+          advertiserId: args.advertiserId,
           countryCode: args.countryCode,
           includeSubsidiaries: args.includeSubsidiaries !== false,
           maxEntities: args.maxEntities ?? 3,

@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {
+  normalizeAdPulseInputAliases,
   resolveAdvertiserEntities,
   fetchAdvertiserCreatives,
   getCreativeDetailsById,
@@ -217,18 +218,36 @@ export async function loadApifyActorInput(
 
   const isAtHome = env?.APIFY_IS_AT_HOME === '1' || env?.APIFY_IS_AT_HOME === 'true';
   const applyAtHomeSchemaDefaults = (parsedInput) => {
+    if (!parsedInput || typeof parsedInput !== 'object' || Array.isArray(parsedInput)) {
+      return parsedInput;
+    }
+    const next = { ...parsedInput };
+    const hasNonEmptyAlias = (keys) =>
+      keys.some((k) => next[k] !== undefined && next[k] !== null && String(next[k]).trim() !== '');
+    if (
+      next.query === 'Stripe' &&
+      hasNonEmptyAlias(['domain', 'brand', 'company', 'advertiser', 'url', 'advertiserId', 'creativeId'])
+    ) {
+      delete next.query;
+    }
+    if ((next.maxResults === 40 || next.maxResults === 5) && hasNonEmptyAlias(['limit', 'max_results'])) {
+      delete next.maxResults;
+    }
     if (
       isAtHome &&
-      parsedInput &&
-      typeof parsedInput === 'object' &&
-      !Array.isArray(parsedInput) &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'query') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'advertiserId') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'pageToken')
+      !Object.prototype.hasOwnProperty.call(next, 'query') &&
+      !Object.prototype.hasOwnProperty.call(next, 'domain') &&
+      !Object.prototype.hasOwnProperty.call(next, 'brand') &&
+      !Object.prototype.hasOwnProperty.call(next, 'company') &&
+      !Object.prototype.hasOwnProperty.call(next, 'advertiser') &&
+      !Object.prototype.hasOwnProperty.call(next, 'url') &&
+      !Object.prototype.hasOwnProperty.call(next, 'advertiserId') &&
+      !Object.prototype.hasOwnProperty.call(next, 'creativeId') &&
+      !Object.prototype.hasOwnProperty.call(next, 'pageToken')
     ) {
-      return { query: 'Stripe', ...parsedInput };
+      return { query: 'Stripe', ...next };
     }
-    return parsedInput;
+    return next;
   };
 
   if (env?.APIFY_INPUT_PATH && fs.existsSync(env.APIFY_INPUT_PATH)) {
@@ -1014,6 +1033,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         await hooks.saveOutput({
           ok: finalResult.ok,
           status: finalResult.status,
+          ...(finalResult.errorCode ? { errorCode: finalResult.errorCode } : {}),
           reason: finalResult.reason || null,
           billingMode: finalResult.billingMode,
           extractedCount: finalResult.extractedCount,
@@ -1458,12 +1478,52 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         ? input.randomFn
         : undefined;
 
+  const aliasNorm = normalizeAdPulseInputAliases(input || {});
+  if (!aliasNorm.ok) {
+    const durationMs = Math.max(1, nowMs() - startedAtMs);
+    return finalizeActorReturn({
+      ok: false,
+      status: aliasNorm.status || 'INVALID_INPUT',
+      ...(aliasNorm.errorCode ? { errorCode: aliasNorm.errorCode } : {}),
+      reason: aliasNorm.reason,
+      billingMode,
+      queryMeta: null,
+      selectedEntities: [],
+      items: reconciledItems,
+      extractedCount: 0,
+      deliveredCount,
+      billableCount: reconciledItems.length,
+      chargedEventCount: hasChargeHook ? chargedSet.size : 0,
+      unknownOutcomeIds: Array.from(unknownOutcomeSet),
+      chargeReceipts: [],
+      pagination: {
+        nextPageToken: input?.pageToken || null,
+        paginationStatus: 'INVALID_INPUT',
+        paginationIncompleteReason: aliasNorm.reason || null,
+      },
+      telemetry: computeRunEconomicsTelemetry({
+        billableCount: reconciledItems.length,
+        chargedEventCount: hasChargeHook ? chargedSet.size : 0,
+        durationMs,
+        requestCount: 0,
+      }),
+    });
+  }
+  input = aliasNorm.normalized;
+
   // Step 1: Resolve Advertiser Entities
   const entityRes = await resolveAdvertiserEntities({
     query: input?.query,
+    domain: input?.domain,
+    brand: input?.brand,
+    company: input?.company,
+    advertiser: input?.advertiser,
+    url: input?.url,
     advertiserId: input?.advertiserId,
     advertiserName: input?.advertiserName,
     countryCode: input?.countryCode,
+    country: input?.country,
+    region: input?.region,
     includeSubsidiaries: input?.includeSubsidiaries,
     maxEntities: input?.maxEntities,
     fetchImpl: hooks.fetchImpl,
@@ -1484,6 +1544,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     return finalizeActorReturn({
       ok: false,
       status: isPreChargeDeadline ? 'DEADLINE_EXCEEDED_BEFORE_CHARGE' : entityRes.status,
+      ...(entityRes.errorCode ? { errorCode: entityRes.errorCode } : {}),
       reason: entityRes.reason,
       billingMode,
       queryMeta: entityRes.queryMeta,
@@ -1546,10 +1607,14 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     advertiserIds,
     entities: entityRes.selectedEntities,
     maxResults: input?.maxResults,
+    limit: input?.limit,
+    max_results: input?.max_results,
     maxPages: input?.maxPages,
     pageSize: input?.pageSize,
     pageToken: input?.pageToken,
     countryCode: input?.countryCode,
+    country: input?.country,
+    region: input?.region,
     formatFilter: input?.formatFilter,
     fetchImpl: hooks.fetchImpl,
     nowFn: nowMs,
@@ -1571,6 +1636,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     return finalizeActorReturn({
       ok: false,
       status: isPreChargeDeadline ? 'DEADLINE_EXCEEDED_BEFORE_CHARGE' : creativesRes.status,
+      ...(creativesRes.errorCode ? { errorCode: creativesRes.errorCode } : {}),
       reason: creativesRes.reason,
       billingMode,
       queryMeta: entityRes.queryMeta,

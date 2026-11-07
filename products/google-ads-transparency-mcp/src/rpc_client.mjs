@@ -815,12 +815,108 @@ function splitUnicodeWords(foldedStr) {
 }
 
 /**
+ * Parses a Google Ads Transparency URL (`adstransparency.google.com/advertiser/AR.../creative/CR...?region=...`)
+ * into its structured `advertiserId` (`AR...`), `creativeId` (`CR...`), `region` (`US`, `ALL`, etc.),
+ * and `domainQuery`.
+ *
+ * @param {string} rawUrlStr
+ * @returns {{isTransparencyUrl: boolean, advertiserId: string|null, creativeId: string|null, region: string|null, domainQuery: string|null}}
+ */
+export function parseGoogleAdsTransparencyUrl(rawUrlStr) {
+  const trimmed = String(rawUrlStr ?? '').trim();
+  if (!trimmed || !/^(?:https?:\/\/)?(?:www\.)?adstransparency\.google\.com(?:\/|\?|$)/i.test(trimmed)) {
+    return {
+      isTransparencyUrl: false,
+      advertiserId: null,
+      creativeId: null,
+      region: null,
+      domainQuery: null,
+    };
+  }
+  try {
+    const normalizedUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(normalizedUrl);
+    const arPathMatch = /\/advertiser\/(AR\d{10,25})\b/i.exec(parsed.pathname);
+    const crPathMatch = /\/creative\/(CR\d{10,25})\b/i.exec(parsed.pathname);
+    const paramAr = (
+      parsed.searchParams.get('advertiser') ||
+      parsed.searchParams.get('advertiserId') ||
+      ''
+    ).trim();
+    const paramCr = (
+      parsed.searchParams.get('creative') ||
+      parsed.searchParams.get('creativeId') ||
+      ''
+    ).trim();
+
+    const advertiserId = arPathMatch
+      ? arPathMatch[1].toUpperCase()
+      : ADVERTISER_ID_RE.test(paramAr.toUpperCase())
+        ? paramAr.toUpperCase()
+        : null;
+    const creativeId = crPathMatch
+      ? crPathMatch[1].toUpperCase()
+      : CREATIVE_ID_RE.test(paramCr.toUpperCase())
+        ? paramCr.toUpperCase()
+        : null;
+
+    const rawRegionParam = (
+      parsed.searchParams.get('region') ||
+      parsed.searchParams.get('country') ||
+      parsed.searchParams.get('countryCode') ||
+      ''
+    )
+      .trim()
+      .toUpperCase();
+    let region = null;
+    if (rawRegionParam) {
+      if (
+        rawRegionParam === 'ANYWHERE' ||
+        rawRegionParam === 'ANY' ||
+        rawRegionParam === 'ALL' ||
+        rawRegionParam === 'WORLDWIDE'
+      ) {
+        region = 'ALL';
+      } else if (rawRegionParam === 'UK') {
+        region = 'GB';
+      } else if (ISO_COUNTRY_RE.test(rawRegionParam)) {
+        region = rawRegionParam;
+      }
+    }
+
+    const domainQuery =
+      (
+        parsed.searchParams.get('domain') ||
+        parsed.searchParams.get('q') ||
+        parsed.searchParams.get('query') ||
+        ''
+      ).trim() || null;
+
+    return {
+      isTransparencyUrl: true,
+      advertiserId,
+      creativeId,
+      region,
+      domainQuery,
+    };
+  } catch {
+    return {
+      isTransparencyUrl: false,
+      advertiserId: null,
+      creativeId: null,
+      region: null,
+      domainQuery: null,
+    };
+  }
+}
+
+/**
  * Extracts normalized brand stem and word tokens from a raw query, URL, or internationalized domain.
  * Handles punycode (`xn--...`), Unicode IDNs, non-Latin scripts, multi-label public suffixes
  * (`co.uk`, `com.au`, `com.cn`), and multi-tenant private platform suffixes (`myshopify.com`, `github.io`).
  *
  * @param {string} rawQuery
- * @returns {{rawQuery: string, cleanedQuery: string, brandStem: string, brandStemWithoutHq: string, brandTokens: string[], isDomainQuery: boolean}}
+ * @returns {{rawQuery: string, cleanedQuery: string, brandStem: string, brandStemWithoutHq: string, brandTokens: string[], isDomainQuery: boolean, extractedAdvertiserId?: string, extractedCreativeId?: string, extractedRegion?: string}}
  */
 export function parseBrandQueryTokens(rawQuery) {
   const trimmed = String(rawQuery ?? '').trim();
@@ -838,39 +934,29 @@ export function parseBrandQueryTokens(rawQuery) {
   let candidateHost = trimmed;
   let isDomainQuery = false;
 
-  if (/^(?:https?:\/\/)?(?:www\.)?adstransparency\.google\.com(?:\/|\?|$)/i.test(candidateHost)) {
-    try {
-      const normalizedUrl = /^https?:\/\//i.test(candidateHost)
-        ? candidateHost
-        : `https://${candidateHost}`;
-      const parsed = new URL(normalizedUrl);
-      const arPathMatch = /\/advertiser\/(AR\d{10,25})\b/i.exec(parsed.pathname);
-      if (arPathMatch) {
-        const extractedArId = arPathMatch[1].toUpperCase();
-        return {
-          rawQuery: trimmed,
-          cleanedQuery: extractedArId,
-          brandStem: extractedArId.toLowerCase(),
-          brandStemWithoutHq: extractedArId.toLowerCase(),
-          brandTokens: [extractedArId.toLowerCase()],
-          isDomainQuery: false,
-          extractedAdvertiserId: extractedArId,
-        };
-      }
-      const paramQuery = (
-        parsed.searchParams.get('domain') ||
-        parsed.searchParams.get('q') ||
-        parsed.searchParams.get('query') ||
-        ''
-      ).trim();
-      if (paramQuery) {
-        return {
-          ...parseBrandQueryTokens(paramQuery),
-          rawQuery: trimmed,
-        };
-      }
-    } catch {
-      // Fall back to standard URL/text tokenization
+  const parsedTransUrl = parseGoogleAdsTransparencyUrl(candidateHost);
+  if (parsedTransUrl.isTransparencyUrl) {
+    if (parsedTransUrl.advertiserId) {
+      const extractedArId = parsedTransUrl.advertiserId;
+      return {
+        rawQuery: trimmed,
+        cleanedQuery: extractedArId,
+        brandStem: extractedArId.toLowerCase(),
+        brandStemWithoutHq: extractedArId.toLowerCase(),
+        brandTokens: [extractedArId.toLowerCase()],
+        isDomainQuery: false,
+        extractedAdvertiserId: extractedArId,
+        ...(parsedTransUrl.creativeId ? { extractedCreativeId: parsedTransUrl.creativeId } : {}),
+        ...(parsedTransUrl.region ? { extractedRegion: parsedTransUrl.region } : {}),
+      };
+    }
+    if (parsedTransUrl.domainQuery) {
+      return {
+        ...parseBrandQueryTokens(parsedTransUrl.domainQuery),
+        rawQuery: trimmed,
+        ...(parsedTransUrl.creativeId ? { extractedCreativeId: parsedTransUrl.creativeId } : {}),
+        ...(parsedTransUrl.region ? { extractedRegion: parsedTransUrl.region } : {}),
+      };
     }
   }
 
@@ -2078,6 +2164,463 @@ export async function executeGoogleAdsRpcPost(endpointUrl, fReqPayload, options 
   };
 }
 
+const TARGET_QUERY_ALIAS_KEYS = Object.freeze([
+  'query',
+  'domain',
+  'brand',
+  'company',
+  'advertiser',
+  'url',
+]);
+const COUNTRY_REGION_ALIAS_KEYS = Object.freeze(['countryCode', 'country', 'region']);
+const LIMIT_RESULT_ALIAS_KEYS = Object.freeze(['maxResults', 'limit', 'max_results']);
+
+function normalizeAdPulseRegionValue(rawVal) {
+  const u = String(rawVal ?? '')
+    .trim()
+    .toUpperCase();
+  if (!u) return '';
+  if (u === 'ANYWHERE' || u === 'ANY' || u === 'ALL' || u === 'WORLDWIDE') return 'ALL';
+  if (u === 'UK') return 'GB';
+  return u;
+}
+
+function resolveCanonicalAdTargetIdentity(rawVal) {
+  const trimmed = String(rawVal ?? '').trim();
+  const transUrl = parseGoogleAdsTransparencyUrl(trimmed);
+  if (transUrl.isTransparencyUrl && transUrl.advertiserId) {
+    const advId = transUrl.advertiserId;
+    let matchingStem = null;
+    for (const [k, v] of Object.entries(KNOWN_ADVERTISER_DIRECTORY)) {
+      if (v.advertiserId === advId) {
+        matchingStem = k;
+        break;
+      }
+    }
+    return {
+      stem: matchingStem,
+      firstToken: matchingStem || '',
+      advId,
+      transUrl,
+    };
+  }
+  if (ADVERTISER_ID_RE.test(trimmed.toUpperCase())) {
+    const advId = trimmed.toUpperCase();
+    let matchingStem = null;
+    for (const [k, v] of Object.entries(KNOWN_ADVERTISER_DIRECTORY)) {
+      if (v.advertiserId === advId) {
+        matchingStem = k;
+        break;
+      }
+    }
+    return {
+      stem: matchingStem,
+      firstToken: matchingStem || '',
+      advId,
+      transUrl,
+    };
+  }
+  const qMeta = parseBrandQueryTokens(trimmed);
+  const STRICT_LEGAL_ENTITY_TOKENS = new Set([
+    'inc', 'incorporated', 'llc', 'ltd', 'limited', 'corp', 'corporation',
+    'co', 'company', 'plc', 'gmbh', 'ag', 'se', 'bv', 'nv', 'sa', 'sas',
+    'sarl', 'srl', 'spa', 'ab', 'oy', 'kk', 'pty', 'uc', 'ev', 'kg', 'kgaa',
+    'llp', 'lp', 'holdings', 'holding', 'opco', 'holdco', 'topco', 'bidco',
+    'midco', 'newco', 'finco', 'hq',
+  ]);
+  const filteredTokens = Array.isArray(qMeta.brandTokens)
+    ? qMeta.brandTokens.filter((t) => !STRICT_LEGAL_ENTITY_TOKENS.has(t))
+    : [];
+  const stem = qMeta.isDomainQuery
+    ? String(qMeta.brandStemWithoutHq || qMeta.brandStem || trimmed.toLowerCase()).toLowerCase()
+    : (filteredTokens.join('') || String(qMeta.brandStemWithoutHq || qMeta.brandStem || trimmed.toLowerCase()).toLowerCase());
+  const knownEntry = Object.hasOwn(KNOWN_ADVERTISER_DIRECTORY, stem)
+    ? KNOWN_ADVERTISER_DIRECTORY[stem]
+    : null;
+  return {
+    stem,
+    advId: knownEntry ? knownEntry.advertiserId : null,
+    transUrl,
+  };
+}
+
+/**
+ * Normalizes natural parameter aliases (`query`/`domain`/`brand`/`company`/`advertiser`/`url`,
+ * `countryCode`/`country`/`region`, `maxResults`/`limit`/`max_results`) and extracts
+ * `AR...`, `CR...`, and `?region=` from Google Ads Transparency URLs.
+ * Fails closed with `errorCode: 'CONFLICTING_PARAMETER_ALIASES'` when multiple aliases
+ * in the same group resolve to conflicting values.
+ *
+ * @param {object} [rawInput={}]
+ * @returns {{ok: boolean, normalized: object, status?: string, errorCode?: string, reason?: string}}
+ */
+export function normalizeAdPulseInputAliases(rawInput = {}) {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    return {
+      ok: false,
+      normalized: {},
+      status: 'INVALID_INPUT',
+      errorCode: 'INVALID_INPUT',
+      reason: 'Input parameters must be a JSON object',
+    };
+  }
+  const normalized = { ...rawInput };
+
+  // 1. Target alias group: query, domain, brand, company, advertiser, url
+  const providedTargets = [];
+  for (const key of TARGET_QUERY_ALIAS_KEYS) {
+    const val = rawInput[key];
+    if (val === undefined || val === null) continue;
+    if (typeof val !== 'string') {
+      return {
+        ok: false,
+        normalized,
+        status: 'INVALID_INPUT',
+        errorCode: 'INVALID_PARAMETER_TYPE',
+        reason: `Parameter ${key} must be a string`,
+      };
+    }
+    const trimmed = val.trim();
+    if (trimmed.length > 0) {
+      providedTargets.push({
+        key,
+        val: trimmed,
+        identity: resolveCanonicalAdTargetIdentity(trimmed),
+      });
+    }
+  }
+
+  if (providedTargets.length > 1) {
+    const first = providedTargets[0];
+    for (let i = 1; i < providedTargets.length; i += 1) {
+      const other = providedTargets[i];
+      const sameRaw = first.val.toLowerCase() === other.val.toLowerCase();
+      const sameStem =
+        Boolean(first.identity.stem && other.identity.stem) &&
+        first.identity.stem === other.identity.stem;
+      const sameAdvId =
+        Boolean(first.identity.advId && other.identity.advId) &&
+        first.identity.advId === other.identity.advId;
+      if (!sameRaw && !sameStem && !sameAdvId) {
+        return {
+          ok: false,
+          normalized,
+          status: 'INVALID_INPUT',
+          errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+          reason: `Conflicting target parameters: '${first.key}' ("${first.val}") and '${other.key}' ("${other.val}") resolve to different targets`,
+        };
+      }
+    }
+  }
+
+  let extractedUrlAdvId = null;
+  let extractedUrlCrId = null;
+  let extractedUrlRegion = null;
+
+  for (const t of providedTargets) {
+    if (t.identity.transUrl.isTransparencyUrl) {
+      if (t.identity.transUrl.advertiserId) {
+        if (extractedUrlAdvId && extractedUrlAdvId !== t.identity.transUrl.advertiserId) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting advertiser IDs in URL parameters: "${extractedUrlAdvId}" vs "${t.identity.transUrl.advertiserId}"`,
+          };
+        }
+        extractedUrlAdvId = t.identity.transUrl.advertiserId;
+      }
+      if (t.identity.transUrl.creativeId) {
+        if (extractedUrlCrId && extractedUrlCrId !== t.identity.transUrl.creativeId) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting creative IDs in URL parameters: "${extractedUrlCrId}" vs "${t.identity.transUrl.creativeId}"`,
+          };
+        }
+        extractedUrlCrId = t.identity.transUrl.creativeId;
+      }
+      if (t.identity.transUrl.region) {
+        if (
+          extractedUrlRegion &&
+          extractedUrlRegion !== 'ALL' &&
+          t.identity.transUrl.region !== 'ALL' &&
+          extractedUrlRegion !== t.identity.transUrl.region
+        ) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting regions in URL parameters: "${extractedUrlRegion}" vs "${t.identity.transUrl.region}"`,
+          };
+        }
+        if (!extractedUrlRegion || extractedUrlRegion === 'ALL') {
+          extractedUrlRegion = t.identity.transUrl.region;
+        }
+      }
+    }
+  }
+
+  // Also check if advertiserId or creativeId itself was passed as a full Transparency URL
+  let explicitAdvId = null;
+  if (typeof rawInput.advertiserId === 'string' && rawInput.advertiserId.trim()) {
+    const advTrim = rawInput.advertiserId.trim();
+    const advUrl = parseGoogleAdsTransparencyUrl(advTrim);
+    if (advUrl.isTransparencyUrl) {
+      if (advUrl.advertiserId) {
+        if (extractedUrlAdvId && extractedUrlAdvId !== advUrl.advertiserId) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting advertiserId URL ("${advUrl.advertiserId}") and target URL ("${extractedUrlAdvId}")`,
+          };
+        }
+        extractedUrlAdvId = advUrl.advertiserId;
+      }
+      if (advUrl.creativeId) {
+        if (extractedUrlCrId && extractedUrlCrId !== advUrl.creativeId) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting creativeId in advertiserId URL ("${advUrl.creativeId}") and target URL ("${extractedUrlCrId}")`,
+          };
+        }
+        extractedUrlCrId = advUrl.creativeId;
+      }
+      if (advUrl.region) {
+        if (
+          extractedUrlRegion &&
+          extractedUrlRegion !== 'ALL' &&
+          advUrl.region !== 'ALL' &&
+          extractedUrlRegion !== advUrl.region
+        ) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting region in advertiserId URL ("${advUrl.region}") and target URL ("${extractedUrlRegion}")`,
+          };
+        }
+        if (!extractedUrlRegion || extractedUrlRegion === 'ALL') {
+          extractedUrlRegion = advUrl.region;
+        }
+      }
+    } else {
+      explicitAdvId = advTrim;
+    }
+  }
+
+  let explicitCrId = null;
+  if (typeof rawInput.creativeId === 'string' && rawInput.creativeId.trim()) {
+    const crTrim = rawInput.creativeId.trim();
+    const crUrl = parseGoogleAdsTransparencyUrl(crTrim);
+    if (crUrl.isTransparencyUrl) {
+      if (crUrl.creativeId) {
+        if (extractedUrlCrId && extractedUrlCrId !== crUrl.creativeId) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting creativeId URL ("${crUrl.creativeId}") and target URL ("${extractedUrlCrId}")`,
+          };
+        }
+        extractedUrlCrId = crUrl.creativeId;
+      }
+      if (crUrl.advertiserId) {
+        if (extractedUrlAdvId && extractedUrlAdvId !== crUrl.advertiserId) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting advertiserId in creativeId URL ("${crUrl.advertiserId}") and target URL ("${extractedUrlAdvId}")`,
+          };
+        }
+        extractedUrlAdvId = crUrl.advertiserId;
+      }
+      if (crUrl.region) {
+        if (
+          extractedUrlRegion &&
+          extractedUrlRegion !== 'ALL' &&
+          crUrl.region !== 'ALL' &&
+          extractedUrlRegion !== crUrl.region
+        ) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting region in creativeId URL ("${crUrl.region}") and target URL ("${extractedUrlRegion}")`,
+          };
+        }
+        if (!extractedUrlRegion || extractedUrlRegion === 'ALL') {
+          extractedUrlRegion = crUrl.region;
+        }
+      }
+    } else {
+      explicitCrId = crTrim;
+    }
+  }
+
+  if (
+    explicitAdvId &&
+    extractedUrlAdvId &&
+    explicitAdvId.toUpperCase() !== extractedUrlAdvId.toUpperCase()
+  ) {
+    return {
+      ok: false,
+      normalized,
+      status: 'INVALID_INPUT',
+      errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+      reason: `Conflicting advertiserId ("${explicitAdvId}") and URL advertiserId ("${extractedUrlAdvId}")`,
+    };
+  }
+
+  if (
+    explicitCrId &&
+    extractedUrlCrId &&
+    explicitCrId.toUpperCase() !== extractedUrlCrId.toUpperCase()
+  ) {
+    return {
+      ok: false,
+      normalized,
+      status: 'INVALID_INPUT',
+      errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+      reason: `Conflicting creativeId ("${explicitCrId}") and URL creativeId ("${extractedUrlCrId}")`,
+    };
+  }
+
+  if (providedTargets.length > 0) {
+    if (typeof rawInput.query !== 'string' || !rawInput.query.trim()) {
+      normalized.query = providedTargets[0].val;
+    }
+  }
+  if (extractedUrlAdvId && !explicitAdvId) {
+    normalized.advertiserId = extractedUrlAdvId;
+  }
+  if (extractedUrlCrId && !explicitCrId) {
+    normalized.creativeId = extractedUrlCrId;
+  }
+
+  // 2. Country / Region alias group: countryCode, country, region
+  const providedCountries = [];
+  for (const key of COUNTRY_REGION_ALIAS_KEYS) {
+    const val = rawInput[key];
+    if (val === undefined || val === null) continue;
+    if (typeof val !== 'string') {
+      return {
+        ok: false,
+        normalized,
+        status: 'INVALID_INPUT',
+        errorCode: 'INVALID_PARAMETER_TYPE',
+        reason: `Parameter ${key} must be a string`,
+      };
+    }
+    const trimmed = val.trim();
+    if (trimmed.length > 0) {
+      providedCountries.push({
+        key,
+        val: trimmed,
+        norm: normalizeAdPulseRegionValue(trimmed),
+      });
+    }
+  }
+
+  if (providedCountries.length > 1) {
+    const specificCountries = providedCountries.filter((c) => c.norm !== 'ALL');
+    if (specificCountries.length > 1) {
+      const first = specificCountries[0];
+      for (let i = 1; i < specificCountries.length; i += 1) {
+        const other = specificCountries[i];
+        if (first.norm !== other.norm) {
+          return {
+            ok: false,
+            normalized,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting country/region parameters: '${first.key}' ("${first.val}") and '${other.key}' ("${other.val}") do not match`,
+          };
+        }
+      }
+    }
+  }
+
+  if (providedCountries.length > 0) {
+    const chosenEntry =
+      providedCountries.find((c) => c.norm !== 'ALL') || providedCountries[0];
+    const chosenCountry = chosenEntry.norm;
+    if (
+      extractedUrlRegion &&
+      extractedUrlRegion !== 'ALL' &&
+      chosenCountry !== 'ALL' &&
+      extractedUrlRegion !== chosenCountry
+    ) {
+      return {
+        ok: false,
+        normalized,
+        status: 'INVALID_INPUT',
+        errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+        reason: `Conflicting country/region parameter '${chosenEntry.key}' ("${chosenEntry.val}") and URL region ("${extractedUrlRegion}")`,
+      };
+    }
+    normalized.countryCode = chosenCountry;
+    normalized.region = chosenCountry;
+  } else if (extractedUrlRegion) {
+    normalized.countryCode = extractedUrlRegion;
+    normalized.region = extractedUrlRegion;
+  }
+
+  // 3. Limit / MaxResults alias group: maxResults, limit, max_results
+  const providedLimits = [];
+  for (const key of LIMIT_RESULT_ALIAS_KEYS) {
+    const val = rawInput[key];
+    if (val === undefined || val === null || val === '') continue;
+    providedLimits.push({ key, val });
+  }
+
+  if (providedLimits.length > 1) {
+    const first = providedLimits[0];
+    const firstNum = Number(first.val);
+    for (let i = 1; i < providedLimits.length; i += 1) {
+      const other = providedLimits[i];
+      const otherNum = Number(other.val);
+      if (
+        typeof first.val === 'boolean' ||
+        typeof other.val === 'boolean' ||
+        !Number.isFinite(firstNum) ||
+        !Number.isFinite(otherNum) ||
+        firstNum !== otherNum
+      ) {
+        return {
+          ok: false,
+          normalized,
+          status: 'INVALID_INPUT',
+          errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+          reason: `Conflicting result limit parameters: '${first.key}' (${String(first.val)}) and '${other.key}' (${String(other.val)}) do not match`,
+        };
+      }
+    }
+  }
+
+  if (providedLimits.length > 0) {
+    const chosenLimit = providedLimits[0].val;
+    normalized.maxResults = chosenLimit;
+    normalized.limit = chosenLimit;
+  }
+
+  return { ok: true, normalized };
+}
+
 /**
  * Step 1: Resolves a brand name or domain query into ranked verified Google Ads Transparency
  * advertiser entities (`AR...`), supporting regional subsidiary inclusion (`<= 3` entities).
@@ -2087,9 +2630,25 @@ export async function executeGoogleAdsRpcPost(endpointUrl, fReqPayload, options 
  * are never returned.
  *
  * @param {object} options
- * @returns {Promise<{ok: boolean, status: string, queryMeta: object, primaryEntity: object|null, selectedEntities: object[], allCandidates: object[], rpcAttempts: number, billableCount: number, reason?: string}>}
+ * @returns {Promise<{ok: boolean, status: string, queryMeta: object, primaryEntity: object|null, selectedEntities: object[], allCandidates: object[], rpcAttempts: number, billableCount: number, errorCode?: string, reason?: string}>}
  */
 export async function resolveAdvertiserEntities(options = {}) {
+  const aliasNorm = normalizeAdPulseInputAliases(options);
+  if (!aliasNorm.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasNorm.errorCode,
+      queryMeta: parseBrandQueryTokens(''),
+      primaryEntity: null,
+      selectedEntities: [],
+      allCandidates: [],
+      rpcAttempts: 0,
+      billableCount: 0,
+      reason: aliasNorm.reason,
+    };
+  }
+  options = aliasNorm.normalized;
   let explicitAdvertiserId = String(options.advertiserId ?? '').trim();
   if (!explicitAdvertiserId && typeof options.query === 'string') {
     const qTrim = options.query.trim();
@@ -3411,13 +3970,77 @@ export function normalizeCreativeRecord(rawRow, context = {}) {
  * @returns {Promise<{ok: boolean, status: string, creatives: object[], pagesFetched: number, rpcAttempts: number, nextPageToken: string|null, paginationStatus: string, paginationIncompleteReason: string|null, cursorResumeContext: object, billableCount: number, reason?: string}>}
  */
 export async function fetchAdvertiserCreatives(options = {}) {
-  const advertiserIds = Array.isArray(options.advertiserIds)
+  const aliasNorm = normalizeAdPulseInputAliases(options);
+  if (!aliasNorm.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasNorm.errorCode,
+      creatives: [],
+      pagesFetched: 0,
+      rpcAttempts: 0,
+      nextPageToken: null,
+      paginationStatus: 'INVALID_INPUT',
+      paginationIncompleteReason: null,
+      cursorResumeContext: null,
+      billableCount: 0,
+      reason: aliasNorm.reason,
+    };
+  }
+  options = aliasNorm.normalized;
+
+  let advertiserIds = Array.isArray(options.advertiserIds)
     ? options.advertiserIds
         .map((id) => String(id ?? '').trim())
         .filter((id) => ADVERTISER_ID_RE.test(id))
     : options.advertiserId && ADVERTISER_ID_RE.test(String(options.advertiserId).trim())
       ? [String(options.advertiserId).trim()]
       : [];
+
+  if (
+    advertiserIds.length === 0 &&
+    typeof options.query === 'string' &&
+    options.query.trim().length > 0
+  ) {
+    const entityRes = await resolveAdvertiserEntities({
+      ...options,
+      preferDirectory: options.preferDirectory !== false,
+    });
+    if (!entityRes.ok) {
+      return {
+        ok: false,
+        status: entityRes.status,
+        ...(entityRes.errorCode ? { errorCode: entityRes.errorCode } : {}),
+        creatives: [],
+        pagesFetched: 0,
+        rpcAttempts: entityRes.rpcAttempts || 0,
+        nextPageToken: null,
+        paginationStatus: entityRes.status,
+        paginationIncompleteReason: entityRes.reason || null,
+        cursorResumeContext: null,
+        billableCount: 0,
+        reason: entityRes.reason,
+      };
+    }
+    if (entityRes.status === 'EMPTY_RESULT' || !Array.isArray(entityRes.selectedEntities) || entityRes.selectedEntities.length === 0) {
+      return {
+        ok: true,
+        status: 'EMPTY_RESULT',
+        creatives: [],
+        pagesFetched: 0,
+        rpcAttempts: entityRes.rpcAttempts || 0,
+        nextPageToken: null,
+        paginationStatus: 'EXHAUSTED',
+        paginationIncompleteReason: null,
+        cursorResumeContext: null,
+        billableCount: 0,
+      };
+    }
+    advertiserIds = entityRes.selectedEntities.map((e) => e.advertiserId);
+    if (!Array.isArray(options.entities)) {
+      options = { ...options, entities: entityRes.selectedEntities };
+    }
+  }
 
   if (advertiserIds.length === 0) {
     return {
@@ -3951,15 +4574,30 @@ export function computeRewoundCursorForDeliveredPrefix(
   return lastDeliveredLoc.n || fallbackNextPageToken;
 }
 
+export const searchAdTransparencyCreatives = fetchAdvertiserCreatives;
+
 /**
  * Detail enricher (`LookupService/GetCreativeById`) for inspecting a single creative's
  * regional/format metadata, variations, and verified legal advertiser name.
  * Handles empty `{}` responses (`EMPTY_RESULT`) and verifies requested IDs against returned IDs.
  *
  * @param {object} options
- * @returns {Promise<{ok: boolean, status: string, detail: object|null, rpcAttempts: number, reason?: string}>}
+ * @returns {Promise<{ok: boolean, status: string, detail: object|null, rpcAttempts: number, errorCode?: string, reason?: string}>}
  */
 export async function getCreativeDetailsById(options = {}) {
+  const aliasNorm = normalizeAdPulseInputAliases(options);
+  if (!aliasNorm.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasNorm.errorCode,
+      detail: null,
+      rpcAttempts: 0,
+      reason: aliasNorm.reason,
+    };
+  }
+  options = aliasNorm.normalized;
+
   const advertiserId = String(options.advertiserId ?? '').trim();
   const creativeId = String(options.creativeId ?? '').trim();
   if (!ADVERTISER_ID_RE.test(advertiserId) || !CREATIVE_ID_RE.test(creativeId)) {
@@ -3968,7 +4606,7 @@ export async function getCreativeDetailsById(options = {}) {
       status: 'INVALID_INPUT',
       detail: null,
       rpcAttempts: 0,
-      reason: 'Valid advertiserId (AR...) and creativeId (CR...) are required',
+      reason: 'Valid advertiserId (AR...) and creativeId (CR...) or a Google Ads Transparency creative URL are required',
     };
   }
 
@@ -4017,6 +4655,10 @@ export async function getCreativeDetailsById(options = {}) {
       ? options.fallbackPreviewUrl.trim()
       : null;
 
+  const requestedRegion = String(options.countryCode || options.region || 'ALL')
+    .trim()
+    .toUpperCase();
+
   if (canary.status === 'EMPTY_RESULT') {
     let fallbackUntrustedAdContent = null;
     if (
@@ -4029,6 +4671,7 @@ export async function getCreativeDetailsById(options = {}) {
     return {
       ok: true,
       status: 'EMPTY_RESULT',
+      requestedRegion,
       detail: null,
       ...(fallbackUntrustedAdContent ? { untrustedAdContent: fallbackUntrustedAdContent } : {}),
       rpcAttempts: rpcRes.attempts,
@@ -4083,9 +4726,11 @@ export async function getCreativeDetailsById(options = {}) {
   return {
     ok: true,
     status: 'OK',
+    requestedRegion,
     detail: {
       advertiserId: detailObj['1'],
       creativeId: detailObj['2'],
+      requestedRegion,
       advertiserLegalName,
       formatCode: Number(detailObj['8'] || 0),
       format: AD_FORMAT_MAP[Number(detailObj['8'] || 0)] || 'UNKNOWN',
