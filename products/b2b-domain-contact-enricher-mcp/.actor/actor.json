@@ -1,8 +1,9 @@
 {
   "actorSpecification": 1,
   "name": "b2b-domain-contact-enricher-mcp",
-  "title": "RevClamp ContactPulse - B2B Domain Contact & DNS Enricher",
-  "description": "Resolve verified B2B domain role contacts (SECURITY, PRIVACY_DPO, BILLING_FINANCE, LEGAL, SUPPORT, SALES, PRESS), RFC 9116 security.txt disclosures, Schema.org ContactPoint records, and DNS-over-HTTPS MX/SPF/DMARC deliverability posture with zero browser overhead.",
+  "title": "B2B Domain Contact, Email & DNS Enricher MCP | ContactPulse",
+  "description": "B2B Domain Contact, Email & DNS Enricher MCP. Deterministic company domain contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher. Independent B2B tool by RevClamp.",
+  "categories": ["LEAD_GENERATION", "AI", "BUSINESS", "DEVELOPER_TOOLS"],
   "version": "1.0",
   "buildTag": "latest",
   "minMemoryMbytes": 256,

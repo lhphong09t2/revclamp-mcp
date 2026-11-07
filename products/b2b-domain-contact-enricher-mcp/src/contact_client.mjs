@@ -2606,6 +2606,7 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
       totalDomainsCount: allDomains.length,
       hasMore,
       nextPageToken,
+      nextCursor: nextPageToken,
       paginationStatus,
     },
     cursorResumeContext: {

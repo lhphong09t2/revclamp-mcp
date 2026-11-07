@@ -47,10 +47,10 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'b2b-domain-contact-enricher-mcp',
-  title: 'RevClamp ContactPulse - B2B Domain Contact, RFC 9116 & Deliverability Enricher',
+  title: 'B2B Domain Contact, Email & DNS Enricher MCP | RevClamp ContactPulse',
   version: PKG_VERSION,
   description:
-    'Deterministic B2B domain contact, RFC 9116 /.well-known/security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher. Independent B2B intelligence tool by RevClamp.',
+    'B2B Domain Contact, Email & DNS Enricher MCP. Deterministic company domain contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher. Independent B2B tool by RevClamp.',
   websiteUrl: 'https://revclamp.com',
   icons: [
     {
@@ -168,11 +168,18 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           default: false,
           description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
+        cursor: {
+          title: 'Pagination Cursor (Optional)',
+          type: 'string',
+          maxLength: 2048,
+          description:
+            'Opaque pagination cursor token returned from a previous search response (pagination.nextCursor or pagination.nextPageToken).',
+        },
         pageToken: {
           title: 'Pagination Cursor Token (Optional)',
           type: 'string',
           maxLength: 2048,
-          description: 'Opaque deterministic continuation cursor (rcd1_...) returned by a previous call.',
+          description: 'Alias for cursor (backward-compatible pagination token).',
         },
       },
       additionalProperties: false,
@@ -331,6 +338,7 @@ export function truncateMcpResponseEnvelope(
         working.items.length,
         originalNextToken
       );
+      working.pagination.nextCursor = working.pagination.nextPageToken;
       working.pagination.hasMore = Boolean(working.pagination.nextPageToken);
       working.pagination.paginationStatus = 'TRUNCATED_HAS_MORE_MID_PAGE';
     }
@@ -378,7 +386,7 @@ export function validateMcpToolArguments(toolName, rawArgs) {
     }
   }
 
-  for (const strKey of ['query', 'domain', 'company', 'url', 'email', 'roleFilter', 'pageToken']) {
+  for (const strKey of ['query', 'domain', 'company', 'url', 'email', 'roleFilter', 'pageToken', 'cursor']) {
     if (args[strKey] !== undefined && typeof args[strKey] !== 'string') {
       return {
         ok: false,

@@ -728,6 +728,7 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
         totalDomainsCount: 0,
         hasMore: false,
         nextPageToken: null,
+        nextCursor: null,
         paginationStatus: 'ERROR',
       },
       telemetry,
@@ -795,16 +796,20 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
           billableCount: 0,
           chargedEventCount: 0,
           items: [],
-          pagination: {
-            ...batchRes.pagination,
-            nextPageToken: computeRewoundCursorForDeliveredPrefix(
+          pagination: (() => {
+            const rewound = computeRewoundCursorForDeliveredPrefix(
               batchRes.cursorResumeContext,
               0,
               batchRes.pagination.nextPageToken
-            ),
-            hasMore: true,
-            paginationStatus: 'UNKNOWN_CHARGE_OUTCOME',
-          },
+            );
+            return {
+              ...batchRes.pagination,
+              nextPageToken: rewound,
+              nextCursor: rewound,
+              hasMore: true,
+              paginationStatus: 'UNKNOWN_CHARGE_OUTCOME',
+            };
+          })(),
           telemetry,
         };
         await hooks.saveOutput(unknownChargePayload);
@@ -854,6 +859,7 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
       deliveredItems.length,
       batchRes.pagination.nextPageToken
     );
+    finalPagination.nextCursor = finalPagination.nextPageToken;
     finalPagination.hasMore = Boolean(finalPagination.nextPageToken);
     finalPagination.paginationStatus =
       deliveredItems.length === 0 ? 'PARTIAL_CHARGE_LIMIT_HALTED' : 'PARTIAL_CHARGE_LIMIT_REWOUND';

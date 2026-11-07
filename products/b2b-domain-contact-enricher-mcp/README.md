@@ -1,4 +1,4 @@
-# RevClamp ContactPulse - B2B Domain Contact, RFC 9116 & Deliverability Enricher (`@revclamp/b2b-domain-contact-enricher-mcp`)
+# B2B Domain Contact, Email & DNS Enricher MCP | RevClamp ContactPulse
 
 [![RevClamp ContactPulse Banner](https://revclamp.com/assets/revclamp-product-banner.png)](https://revclamp.com)
 
