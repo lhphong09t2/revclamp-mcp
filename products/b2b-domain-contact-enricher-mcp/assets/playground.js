@@ -41,9 +41,9 @@
       title: 'Resolve B2B Domain Contacts, Security.txt & DNS Posture',
       fields: {
         query: {
-          title: 'Target B2B Domain or Comma-Separated Domains',
-          placeholder: 'e.g. stripe.com, cloudflare.com, linear.app',
-          hint: 'Enter one or more B2B domains or HTTPS URLs to enrich with RFC 9116 security.txt, Schema.org ContactPoint, and DNS posture.',
+          title: 'Target B2B Domain, Subdomain URL, or Comma-Separated Domains',
+          placeholder: 'e.g. stripe.com, https://security.stripe.com, https://about.gitlab.com',
+          hint: 'Enter 1-25 B2B domains or HTTPS URLs (auto-normalizes 23+ B2B subdomains like security.stripe.com -> stripe.com while preserving multi-tenant hosts like acme.github.io).',
         },
         roleFilter: {
           title: 'Contact Role Filter (Optional)',
@@ -67,6 +67,10 @@
           placeholder: 'Paste rcd1_... cursor from a previous run',
           hint: 'Opaque deterministic pagination cursor to fetch the next domain slice.',
         },
+        useSampleFixtures: {
+          title: 'Use Deterministic Sample Fixtures (Optional)',
+          hint: 'When enabled, prefer deterministic offline sample fixtures for curated domains.',
+        },
       },
     },
     inspect_domain_dns_and_security_txt: {
@@ -74,8 +78,12 @@
       fields: {
         domain: {
           title: 'Target B2B Domain or URL',
-          placeholder: 'e.g. stripe.com',
-          hint: 'Domain to inspect for RFC 9116 security.txt directives and MX/SPF/DMARC DNS posture.',
+          placeholder: 'e.g. stripe.com or https://security.stripe.com',
+          hint: 'Domain or HTTPS URL to inspect for RFC 9116 security.txt directives and root-domain MX/SPF/DMARC DNS posture.',
+        },
+        useSampleFixtures: {
+          title: 'Use Deterministic Sample Fixtures (Optional)',
+          hint: 'When enabled, prefer deterministic offline sample fixtures for curated domains.',
         },
       },
     },
@@ -86,6 +94,10 @@
           title: 'B2B Email Address to Verify',
           placeholder: 'e.g. security@stripe.com',
           hint: 'B2B email address to classify by role and verify against live domain MX, SPF, and DMARC DNS posture.',
+        },
+        useSampleFixtures: {
+          title: 'Use Deterministic Sample Fixtures (Optional)',
+          hint: 'When enabled, prefer deterministic offline sample fixtures for curated domains.',
         },
       },
     },
@@ -135,6 +147,9 @@
       .replace(/^Invalid params:\s*/i, '')
       .replace(/\broleFilter\b/g, 'Contact Role Filter')
       .replace(/\bpageToken\b/g, 'Pagination Cursor Token');
+    if (/CONFLICTING_PARAMETER_ALIASES/i.test(rawMsg)) {
+      return 'Conflicting input aliases provided. Please pass a single target or matching alias values.';
+    }
     if (code === -32602) {
       return `Invalid input: ${cleanMsg}`;
     }
@@ -193,8 +208,9 @@
       limit: '5',
     };
 
+    const allowedToolFields = TOOL_UI_META[state.selectedToolName]?.fields;
     for (const [fieldName, fieldSpec] of Object.entries(props)) {
-      if (fieldName === 'domains' || fieldName === 'maxResults') {
+      if (allowedToolFields && !Object.prototype.hasOwnProperty.call(allowedToolFields, fieldName)) {
         continue;
       }
 
@@ -213,7 +229,9 @@
         checkbox.id = inputId;
         checkbox.name = fieldName;
         checkbox.type = 'checkbox';
-        checkbox.checked = fieldSpec.default !== false;
+        checkbox.checked =
+          fieldSpec.default === true ||
+          (fieldName !== 'useSampleFixtures' && fieldSpec.default !== false);
         checkbox.addEventListener('change', () => {
           resetStalePaginationCursorOnFilterEdit(fieldName);
         });

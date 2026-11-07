@@ -91,6 +91,23 @@ npx -y @revclamp/b2b-domain-contact-enricher-mcp --call resolve_b2b_domain_conta
 | `inspect_domain_dns_and_security_txt` | Performs a focused RFC 9116 `/.well-known/security.txt` and DNS-over-HTTPS (`MX`, `SPF`, `_dmarc`) inspection for a single B2B domain. |
 | `verify_email_deliverability_posture` | Evaluates an email address or domain against `MX` gateway availability, `SPF` qualifier strictness (`-all` vs `~all`), `DMARC` policy (`p=reject` / `quarantine` / `none`), and role-account classification. |
 
+### Supported Input Aliases & Smart Auto-Resolution
+
+- **Target & Limit Aliases (`query`, `domain`, `domains`, `company`, `url`, `email`, `maxResults` / `limit` / `max_results`):** Works identically across Apify Actor REST input, MCP tools, and Core Engine (`domains` accepts either a string array or a comma/newline-separated list).
+- **23+ B2B Subdomain Root Extraction & Multi-Tenant Preservation:** Pasting `https://security.stripe.com`, `https://about.gitlab.com`, `https://trust.linear.app`, or `https://ir.netflix.com` automatically resolves to the registrable root organizational domain (`stripe.com`, `gitlab.com`, `linear.app`, `netflix.com`) across 41 two-part ccTLDs (`.co.uk`, `.com.au`, `.com.vn`) so DNS `MX`/`SPF`/`_dmarc` deliverability grades stay accurate, while preserving multi-tenant developer hosts (`acme.github.io`, `store.myshopify.com`).
+- **Strict Non-Empty Validation & `CONFLICTING_PARAMETER_ALIASES` Guard:** Fails closed with `INVALID_INPUT` / JSON-RPC `-32602` (`CONFLICTING_PARAMETER_ALIASES`, `$0.00` billed) on empty `{}` input or conflicting `query` vs `domain` / `email` aliases.
+
+---
+
+## RevClamp B2B Intelligence Suite (Companion Tools)
+
+| Product | npm Package | Primary Use Case |
+| :--- | :--- | :--- |
+| **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Paddle`, `Lemon Squeezy`, `Shopify`) |
+| **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp)** | [`@revclamp/google-ads-transparency-mcp`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
+| **[RevClamp TalentPulse](https://apify.com/revclamp/unified-ats-jobs-mcp)** | [`@revclamp/unified-ats-jobs-mcp`](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) | Unified 5-in-1 B2B ATS job postings, salary ranges & tech-stack hiring signals (`Greenhouse`, `Workday CXS`, `Ashby`, `Lever`, `SmartRecruiters`) |
+| **[RevClamp ContactPulse](https://apify.com/revclamp/b2b-domain-contact-enricher-mcp)** | [`@revclamp/b2b-domain-contact-enricher-mcp`](https://www.npmjs.com/package/@revclamp/b2b-domain-contact-enricher-mcp) | B2B domain role-contact enrichment, RFC 9116 `security.txt` audit & DNS-over-HTTPS MX/SPF/DMARC deliverability posture |
+
 ---
 
 ## Companion Web Playground & Ecosystem Links

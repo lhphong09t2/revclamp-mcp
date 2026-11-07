@@ -1,7 +1,7 @@
 {
   "name": "@revclamp/b2b-domain-contact-enricher-mcp",
   "mcpName": "com.revclamp/b2b-domain-contact-enricher-mcp",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "description": "RevClamp ContactPulse - Deterministic B2B Domain Contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC Deliverability Enricher. Independent B2B intelligence tool by RevClamp.",
   "license": "MIT",
@@ -53,7 +53,7 @@
     "self-test": "node index.mjs --self-test",
     "list-tools": "node index.mjs --list-tools",
     "verify:config": "node ../mcp_actor_validator.mjs --verify actor_config.json",
-    "test": "node --test test/b2b_domain_contact_enricher.test.mjs test/metamorphic_and_mutation.test.mjs",
+    "test": "node --test test/b2b_domain_contact_enricher.test.mjs test/metamorphic_and_mutation.test.mjs test/cdp_zero_false_green_e2e.test.mjs",
     "test:e2e": "node --test test/cdp_zero_false_green_e2e.test.mjs",
     "test:all": "node --test test/b2b_domain_contact_enricher.test.mjs test/metamorphic_and_mutation.test.mjs test/cdp_zero_false_green_e2e.test.mjs",
     "release:audit": "node scripts/release_publisher.mjs --audit"

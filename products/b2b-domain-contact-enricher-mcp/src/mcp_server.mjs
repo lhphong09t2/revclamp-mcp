@@ -165,6 +165,7 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
         useSampleFixtures: {
           title: 'Use Deterministic Sample Fixtures (Optional)',
           type: 'boolean',
+          default: false,
           description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
         pageToken: {
@@ -219,6 +220,7 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
         useSampleFixtures: {
           title: 'Use Deterministic Sample Fixtures (Optional)',
           type: 'boolean',
+          default: false,
           description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
       },
@@ -273,6 +275,7 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
         useSampleFixtures: {
           title: 'Use Deterministic Sample Fixtures (Optional)',
           type: 'boolean',
+          default: false,
           description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
       },
