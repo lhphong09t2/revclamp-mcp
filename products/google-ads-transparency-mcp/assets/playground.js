@@ -48,9 +48,9 @@
       title: 'Search Google Ads Transparency Creatives',
       fields: {
         query: {
-          title: 'Brand Name or Domain',
-          placeholder: 'e.g. nike.com or Stripe',
-          hint: 'Enter a brand name or domain to match verified Google Ads Transparency advertiser entities.',
+          title: 'Brand Name, Corporate Entity, Domain, or Transparency URL',
+          placeholder: 'e.g. nike.com, Stripe, Inc., or https://adstransparency.google.com/advertiser/AR...',
+          hint: 'Enter a brand name, legal entity (Stripe, Inc.), domain (security.stripe.com -> stripe.com), or full Google Ads Transparency URL.',
         },
         advertiserId: {
           title: 'Advertiser ID (Optional)',
@@ -95,9 +95,9 @@
       title: 'Resolve Google Ads Advertiser Entities',
       fields: {
         query: {
-          title: 'Brand Name or Domain',
-          placeholder: 'e.g. nike.com or Stripe',
-          hint: 'Brand name or domain to resolve into ranked verified advertiser legal entities.',
+          title: 'Brand Name, Corporate Entity, Domain, or Transparency URL',
+          placeholder: 'e.g. nike.com, Stripe, Inc., or https://adstransparency.google.com/advertiser/AR...',
+          hint: 'Enter a brand name, legal entity (Stripe, Inc.), domain (security.stripe.com -> stripe.com), or full Google Ads Transparency URL.',
         },
         countryCode: {
           title: 'Preferred Country (Optional)',
@@ -127,6 +127,11 @@
           title: 'Creative ID',
           placeholder: 'e.g. CR02320987639562076161',
           hint: 'Required Google Ads Transparency Creative ID (starts with CR followed by 10 to 25 digits).',
+        },
+        url: {
+          title: 'Direct Creative Transparency URL (Optional)',
+          placeholder: 'https://adstransparency.google.com/advertiser/AR.../creative/CR...?region=US',
+          hint: 'Optional: Paste a full creative URL to auto-extract advertiserId (AR...), creativeId (CR...), and region.',
         },
       },
     },
@@ -189,6 +194,9 @@
       .replace(/\bincludeCreativeDetails\b/g, 'Include Creative Region & Legal Details')
       .replace(/\bmaxEntities\b/g, 'Max Advertiser Entities')
       .replace(/\bpageToken\b/g, 'Next-Page Cursor Token');
+    if (/CONFLICTING_PARAMETER_ALIASES/i.test(rawMsg)) {
+      return 'Conflicting input aliases provided. Please pass a single target or matching alias values.';
+    }
     if (code === -32602) {
       return `Invalid input: ${cleanMsg}`;
     }
@@ -249,7 +257,11 @@
       maxEntities: '3',
     };
 
+    const allowedToolFields = TOOL_UI_META[state.selectedToolName]?.fields;
     for (const [fieldName, fieldSpec] of Object.entries(props)) {
+      if (allowedToolFields && !Object.prototype.hasOwnProperty.call(allowedToolFields, fieldName)) {
+        continue;
+      }
       if (fieldName === 'maxResults') {
         // Deprecated alias for limit; keep UI clean by exposing canonical limit control
         continue;

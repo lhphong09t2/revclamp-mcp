@@ -76,6 +76,14 @@ npx -y @revclamp/google-ads-transparency-mcp --mcp-stdio
 2. **`search_google_ads_transparency`**: Extract paginated `TEXT`, `IMAGE`, and `VIDEO` ad creatives for any brand or `AR...` advertiser ID with ISO-2 country filtering (`US`, `GB`, `DE`, `SG`, `VN`), static ad copy extraction, and `rcp1_...` cursor pagination.
 3. **`get_google_ads_creative_detail`**: Retrieve full creative detail (`LookupService/GetCreativeById`) for a single `(advertiserId, creativeId)` pair, including regional breakdown and sanitized ad copy.
 
+### Supported Input Aliases & Smart Auto-Resolution
+
+- **Target Aliases (`query`, `domain`, `brand`, `company`, `advertiser`, `url`):** Works identically across Apify Actor REST input, MCP tools, and Core Engine.
+- **Country & Limit Aliases:** Accepts `countryCode`, `country`, or `region` (ISO-2, or `'ALL'`/`'ANY'` wildcards) and `maxResults`, `limit`, or `max_results` (`1..25`).
+- **Direct Transparency URL Paste:** Pasting a full URL (`https://adstransparency.google.com/advertiser/AR.../creative/CR...?region=US`) into `url`, `query`, `advertiserId`, or `creativeId` automatically extracts `advertiserId` (`AR...`), `creativeId` (`CR...`), and `countryCode` (`US`) across `search_google_ads_transparency`, `resolve_google_ads_advertiser`, and `get_google_ads_creative_detail`.
+- **Corporate Legal Suffix Folding & 23+ B2B Subdomain Stripping:** Automatically folds legal suffixes (`"Stripe, Inc."`, `"OpenAI OpCo, LLC"`, `"Nike European Operations Netherlands B.V."`) and strips non-root B2B subdomains (`security.stripe.com -> stripe.com`, `about.gitlab.com -> gitlab.com`) across 41 two-part ccTLDs while preserving multi-tenant hosts (`brand.myshopify.com`, `acme.github.io`).
+- **Deterministic `CONFLICTING_PARAMETER_ALIASES` Guard:** Returns `INVALID_INPUT` / JSON-RPC `-32602` (`CONFLICTING_PARAMETER_ALIASES`, `$0.00` billed) if two aliases in the same group specify conflicting values (e.g. `{"query": "Stripe", "domain": "nike.com"}`).
+
 ---
 
 ## Canonical Normalized Creative Schema
