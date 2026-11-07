@@ -21,6 +21,7 @@ import {
   resolveAtsBoardTarget,
   searchAtsJobPostings,
   getAtsJobPostingDetail,
+  normalizeTalentPulseInputAliases,
   computeRewoundCursorForDeliveredPrefix,
   verifyEgressUrlSsrfSafe,
   JOB_ID_RE,
@@ -207,21 +208,35 @@ export async function loadApifyActorInput(
 
   const isAtHome = env?.APIFY_IS_AT_HOME === '1' || env?.APIFY_IS_AT_HOME === 'true';
   const applyAtHomeSchemaDefaults = (parsedInput) => {
+    if (!parsedInput || typeof parsedInput !== 'object' || Array.isArray(parsedInput)) {
+      return parsedInput;
+    }
+    const next = { ...parsedInput };
+    const hasNonEmptyAlias = (keys) =>
+      keys.some((k) => next[k] !== undefined && next[k] !== null && String(next[k]).trim() !== '');
+    if (
+      next.query === 'linear' &&
+      hasNonEmptyAlias(['company', 'domain', 'url', 'careerUrl', 'companySlug', 'workdayTenant'])
+    ) {
+      delete next.query;
+    }
+    if (next.maxResults === 5 && hasNonEmptyAlias(['limit', 'max_results'])) {
+      delete next.maxResults;
+    }
     if (
       isAtHome &&
-      parsedInput &&
-      typeof parsedInput === 'object' &&
-      !Array.isArray(parsedInput) &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'query') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'company') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'companySlug') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'workdayTenant') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'careerUrl') &&
-      !Object.prototype.hasOwnProperty.call(parsedInput, 'pageToken')
+      !Object.prototype.hasOwnProperty.call(next, 'query') &&
+      !Object.prototype.hasOwnProperty.call(next, 'company') &&
+      !Object.prototype.hasOwnProperty.call(next, 'domain') &&
+      !Object.prototype.hasOwnProperty.call(next, 'url') &&
+      !Object.prototype.hasOwnProperty.call(next, 'companySlug') &&
+      !Object.prototype.hasOwnProperty.call(next, 'workdayTenant') &&
+      !Object.prototype.hasOwnProperty.call(next, 'careerUrl') &&
+      !Object.prototype.hasOwnProperty.call(next, 'pageToken')
     ) {
-      return { query: 'linear', ...parsedInput };
+      return { query: 'linear', ...next };
     }
-    return parsedInput;
+    return next;
   };
 
   if (env?.APIFY_INPUT_PATH && fs.existsSync(env.APIFY_INPUT_PATH)) {
@@ -1000,6 +1015,7 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         await hooks.saveOutput({
           ok: finalResult.ok,
           status: finalResult.status,
+          ...(finalResult.errorCode ? { errorCode: finalResult.errorCode } : {}),
           reason: finalResult.reason || null,
           billingMode: finalResult.billingMode,
           extractedCount: finalResult.extractedCount,
@@ -1432,19 +1448,56 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         ? input.randomFn
         : undefined;
 
-  // Step 1 & 2: Resolve ATS Board & Fetch Normalized Job Postings
+  // Step 1 & 2: Normalize Input Aliases, Resolve ATS Board & Fetch Normalized Job Postings
+  const aliasRes = normalizeTalentPulseInputAliases(input || {});
+  if (!aliasRes.ok) {
+    const durationMs = Math.max(1, nowMs() - startedAtMs);
+    return finalizeActorReturn({
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasRes.errorCode,
+      reason: aliasRes.reason,
+      billingMode,
+      boardTarget: null,
+      items: reconciledItems,
+      extractedCount: 0,
+      deliveredCount,
+      billableCount: reconciledItems.length,
+      chargedEventCount: hasChargeHook ? chargedSet.size : 0,
+      unknownOutcomeIds: Array.from(unknownOutcomeSet),
+      chargeReceipts: [],
+      pagination: {
+        nextPageToken: input?.pageToken || null,
+        paginationStatus: 'INVALID_INPUT',
+        paginationIncompleteReason: aliasRes.reason,
+      },
+      telemetry: computeRunEconomicsTelemetry({
+        billableCount: reconciledItems.length,
+        chargedEventCount: hasChargeHook ? chargedSet.size : 0,
+        durationMs,
+        requestCount: 0,
+      }),
+    });
+  }
+  input = aliasRes.args;
+
   const jobsRes = await searchAtsJobPostings({
     query: input?.query,
-    provider: input?.provider,
+    company: input?.company,
+    domain: input?.domain,
+    url: input?.url,
+    provider: input?.provider ?? input?.atsProvider,
     companySlug: input?.companySlug,
     careerUrl: input?.careerUrl,
     workdayTenant: input?.workdayTenant,
     workdaySite: input?.workdaySite,
     wdInstance: input?.wdInstance,
     searchKeyword: input?.searchKeyword,
-    workplaceType: input?.workplaceType,
+    workplaceType: input?.workplaceType ?? input?.workplaceTypeFilter,
+    countryCode: input?.countryCode,
     departmentKeyword: input?.departmentKeyword,
     maxResults: input?.maxResults,
+    maxPages: input?.maxPages,
     pageToken: input?.pageToken,
     fetchImpl: hooks.fetchImpl,
     nowFn: nowMs,
@@ -1466,6 +1519,7 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
     return finalizeActorReturn({
       ok: false,
       status: isPreChargeDeadline ? 'DEADLINE_EXCEEDED_BEFORE_CHARGE' : jobsRes.status,
+      ...(jobsRes.errorCode ? { errorCode: jobsRes.errorCode } : {}),
       reason: jobsRes.reason,
       billingMode,
       boardTarget: jobsRes.boardTarget || null,

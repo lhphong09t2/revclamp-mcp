@@ -1,7 +1,7 @@
 {
   "name": "@revclamp/unified-ats-jobs-mcp",
   "mcpName": "com.revclamp/unified-ats-jobs-mcp",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "type": "module",
   "description": "RevClamp TalentPulse - Unified 5-in-1 B2B ATS Job & Hiring Signal Feed across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters with compensation extraction and tech-stack signals. Independent B2B tool by RevClamp.",
   "license": "MIT",

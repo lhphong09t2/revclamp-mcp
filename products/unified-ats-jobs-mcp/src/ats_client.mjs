@@ -960,19 +960,114 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
     }
   }
 
-  // 2. Clean company slug or domain name (e.g. "stripe.com" -> "stripe", "careers.stripe.com" -> "stripe", "linear.app" -> "linear")
-  let cleanedSlug = trimmed
-    .replace(/^https?:\/\//i, '')
-    .split('/')[0]
-    .replace(/^www\./i, '');
-  const careerSubdomainMatch =
-    /^(?:careers|jobs|join|work|talent|hiring|apply|boards|people)\.([a-z0-9-]+)\./i.exec(
-      cleanedSlug
+  // 2. Clean company slug or domain name (e.g. "stripe.com" -> "stripe", "about.gitlab.com" -> "gitlab", "careers.deliveroo.co.uk" -> "deliveroo")
+  const TWO_PART_CCTLD_SUFFIXES = new Set([
+    'co.uk', 'org.uk', 'ac.uk', 'gov.uk',
+    'com.au', 'net.au', 'org.au',
+    'co.jp', 'ne.jp', 'or.jp',
+    'co.nz', 'org.nz',
+    'co.in', 'net.in', 'org.in',
+    'co.kr', 'or.kr',
+    'co.za', 'org.za',
+    'com.br', 'net.br', 'org.br',
+    'com.sg', 'edu.sg',
+    'com.mx', 'org.mx',
+    'com.hk', 'org.hk',
+    'com.tw', 'org.tw',
+    'com.cn', 'net.cn', 'org.cn',
+    'com.tr', 'co.il', 'com.ar', 'com.co', 'com.my', 'com.ph', 'com.vn',
+  ]);
+  const MULTI_TENANT_HOSTING_SUFFIXES = new Set([
+    'github.io', 'vercel.app', 'netlify.app', 'pages.dev', 'onrender.com',
+    'herokuapp.com', 'myshopify.com', 'appspot.com', 'web.app',
+    'firebaseapp.com', 'gitlab.io',
+  ]);
+  const isTwoPartCcTld = (lastTwo) => {
+    const lower = String(lastTwo || '').toLowerCase();
+    return (
+      TWO_PART_CCTLD_SUFFIXES.has(lower) ||
+      /^(?:co|com|org|net|ac|gov|edu|or|ne|go|gob|mil)\.[a-z]{2}$/i.test(lower)
     );
-  if (careerSubdomainMatch) {
-    cleanedSlug = careerSubdomainMatch[1];
-  } else if (cleanedSlug.includes('.')) {
-    cleanedSlug = cleanedSlug.split('.')[0];
+  };
+  let candidateForHost = trimmed;
+  if (!/^https?:\/\//i.test(candidateForHost) && !candidateForHost.includes('/') && (/[\s,]/.test(candidateForHost))) {
+    const strippedLegal = candidateForHost
+      .replace(/[,()]/g, ' ')
+      .replace(
+        /\b(?:inc|incorporated|llc|ltd|limited|corp|corporation|co|company|gmbh|plc|ag|sa|srl|bv|nv|pty|opco|holdco|holdings)\b\.?/gi,
+        ' '
+      )
+      .trim();
+    const legalWords = strippedLegal.split(/\s+/).filter(Boolean);
+    if (legalWords.length === 1 && legalWords[0].includes('.')) {
+      candidateForHost = legalWords[0];
+    } else if (legalWords.length > 0) {
+      const joinedAll = legalWords.join('').replace(/[^A-Za-z0-9_-]/g, '');
+      const strippedSecondary = strippedLegal
+        .replace(
+          /\b(?:hq|group|international|global|technologies|technology|tech|labs|software|systems|platforms)\b\.?/gi,
+          ' '
+        )
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .join('')
+        .replace(/[^A-Za-z0-9_-]/g, '');
+      if (
+        joinedAll &&
+        Object.prototype.hasOwnProperty.call(KNOWN_COMPANY_ATS_DIRECTORY, joinedAll.toLowerCase())
+      ) {
+        candidateForHost = joinedAll;
+      } else if (
+        strippedSecondary &&
+        Object.prototype.hasOwnProperty.call(
+          KNOWN_COMPANY_ATS_DIRECTORY,
+          strippedSecondary.toLowerCase()
+        )
+      ) {
+        candidateForHost = strippedSecondary;
+      } else {
+        candidateForHost = joinedAll || strippedSecondary || candidateForHost;
+      }
+    }
+  }
+  let cleanedHost = candidateForHost
+    .replace(/^https?:\/\//i, '')
+    .split(/[/?#]/)[0]
+    .replace(/:\d+$/, '')
+    .replace(/\.+$/, '');
+  while (
+    /^(?:www|app|careers|jobs|boards|work|talent|hiring|join|apply|people|about|security|press|news|newsroom|trust|ir|investors|legal|privacy|status|docs|blog|developers|developer|support|help|portal|console|dashboard|team|company|corp|global|mail|contact|info|hello|hq)\./i.test(
+      cleanedHost
+    )
+  ) {
+    const hostParts = cleanedHost.split('.').filter(Boolean);
+    if (hostParts.length < 3) break;
+    const tailTwo = `${hostParts[hostParts.length - 2]}.${hostParts[hostParts.length - 1]}`.toLowerCase();
+    const minRootLabels =
+      isTwoPartCcTld(tailTwo) || MULTI_TENANT_HOSTING_SUFFIXES.has(tailTwo) ? 3 : 2;
+    if (hostParts.length <= minRootLabels) break;
+    cleanedHost = cleanedHost.replace(/^[^.]+\./, '');
+  }
+  cleanedHost = cleanedHost.replace(/^www\./i, '');
+  let cleanedSlug = cleanedHost;
+  if (cleanedHost.includes('.')) {
+    const labels = cleanedHost.split('.').filter(Boolean);
+    if (labels.length >= 3) {
+      const lastTwo = `${labels[labels.length - 2]}.${labels[labels.length - 1]}`.toLowerCase();
+      cleanedSlug =
+        isTwoPartCcTld(lastTwo) || MULTI_TENANT_HOSTING_SUFFIXES.has(lastTwo)
+          ? labels[labels.length - 3]
+          : labels[labels.length - 2];
+    } else if (
+      labels.length === 2 &&
+      (TWO_PART_CCTLD_SUFFIXES.has(cleanedHost.toLowerCase()) ||
+        MULTI_TENANT_HOSTING_SUFFIXES.has(cleanedHost.toLowerCase()))
+    ) {
+      cleanedSlug = '';
+    } else {
+      cleanedSlug = labels[0] || '';
+    }
   }
   cleanedSlug = cleanedSlug.replace(/[^A-Za-z0-9_-]/g, '');
 
@@ -2438,6 +2533,233 @@ export function normalizeAtsJobRecord(atsProvider, rawJob = {}, context = {}) {
 }
 
 /**
+ * Normalizes parameter aliases (`query`/`company`/`domain`/`url`/`careerUrl`/`companySlug`,
+ * `maxResults`/`limit`/`max_results`, `countryCode`/`country`/`region`, `atsProvider`/`provider`)
+ * across Core Engine, Apify Actor, and MCP Server while failing closed with
+ * `CONFLICTING_PARAMETER_ALIASES` only when two aliases resolve to genuinely different values.
+ *
+ * @param {object|string} rawInput
+ * @returns {{ok: boolean, args?: object, status?: string, errorCode?: string, reason?: string}}
+ */
+export function normalizeTalentPulseInputAliases(rawInput = {}) {
+  if (typeof rawInput === 'string') {
+    rawInput = { query: rawInput };
+  }
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: 'INVALID_INPUT',
+      reason: 'Input options must be a plain object',
+    };
+  }
+  const normalized = { ...rawInput };
+
+  // 1. Target Query Group: primary aliases ['query', 'company', 'domain', 'url'], plus fallback from careerUrl / companySlug
+  const extractCanonicalCompanyStem = (valStr, parsedSlug) => {
+    const rawStr = String(valStr || '').trim();
+    if (parsedSlug && (/^https?:\/\//i.test(rawStr) || rawStr.includes('/') || rawStr.includes('.'))) {
+      return String(parsedSlug).toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+    const base = String(rawStr || parsedSlug || '')
+      .toLowerCase()
+      .replace(/[,.'"`()]/g, ' ')
+      .replace(
+        /\b(?:inc|incorporated|llc|ltd|limited|corp|corporation|co|company|gmbh|plc|ag|sa|srl|bv|nv|pty|opco|holdco|holdings)\b/gi,
+        ' '
+      )
+      .trim();
+    const words = base.split(/[\s_-]+/).filter(Boolean);
+    if (words.length > 1 && words[words.length - 1] === 'hq') {
+      words.pop();
+    }
+    const joined = words.join('').replace(/[^a-z0-9]/g, '');
+    return joined || String(parsedSlug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
+  for (const extraKey of ['careerUrl', 'companySlug']) {
+    if (
+      rawInput[extraKey] !== undefined &&
+      rawInput[extraKey] !== null &&
+      typeof rawInput[extraKey] !== 'string'
+    ) {
+      return {
+        ok: false,
+        status: 'INVALID_INPUT',
+        errorCode: 'INVALID_INPUT',
+        reason: `Invalid ${extraKey}: expected a string`,
+      };
+    }
+  }
+
+  const targetKeys = ['query', 'company', 'domain', 'url'];
+  const presentTargets = [];
+  for (const k of targetKeys) {
+    if (rawInput[k] !== undefined && rawInput[k] !== null && rawInput[k] !== '') {
+      if (typeof rawInput[k] !== 'string') {
+        return {
+          ok: false,
+          status: 'INVALID_INPUT',
+          errorCode: 'INVALID_INPUT',
+          reason: `Invalid ${k}: expected a string`,
+        };
+      }
+      const trimmedVal = rawInput[k].trim();
+      if (trimmedVal.length > 0) {
+        const parsed = parseAtsTargetFromInput(trimmedVal);
+        const slug = parsed.ok && parsed.companySlug ? parsed.companySlug.toLowerCase() : '';
+        presentTargets.push({
+          key: k,
+          val: trimmedVal,
+          slug,
+          stem: extractCanonicalCompanyStem(trimmedVal, slug),
+          detectedFromUrl: Boolean(parsed.detectedFromUrl),
+          atsProvider: parsed.atsProvider || null,
+        });
+      }
+    }
+  }
+  if (presentTargets.length > 1) {
+    const first = presentTargets[0];
+    for (let i = 1; i < presentTargets.length; i += 1) {
+      const other = presentTargets[i];
+      const sameSlug = Boolean(first.slug && other.slug && first.slug === other.slug);
+      const sameStem = Boolean(first.stem && other.stem && first.stem === other.stem);
+      const sameRaw = first.val.toLowerCase() === other.val.toLowerCase();
+      const slugConflict = !sameSlug && !sameStem && !sameRaw;
+      const urlProviderConflict =
+        first.detectedFromUrl &&
+        other.detectedFromUrl &&
+        first.atsProvider &&
+        other.atsProvider &&
+        first.atsProvider !== other.atsProvider;
+      if (slugConflict || urlProviderConflict) {
+        return {
+          ok: false,
+          status: 'INVALID_INPUT',
+          errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+          reason: `Conflicting parameter aliases for target company/query ('${first.key}'='${first.val}' vs '${other.key}'='${other.val}')`,
+        };
+      }
+    }
+  }
+  if (presentTargets.length >= 1) {
+    const preferred =
+      presentTargets.find((t) => t.detectedFromUrl) || presentTargets[0];
+    normalized.query = preferred.val;
+    if (!normalized.company) {
+      normalized.company = preferred.val;
+    }
+  } else {
+    const fallbackTarget = String(rawInput.careerUrl || rawInput.companySlug || '').trim();
+    if (fallbackTarget) {
+      normalized.query = fallbackTarget;
+      if (!normalized.company) {
+        normalized.company = fallbackTarget;
+      }
+    }
+  }
+
+  // 2. Limit / MaxResults Group: maxResults, limit, max_results
+  const limitKeys = ['maxResults', 'limit', 'max_results'];
+  const presentLimits = limitKeys.filter(
+    (k) => rawInput[k] !== undefined && rawInput[k] !== null && rawInput[k] !== ''
+  );
+  if (presentLimits.length > 1) {
+    const firstKey = presentLimits[0];
+    const firstNum = Number(rawInput[firstKey]);
+    for (let i = 1; i < presentLimits.length; i += 1) {
+      const otherKey = presentLimits[i];
+      const otherNum = Number(rawInput[otherKey]);
+      const differs =
+        Number.isFinite(firstNum) && Number.isFinite(otherNum)
+          ? firstNum !== otherNum
+          : String(rawInput[firstKey]).trim() !== String(rawInput[otherKey]).trim();
+      if (differs) {
+        return {
+          ok: false,
+          status: 'INVALID_INPUT',
+          errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+          reason: `Conflicting parameter aliases for limit/maxResults ('${firstKey}'=${rawInput[firstKey]} vs '${otherKey}'=${rawInput[otherKey]})`,
+        };
+      }
+    }
+  }
+  if (presentLimits.length >= 1) {
+    const resolvedLimit = rawInput[presentLimits[0]];
+    normalized.maxResults = resolvedLimit;
+    normalized.limit = resolvedLimit;
+  }
+
+  // 3. Country / Region Group: countryCode, country, region
+  const countryKeys = ['countryCode', 'country', 'region'];
+  const presentCountries = [];
+  for (const k of countryKeys) {
+    if (rawInput[k] !== undefined && rawInput[k] !== null && rawInput[k] !== '') {
+      if (typeof rawInput[k] !== 'string') {
+        return {
+          ok: false,
+          status: 'INVALID_INPUT',
+          errorCode: 'INVALID_INPUT',
+          reason: `Invalid ${k}: expected a 2-letter ISO country code string`,
+        };
+      }
+      const trimmedC = rawInput[k].trim();
+      if (trimmedC.length > 0) {
+        const upper = trimmedC.toUpperCase();
+        const canonical = upper === 'UK' ? 'GB' : upper === 'ANY' || upper === 'ANYWHERE' ? 'ALL' : upper;
+        presentCountries.push({ key: k, raw: trimmedC, canonical });
+      }
+    }
+  }
+  if (presentCountries.length > 1) {
+    const specificCountries = presentCountries.filter((c) => c.canonical !== 'ALL');
+    if (specificCountries.length > 1) {
+      const first = specificCountries[0];
+      for (let i = 1; i < specificCountries.length; i += 1) {
+        const other = specificCountries[i];
+        if (first.canonical !== other.canonical) {
+          return {
+            ok: false,
+            status: 'INVALID_INPUT',
+            errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+            reason: `Conflicting parameter aliases for countryCode/country ('${first.key}'='${first.raw}' vs '${other.key}'='${other.raw}')`,
+          };
+        }
+      }
+    }
+  }
+  if (presentCountries.length >= 1) {
+    const chosen =
+      presentCountries.find((c) => c.canonical !== 'ALL') || presentCountries[0];
+    normalized.countryCode = chosen.canonical === 'GB' && chosen.raw.toUpperCase() === 'UK' ? 'GB' : chosen.raw;
+  }
+
+  // 4. Provider Group: atsProvider, provider
+  if (
+    rawInput.atsProvider !== undefined &&
+    rawInput.atsProvider !== null &&
+    String(rawInput.atsProvider).trim() !== '' &&
+    rawInput.provider !== undefined &&
+    rawInput.provider !== null &&
+    String(rawInput.provider).trim() !== ''
+  ) {
+    const p1 = String(rawInput.atsProvider).trim().toUpperCase();
+    const p2 = String(rawInput.provider).trim().toUpperCase();
+    if (p1 !== 'AUTO' && p2 !== 'AUTO' && p1 !== p2) {
+      return {
+        ok: false,
+        status: 'INVALID_INPUT',
+        errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+        reason: `Conflicting parameter aliases for provider ('atsProvider'='${rawInput.atsProvider}' vs 'provider'='${rawInput.provider}')`,
+      };
+    }
+  }
+
+  return { ok: true, args: normalized, normalized };
+}
+
+/**
  * Resolves a company slug, name, or career board URL to its active ATS provider and board metadata.
  * If the provider is already known via URL or `KNOWN_COMPANY_ATS_DIRECTORY`, verifies or returns it;
  * otherwise probes Ashby -> Greenhouse -> Lever -> SmartRecruiters sequentially within the deadline.
@@ -2446,6 +2768,21 @@ export function normalizeAtsJobRecord(atsProvider, rawJob = {}, context = {}) {
  * @returns {Promise<{ok: boolean, status: string, board: object|null, probeAttempts: number, billableCount: number, reason?: string}>}
  */
 export async function resolveCompanyAtsBoard(options = {}) {
+  const aliasRes = normalizeTalentPulseInputAliases(options);
+  if (!aliasRes.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasRes.errorCode,
+      board: null,
+      boardTarget: null,
+      target: null,
+      probeAttempts: 0,
+      billableCount: 0,
+      reason: aliasRes.reason,
+    };
+  }
+  options = aliasRes.args;
   const effectiveQuery = options.query ?? options.careerUrl ?? options.companySlug ?? options.company;
   const parsedTarget = parseAtsTargetFromInput(effectiveQuery, {
     atsProvider: options.atsProvider ?? options.provider,
@@ -2662,6 +2999,27 @@ export async function resolveCompanyAtsBoard(options = {}) {
  * @returns {Promise<object>}
  */
 export async function fetchUnifiedAtsJobPostings(options = {}) {
+  const aliasRes = normalizeTalentPulseInputAliases(options);
+  if (!aliasRes.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasRes.errorCode,
+      board: null,
+      boardTarget: null,
+      jobs: [],
+      pagesFetched: 0,
+      httpAttempts: 0,
+      rpcAttempts: 0,
+      nextPageToken: null,
+      paginationStatus: 'INVALID_INPUT',
+      paginationIncompleteReason: null,
+      cursorResumeContext: null,
+      billableCount: 0,
+      reason: aliasRes.reason,
+    };
+  }
+  options = aliasRes.args;
   const maxResultsCheck = validateBoundedIntegerParam(
     options.maxResults,
     'maxResults',
@@ -3374,6 +3732,18 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
  * @returns {Promise<{ok: boolean, status: string, detail: object|null, httpAttempts: number, reason?: string}>}
  */
 export async function getAtsJobPostingDetail(options = {}) {
+  const aliasRes = normalizeTalentPulseInputAliases(options);
+  if (!aliasRes.ok) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      errorCode: aliasRes.errorCode,
+      detail: null,
+      httpAttempts: 0,
+      reason: aliasRes.reason,
+    };
+  }
+  options = aliasRes.args;
   const rawJobId = String(options.jobId ?? options.upstreamJobId ?? '').trim();
   if (!rawJobId) {
     return {
@@ -3550,6 +3920,8 @@ export async function getAtsJobPostingDetail(options = {}) {
     ...options,
     resolvedBoard: parsedTarget,
     maxResults: 200,
+    limit: 200,
+    max_results: 200,
     maxPages: 1,
   });
   if (!listRes.ok) {

@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import {
   resolveAtsBoardTarget,
   getAtsJobPostingDetail,
+  normalizeTalentPulseInputAliases,
   SUPPORTED_ATS_PROVIDERS,
   JOB_ID_RE,
   MAX_QUERY_LENGTH,
@@ -171,6 +172,24 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 128,
           description: 'Optional case-insensitive substring filter on department name.',
         },
+        countryCode: {
+          title: 'Country Filter (Optional)',
+          type: 'string',
+          maxLength: 16,
+          description: 'Optional 2-letter ISO 3166-1 alpha-2 country code filter (e.g. "US", "DE", "GB", or "ALL").',
+        },
+        country: {
+          title: 'Country Filter (Alias)',
+          type: 'string',
+          maxLength: 16,
+          description: 'Alias for countryCode (2-letter ISO country code, e.g. "US", "DE", "GB").',
+        },
+        region: {
+          title: 'Region / Country Filter (Alias)',
+          type: 'string',
+          maxLength: 16,
+          description: 'Alias for countryCode (2-letter ISO country code, e.g. "US", "DE", "GB").',
+        },
         limit: {
           title: 'Max Job Postings per Call',
           type: 'integer',
@@ -186,6 +205,14 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maximum: 25,
           deprecated: true,
           description: 'Alias for limit (1 to 25).',
+        },
+        max_results: {
+          title: 'Max Job Postings per Call (Snake-Case Alias)',
+          type: 'integer',
+          minimum: 1,
+          maximum: 25,
+          deprecated: true,
+          description: 'Snake_case alias for limit (1 to 25).',
         },
         pageToken: {
           title: 'Pagination Cursor Token (Optional)',
@@ -295,6 +322,30 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 512,
           description:
             'Optional company slug or career URL when jobId is passed as a raw provider ID.',
+        },
+        company: {
+          title: 'Company Name or Slug (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query / companySlug.',
+        },
+        domain: {
+          title: 'Company Domain (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company domain, e.g. "stripe.com").',
+        },
+        url: {
+          title: 'Career Board URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query / careerUrl.',
+        },
+        careerUrl: {
+          title: 'Direct Career Board URL (Optional)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Optional direct HTTPS URL to a supported ATS career board.',
         },
         provider: {
           title: 'ATS Provider (Optional)',
@@ -679,6 +730,7 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'domain',
   'url',
   'provider',
+  'atsProvider',
   'companySlug',
   'careerUrl',
   'workdayTenant',
@@ -686,9 +738,14 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'wdInstance',
   'searchKeyword',
   'workplaceType',
+  'workplaceTypeFilter',
+  'countryCode',
+  'country',
+  'region',
   'departmentKeyword',
   'limit',
   'maxResults',
+  'max_results',
   'pageToken',
 ]);
 
@@ -698,6 +755,7 @@ const RESOLVE_ALLOWED_ARG_KEYS = new Set([
   'domain',
   'url',
   'provider',
+  'atsProvider',
   'companySlug',
   'careerUrl',
   'workdayTenant',
@@ -707,13 +765,19 @@ const RESOLVE_ALLOWED_ARG_KEYS = new Set([
 
 const DETAIL_ALLOWED_ARG_KEYS = new Set([
   'jobId',
+  'upstreamJobId',
+  'externalPath',
   'query',
   'company',
   'domain',
   'url',
   'provider',
+  'atsProvider',
   'companySlug',
   'careerUrl',
+  'workdayTenant',
+  'workdaySite',
+  'wdInstance',
 ]);
 
 /**
@@ -749,14 +813,15 @@ export function validateMcpToolArguments(toolName, rawArgs) {
       return { ok: false, message: `Invalid ${aliasKey}: expected a string` };
     }
   }
-  if (args.query === undefined || args.query === null || String(args.query).trim() === '') {
-    const aliasValue = [args.company, args.domain, args.url].find(
-      (v) => typeof v === 'string' && v.trim().length > 0
-    );
-    if (aliasValue) {
-      args.query = aliasValue.trim();
-    }
+  const aliasRes = normalizeTalentPulseInputAliases(args);
+  if (!aliasRes.ok) {
+    return {
+      ok: false,
+      errorCode: aliasRes.errorCode,
+      message: `${aliasRes.errorCode}: ${aliasRes.reason}`,
+    };
   }
+  Object.assign(args, aliasRes.args);
 
   if (args.provider !== undefined && args.provider !== null && args.provider !== '') {
     const normProv = String(args.provider).trim().toUpperCase();
@@ -1015,6 +1080,12 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
         error: {
           code: -32602,
           message: `Invalid params: ${argValidation.message}`,
+          ...(argValidation.errorCode
+            ? {
+                errorCode: argValidation.errorCode,
+                data: { errorCode: argValidation.errorCode, status: 'INVALID_INPUT' },
+              }
+            : {}),
         },
       };
     }
@@ -1102,20 +1173,24 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
       }
 
       // search_ats_job_postings
-      const requestedLimit = Number(args.limit ?? args.maxResults ?? 10);
+      const requestedLimit = Number(args.limit ?? args.maxResults ?? args.max_results ?? 10);
       const clampedLimit = Math.min(MCP_MAX_ITEMS_LIMIT, Math.max(1, requestedLimit));
 
       const actorRes = await runUnifiedAtsJobsActor(
         {
           query: args.query,
-          provider: args.provider,
+          company: args.company,
+          domain: args.domain,
+          url: args.url,
+          provider: args.provider ?? args.atsProvider,
           companySlug: args.companySlug,
           careerUrl: args.careerUrl,
           workdayTenant: args.workdayTenant,
           workdaySite: args.workdaySite,
           wdInstance: args.wdInstance,
           searchKeyword: args.searchKeyword,
-          workplaceType: args.workplaceType || 'ANY',
+          workplaceType: args.workplaceType ?? args.workplaceTypeFilter ?? 'ANY',
+          countryCode: args.countryCode,
           departmentKeyword: args.departmentKeyword,
           maxResults: clampedLimit,
           pageToken: args.pageToken,

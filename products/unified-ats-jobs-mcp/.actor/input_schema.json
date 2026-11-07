@@ -79,6 +79,58 @@
       "description": "Opaque deterministic pagination cursor (rtp1_...) returned by a previous call to resume fetching the next slice.",
       "editor": "textfield",
       "default": ""
+    },
+    "company": {
+      "title": "Company Name or Slug (Alias)",
+      "type": "string",
+      "description": "Optional alias for query (company name or slug, e.g. 'stripe', 'linear').",
+      "editor": "textfield"
+    },
+    "domain": {
+      "title": "Company Domain (Alias)",
+      "type": "string",
+      "description": "Optional alias for query (company domain, e.g. 'stripe.com', 'linear.app').",
+      "editor": "textfield"
+    },
+    "url": {
+      "title": "Career Board URL (Alias)",
+      "type": "string",
+      "description": "Optional alias for query / careerUrl (direct career board URL).",
+      "editor": "textfield"
+    },
+    "countryCode": {
+      "title": "Country Filter (ISO-2)",
+      "type": "string",
+      "description": "Optional 2-letter ISO 3166-1 alpha-2 country code filter (e.g. 'US', 'DE', 'GB', or 'ALL').",
+      "editor": "textfield"
+    },
+    "country": {
+      "title": "Country Filter (Alias)",
+      "type": "string",
+      "description": "Optional alias for countryCode (2-letter ISO country code, e.g. 'US', 'DE', 'GB').",
+      "editor": "textfield"
+    },
+    "region": {
+      "title": "Region / Country Filter (Alias)",
+      "type": "string",
+      "description": "Optional alias for countryCode (2-letter ISO country code, e.g. 'US', 'DE', 'GB').",
+      "editor": "textfield"
+    },
+    "limit": {
+      "title": "Max Job Postings (Alias)",
+      "type": "integer",
+      "description": "Optional alias for maxResults (1..50).",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "max_results": {
+      "title": "Max Job Postings (Snake-Case Alias)",
+      "type": "integer",
+      "description": "Optional snake_case alias for maxResults (1..50).",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 50
     }
   },
   "required": []
