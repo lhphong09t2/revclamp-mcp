@@ -25,7 +25,34 @@ Deterministic B2B Domain Contact, RFC 9116 `/.well-known/security.txt`, Schema.o
 
 ---
 
-## Quick Start (MCP `stdio` & CLI)
+## 1. Apify Store Cloud, Clay / n8n & REST API Quick Start
+
+Run **RevClamp ContactPulse** in the cloud on [Apify Store (`revclamp/b2b-domain-contact-enricher-mcp`)](https://apify.com/revclamp/b2b-domain-contact-enricher-mcp) with zero local setup, or trigger it directly from **Clay**, **n8n**, **Make**, or any HTTP pipeline via the Apify REST API:
+
+```bash
+curl -s -X POST \
+  "https://api.apify.com/v2/acts/revclamp~b2b-domain-contact-enricher-mcp/run-sync-get-dataset-items" \
+  -H "Authorization: Bearer $APIFY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "stripe.com, linear.app, cloudflare.com",
+    "includeDnsPosture": true,
+    "includeSecurityTxt": true,
+    "maxResults": 5
+  }'
+```
+
+### Transparent Pay-per-Event Pricing & Free-Tier Credit Math
+
+- **Event Price:** `$0.0020` per enriched B2B domain profile (`domain-contact-profile-enriched`).
+- **What `$1.00` in Free Apify Credits Gets You:** Approximately **`~500` enriched B2B domain profiles** with role-classified organizational contacts (`SECURITY`, `PRIVACY_DPO`, `BILLING_FINANCE`, `LEGAL`, `SUPPORT`, `SALES`, `PRESS`), RFC 9116 `/.well-known/security.txt` audit, and DNS-over-HTTPS `MX`/`SPF`/`DMARC` deliverability grades.
+- **Zero-Waste Billing Guarantee:** You pay **`$0.00`** on `EMPTY_RESULT`, `INVALID_INPUT`, or upstream rate limits. Only verified, non-empty B2B domain profiles delivered to your Dataset are billed.
+
+---
+
+## 2. Local AI Agent & MCP Server Quick Start (`stdio` & CLI)
+
+Run directly via `npx` (supports natural parameter aliases `query`, `domain`, `domains`, or `url`):
 
 ```bash
 # Start MCP JSON-RPC 2.0 server over stdio
@@ -38,7 +65,7 @@ npx -y @revclamp/b2b-domain-contact-enricher-mcp --self-test
 npx -y @revclamp/b2b-domain-contact-enricher-mcp --list-tools
 
 # Call a tool directly from CLI
-npx -y @revclamp/b2b-domain-contact-enricher-mcp --call resolve_b2b_domain_contacts '{"query":"stripe.com, linear.app"}'
+npx -y @revclamp/b2b-domain-contact-enricher-mcp --call resolve_b2b_domain_contacts '{"domain":"stripe.com"}'
 ```
 
 ### Claude Desktop / Cursor / Windsurf Configuration

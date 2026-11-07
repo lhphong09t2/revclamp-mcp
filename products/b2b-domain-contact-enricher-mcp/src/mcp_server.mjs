@@ -9,6 +9,7 @@
  * `rcd1_` pagination cursor rewind when items are popped.
  */
 
+import fs from 'node:fs';
 import {
   SUPPORTED_CONTACT_ROLES,
   resolveB2bDomainContactsBatch,
@@ -21,6 +22,10 @@ import {
   truncateUtf8Safe,
   containsLiveSecretToken,
 } from './egress_guard.mjs';
+
+const PKG_VERSION = JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+).version;
 
 export { sliceUtf8Safe, truncateUtf8Safe };
 
@@ -41,7 +46,7 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'b2b-domain-contact-enricher-mcp',
   title: 'RevClamp ContactPulse - B2B Domain Contact, RFC 9116 & Deliverability Enricher',
-  version: '1.0.1',
+  version: PKG_VERSION,
   description:
     'Deterministic B2B domain contact, RFC 9116 /.well-known/security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher. Independent B2B intelligence tool by RevClamp.',
   websiteUrl: 'https://revclamp.com',
@@ -87,6 +92,24 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 1024,
           description:
             'Single domain or comma/space-separated B2B domains (e.g. "stripe.com, linear.app, cloudflare.com").',
+        },
+        domain: {
+          title: 'Target B2B Domain (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (single B2B domain, e.g. "stripe.com").',
+        },
+        domains: {
+          title: 'Target B2B Domains Array or CSV (Alias)',
+          type: ['array', 'string'],
+          items: { type: 'string' },
+          description: 'Alias for query (array of B2B domains or comma-separated string).',
+        },
+        url: {
+          title: 'Target B2B URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (B2B website URL, e.g. "https://stripe.com").',
         },
         roleFilter: {
           title: 'Contact Role Filter (Optional)',
@@ -154,6 +177,12 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 256,
           description: 'Alias for domain.',
         },
+        url: {
+          title: 'Target B2B URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for domain (e.g. "https://stripe.com").',
+        },
       },
       additionalProperties: false,
     },
@@ -184,6 +213,12 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           type: 'string',
           maxLength: 320,
           description: 'Alias for email/domain.',
+        },
+        url: {
+          title: 'Target B2B URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for domain.',
         },
       },
       additionalProperties: false,
@@ -269,7 +304,7 @@ export function validateMcpToolArguments(toolName, rawArgs) {
   if (rawArgs !== undefined && (typeof rawArgs !== 'object' || rawArgs === null || Array.isArray(rawArgs))) {
     return { ok: false, reason: 'Tool arguments must be a JSON object' };
   }
-  const args = rawArgs || {};
+  const args = { ...(rawArgs || {}) };
   const serialized = JSON.stringify(args);
   if (containsLiveSecretToken(serialized)) {
     return { ok: false, reason: 'Arguments rejected by Zero-Trust live secret guard' };
@@ -282,6 +317,37 @@ export function validateMcpToolArguments(toolName, rawArgs) {
   for (const key of Object.keys(args)) {
     if (!allowedProps.has(key)) {
       return { ok: false, reason: `Unknown argument '${key}' for tool '${toolName}'` };
+    }
+  }
+  if (toolName === 'resolve_b2b_domain_contacts') {
+    const hasQuery = typeof args.query === 'string' && args.query.trim().length > 0;
+    if (!hasQuery) {
+      if (Array.isArray(args.domains)) {
+        const joined = args.domains
+          .map((d) => String(d ?? '').trim())
+          .filter(Boolean)
+          .join(', ');
+        if (joined) args.query = joined;
+      } else if (typeof args.domains === 'string' && args.domains.trim()) {
+        args.query = args.domains.trim();
+      } else if (typeof args.domain === 'string' && args.domain.trim()) {
+        args.query = args.domain.trim();
+      } else if (typeof args.url === 'string' && args.url.trim()) {
+        args.query = args.url.trim();
+      }
+    }
+  } else if (toolName === 'inspect_domain_dns_and_security_txt') {
+    const hasDomain = typeof args.domain === 'string' && args.domain.trim().length > 0;
+    if (!hasDomain) {
+      if (typeof args.query === 'string' && args.query.trim()) {
+        args.domain = args.query.trim();
+      } else if (typeof args.url === 'string' && args.url.trim()) {
+        args.domain = args.url.trim();
+      }
+    }
+  } else if (toolName === 'verify_email_deliverability_posture') {
+    if (!args.email && !args.domain && !args.query && typeof args.url === 'string' && args.url.trim()) {
+      args.domain = args.url.trim();
     }
   }
   return { ok: true, args };

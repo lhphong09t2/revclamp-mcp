@@ -615,7 +615,9 @@ export function normalizeTargetB2bDomain(rawInput) {
     return { ok: false, reason: 'Input rejected by Zero-Trust live secret guard' };
   }
   let candidateUrl = trimmed;
-  if (!/^https?:\/\//i.test(candidateUrl)) {
+  if (/^http:\/\//i.test(candidateUrl)) {
+    candidateUrl = candidateUrl.replace(/^http:\/\//i, 'https://');
+  } else if (!/^https:\/\//i.test(candidateUrl)) {
     if (/^[a-z0-9+.-]+:\/\//i.test(candidateUrl)) {
       return { ok: false, reason: `Unsupported protocol in '${trimmed}' (only https:// or bare domain allowed)` };
     }
@@ -625,7 +627,14 @@ export function normalizeTargetB2bDomain(rawInput) {
   if (!ssrf.safe) {
     return { ok: false, reason: ssrf.reason || `Unsafe domain '${trimmed}'` };
   }
-  const cleanHost = ssrf.hostname.replace(/^www\./i, '');
+  let cleanHost = ssrf.hostname.replace(/^www\./i, '');
+  const nonRootSubdomainMatch =
+    /^(?:careers|jobs|docs|blog|app|support|help|status|developers)\.([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)$/i.exec(
+      cleanHost
+    );
+  if (nonRootSubdomainMatch) {
+    cleanHost = nonRootSubdomainMatch[1].toLowerCase();
+  }
   if (!cleanHost || !cleanHost.includes('.')) {
     return { ok: false, reason: `Invalid public B2B domain '${cleanHost}'` };
   }
