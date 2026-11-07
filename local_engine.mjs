@@ -117,11 +117,18 @@ export function normalizeMcpToolArgs(toolName, rawArgs) {
       (k) => Object.hasOwn(rawArgs, k) && rawArgs[k] !== undefined
     );
     if (presentKeys.length > 1) {
+      const coerceAliasVal = (v) =>
+        toolName === "revclamp_validate_eu_vat_vies" &&
+        group.canonical === "buyerVatId" &&
+        typeof v === "number" &&
+        Number.isFinite(v)
+          ? String(Math.trunc(v))
+          : v;
       const firstKey = presentKeys[0];
-      const firstVal = rawArgs[firstKey];
+      const firstVal = coerceAliasVal(rawArgs[firstKey]);
       for (let i = 1; i < presentKeys.length; i += 1) {
         const otherKey = presentKeys[i];
-        const otherVal = rawArgs[otherKey];
+        const otherVal = coerceAliasVal(rawArgs[otherKey]);
         if (!Object.is(firstVal, otherVal) && !isDeepStrictEqual(firstVal, otherVal)) {
           return {
             ok: false,
@@ -138,6 +145,14 @@ export function normalizeMcpToolArgs(toolName, rawArgs) {
       for (const aliasKey of group.aliases) {
         delete normalized[aliasKey];
       }
+    }
+  }
+  if (toolName === "revclamp_validate_eu_vat_vies") {
+    if (typeof normalized.buyerVatId === "number" && Number.isFinite(normalized.buyerVatId)) {
+      normalized.buyerVatId = String(Math.trunc(normalized.buyerVatId));
+    }
+    if (typeof normalized.vatId === "number" && Number.isFinite(normalized.vatId)) {
+      normalized.vatId = String(Math.trunc(normalized.vatId));
     }
   }
   if (
@@ -2193,7 +2208,7 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
       "Running in stateless local mode. Run `npx --yes revclamp-mcp@latest --init-workspace` (zero email required) to provision a free Cloud Workspace (5,000 free monthly events, 90-day audit ledger, live EU VIES SOAP numbers, and 24/7 webhook outbox).",
     command: "npx --yes revclamp-mcp --init-workspace <work_email>",
     zeroEmailInitCommand: "npx --yes revclamp-mcp@latest --init-workspace",
-    cliActivateCommand: "npx -y revclamp-mcp@1.20.22 --init-workspace you@company.com",
+    cliActivateCommand: "npx -y revclamp-mcp@1.20.23 --init-workspace you@company.com",
     freeTierQuota: "5,000 free monthly events",
     interactiveWebToolUrl,
     consoleUpgradeUrl:
@@ -4543,7 +4558,7 @@ function toSafeLocalRpcId(rawId) {
 
 export function executeLocalMcpJsonRpc(
   rpcRequest,
-  packageVersion = "1.20.22",
+  packageVersion = "1.20.23",
   options = {}
 ) {
   if (!rpcRequest || typeof rpcRequest !== "object" || Array.isArray(rpcRequest)) {
