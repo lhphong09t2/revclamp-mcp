@@ -12,6 +12,7 @@
  *     for a specific `(advertiserId, creativeId)` pair, including regional presence and legal name.
  */
 
+import fs from 'node:fs';
 import {
   resolveAdvertiserEntities,
   getCreativeDetailsById,
@@ -25,6 +26,10 @@ import {
   computeRewoundCursorForDeliveredPrefix,
 } from './rpc_client.mjs';
 import { runGoogleAdsTransparencyActor } from './apify_actor.mjs';
+
+const PKG_VERSION = JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+).version;
 
 export const MCP_MAX_ENVELOPE_BYTES = 30000;
 export const MCP_MAX_ITEMS_LIMIT = 25;
@@ -43,7 +48,7 @@ export const ENCODED_BRAND_ICON_DATA_URI = `data:image/svg+xml;utf8,${encodeURIC
 export const MCP_SERVER_INFO = Object.freeze({
   name: 'google-ads-transparency-mcp',
   title: 'RevClamp AdPulse - Google Ads Transparency Scraper & MCP',
-  version: '1.0.9',
+  version: PKG_VERSION,
   description:
     'Find verified Google Ads advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent intelligence tool by RevClamp; not affiliated with or endorsed by Google LLC.',
   // Forward-compatible MCP Registry & Glama metadata extensions (ignored by older stdio clients)
@@ -89,6 +94,30 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           type: 'string',
           maxLength: 512,
           description: 'Brand name or domain to search (e.g. "nike.com", "Stripe", "Booking.com").',
+        },
+        domain: {
+          title: 'Brand Domain (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (advertiser domain, e.g. "nike.com", "stripe.com").',
+        },
+        brand: {
+          title: 'Brand Name (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (brand name, e.g. "Nike", "Stripe").',
+        },
+        company: {
+          title: 'Company Name (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company name, e.g. "Stripe", "Shopify").',
+        },
+        url: {
+          title: 'Advertiser or Transparency URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (website URL or adstransparency.google.com URL).',
         },
         advertiserId: {
           title: 'Advertiser ID (Optional)',
@@ -171,6 +200,30 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 512,
           description: 'Brand name or domain to resolve (e.g. "nike.com", "Stripe", "Apple").',
         },
+        domain: {
+          title: 'Brand Domain (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (advertiser domain, e.g. "nike.com", "stripe.com").',
+        },
+        brand: {
+          title: 'Brand Name (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (brand name, e.g. "Nike", "Stripe").',
+        },
+        company: {
+          title: 'Company Name (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (company name, e.g. "Stripe", "Shopify").',
+        },
+        url: {
+          title: 'Advertiser or Transparency URL (Alias)',
+          type: 'string',
+          maxLength: 512,
+          description: 'Alias for query (website URL or adstransparency.google.com URL).',
+        },
         countryCode: {
           title: 'Preferred Country (Optional)',
           type: 'string',
@@ -191,7 +244,6 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           description: 'Maximum number of verified regional legal entities to select (1 to 3).',
         },
       },
-      required: ['query'],
       additionalProperties: false,
     },
   },
@@ -650,6 +702,10 @@ function validateJsonRpcRequestId(rawId) {
 
 const SEARCH_ALLOWED_ARG_KEYS = new Set([
   'query',
+  'domain',
+  'brand',
+  'company',
+  'url',
   'advertiserId',
   'countryCode',
   'formatFilter',
@@ -665,6 +721,10 @@ const SEARCH_ALLOWED_ARG_KEYS = new Set([
 
 const RESOLVE_ALLOWED_ARG_KEYS = new Set([
   'query',
+  'domain',
+  'brand',
+  'company',
+  'url',
   'countryCode',
   'includeSubsidiaries',
   'maxEntities',
@@ -683,11 +743,13 @@ export function validateMcpToolArguments(toolName, rawArgs) {
   if (rawArgs !== undefined && (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs))) {
     return { ok: false, message: 'Tool arguments must be a JSON object' };
   }
-  const args = rawArgs || {};
+  const canonicalToolName =
+    toolName === 'search_google_ads_creatives' ? 'search_google_ads_transparency' : toolName;
+  const args = { ...(rawArgs || {}) };
   const allowedSet =
-    toolName === 'search_google_ads_transparency'
+    canonicalToolName === 'search_google_ads_transparency'
       ? SEARCH_ALLOWED_ARG_KEYS
-      : toolName === 'resolve_google_ads_advertiser'
+      : canonicalToolName === 'resolve_google_ads_advertiser'
         ? RESOLVE_ALLOWED_ARG_KEYS
         : DETAIL_ALLOWED_ARG_KEYS;
 
@@ -697,6 +759,20 @@ export function validateMcpToolArguments(toolName, rawArgs) {
         ok: false,
         message: `Unknown argument '${sliceUtf8Safe(key, 48)}' for tool '${toolName}'`,
       };
+    }
+  }
+
+  for (const aliasKey of ['domain', 'brand', 'company', 'url']) {
+    if (args[aliasKey] !== undefined && typeof args[aliasKey] !== 'string') {
+      return { ok: false, message: `Invalid ${aliasKey}: expected a string` };
+    }
+  }
+  if (args.query === undefined || args.query === null || String(args.query).trim() === '') {
+    const aliasValue = [args.domain, args.brand, args.company, args.url].find(
+      (v) => typeof v === 'string' && v.trim().length > 0
+    );
+    if (aliasValue) {
+      args.query = aliasValue.trim();
     }
   }
 
@@ -977,11 +1053,15 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
 
     const rawToolName = String(request.params.name ?? '');
     const safeReflectedToolName = sliceUtf8Safe(rawToolName, 64);
+    const canonicalToolName =
+      rawToolName === 'search_google_ads_creatives'
+        ? 'search_google_ads_transparency'
+        : rawToolName;
 
     if (
-      rawToolName !== 'search_google_ads_transparency' &&
-      rawToolName !== 'resolve_google_ads_advertiser' &&
-      rawToolName !== 'get_google_ads_creative_detail'
+      canonicalToolName !== 'search_google_ads_transparency' &&
+      canonicalToolName !== 'resolve_google_ads_advertiser' &&
+      canonicalToolName !== 'get_google_ads_creative_detail'
     ) {
       return {
         jsonrpc: '2.0',
@@ -993,7 +1073,7 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
       };
     }
 
-    const argValidation = validateMcpToolArguments(rawToolName, request.params.arguments);
+    const argValidation = validateMcpToolArguments(canonicalToolName, request.params.arguments);
     if (!argValidation.ok) {
       return {
         jsonrpc: '2.0',

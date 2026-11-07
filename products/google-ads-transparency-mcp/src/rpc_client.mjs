@@ -838,6 +838,42 @@ export function parseBrandQueryTokens(rawQuery) {
   let candidateHost = trimmed;
   let isDomainQuery = false;
 
+  if (/^(?:https?:\/\/)?(?:www\.)?adstransparency\.google\.com(?:\/|\?|$)/i.test(candidateHost)) {
+    try {
+      const normalizedUrl = /^https?:\/\//i.test(candidateHost)
+        ? candidateHost
+        : `https://${candidateHost}`;
+      const parsed = new URL(normalizedUrl);
+      const arPathMatch = /\/advertiser\/(AR\d{10,25})\b/i.exec(parsed.pathname);
+      if (arPathMatch) {
+        const extractedArId = arPathMatch[1].toUpperCase();
+        return {
+          rawQuery: trimmed,
+          cleanedQuery: extractedArId,
+          brandStem: extractedArId.toLowerCase(),
+          brandStemWithoutHq: extractedArId.toLowerCase(),
+          brandTokens: [extractedArId.toLowerCase()],
+          isDomainQuery: false,
+          extractedAdvertiserId: extractedArId,
+        };
+      }
+      const paramQuery = (
+        parsed.searchParams.get('domain') ||
+        parsed.searchParams.get('q') ||
+        parsed.searchParams.get('query') ||
+        ''
+      ).trim();
+      if (paramQuery) {
+        return {
+          ...parseBrandQueryTokens(paramQuery),
+          rawQuery: trimmed,
+        };
+      }
+    } catch {
+      // Fall back to standard URL/text tokenization
+    }
+  }
+
   if (/^https?:\/\//i.test(candidateHost)) {
     try {
       const parsed = new URL(candidateHost);
@@ -2054,7 +2090,18 @@ export async function executeGoogleAdsRpcPost(endpointUrl, fReqPayload, options 
  * @returns {Promise<{ok: boolean, status: string, queryMeta: object, primaryEntity: object|null, selectedEntities: object[], allCandidates: object[], rpcAttempts: number, billableCount: number, reason?: string}>}
  */
 export async function resolveAdvertiserEntities(options = {}) {
-  const explicitAdvertiserId = String(options.advertiserId ?? '').trim();
+  let explicitAdvertiserId = String(options.advertiserId ?? '').trim();
+  if (!explicitAdvertiserId && typeof options.query === 'string') {
+    const qTrim = options.query.trim();
+    if (ADVERTISER_ID_RE.test(qTrim)) {
+      explicitAdvertiserId = qTrim.toUpperCase();
+    } else if (/adstransparency\.google\.com/i.test(qTrim)) {
+      const arUrlMatch = /\/advertiser\/(AR\d{10,25})\b/i.exec(qTrim);
+      if (arUrlMatch) {
+        explicitAdvertiserId = arUrlMatch[1].toUpperCase();
+      }
+    }
+  }
   const rawCountryNorm = String(options.countryCode ?? '').trim().toUpperCase();
   const rawCountry = rawCountryNorm === 'ALL' ? '' : rawCountryNorm;
 

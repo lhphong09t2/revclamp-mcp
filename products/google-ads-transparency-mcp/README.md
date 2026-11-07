@@ -23,12 +23,38 @@ Find verified Google Ads advertiser entities and extract active or historical ad
 
 ---
 
-## Quick Start (MCP Server for Claude Desktop, Cursor, Windsurf)
+## 1. Apify Store Cloud, Clay / n8n & REST API Quick Start
 
-Run directly via `npx`:
+Run **RevClamp AdPulse** in the cloud on [Apify Store (`revclamp/google-ads-transparency-mcp`)](https://apify.com/revclamp/google-ads-transparency-mcp) with zero local installation, or trigger it directly from **Clay**, **n8n**, **Make**, or any HTTP pipeline via the Apify REST API:
 
 ```bash
-npx @revclamp/google-ads-transparency-mcp --mcp-stdio
+curl -s -X POST \
+  "https://api.apify.com/v2/acts/revclamp~google-ads-transparency-mcp/run-sync-get-dataset-items" \
+  -H "Authorization: Bearer $APIFY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Stripe",
+    "formatFilter": "ALL",
+    "includeCreativeDetails": true,
+    "includeAdCopy": true,
+    "maxResults": 5
+  }'
+```
+
+### Transparent Pay-per-Event Pricing & Free-Tier Credit Math
+
+- **Event Price:** `$0.0012` per extracted ad creative (`ad-creative-extracted`).
+- **What `$1.00` in Free Apify Credits Gets You:** Approximately **`~830` verified Google Ads creatives** (including advertiser entity disambiguation, `TEXT`/`IMAGE`/`VIDEO` format classification, regional presence, and static ad copy extraction).
+- **Zero-Waste Billing Guarantee:** You pay **`$0.00`** on `EMPTY_RESULT` (`0` matching creatives), `INVALID_INPUT`, or upstream rate limits (`UPSTREAM_RATE_LIMITED`). Charges apply strictly to verified, deduplicated ad creatives delivered to your Dataset.
+
+---
+
+## 2. Local AI Agent & MCP Server Quick Start (Claude Desktop, Cursor, Windsurf)
+
+Run directly via `npx` (supports natural parameter aliases `query`, `domain`, `brand`, `company`, or `url`):
+
+```bash
+npx -y @revclamp/google-ads-transparency-mcp --mcp-stdio
 ```
 
 ### Claude Desktop / Cursor Configuration (`claude_desktop_config.json`)

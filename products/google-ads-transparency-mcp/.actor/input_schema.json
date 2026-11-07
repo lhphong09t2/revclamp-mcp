@@ -42,13 +42,15 @@
       "title": "Include Creative Region & Legal Details",
       "type": "boolean",
       "description": "When enabled, fetches detailed regional presence and legal entity records for up to 10 returned creatives (default 5).",
-      "default": false
+      "default": true,
+      "prefill": true
     },
     "includeAdCopy": {
       "title": "Include Static Ad Copy (Optional)",
       "type": "boolean",
       "description": "When enabled alongside Include Creative Region & Legal Details, extracts static headline, body text, CTA, and destination domain from allowlisted preview scripts without eval.",
-      "default": false
+      "default": true,
+      "prefill": true
     },
     "maxEntities": {
       "title": "Max Advertiser Entities",
@@ -65,7 +67,7 @@
       "minimum": 1,
       "maximum": 200,
       "default": 40,
-      "prefill": 10
+      "prefill": 5
     },
     "pageToken": {
       "title": "Next-Page Cursor Token (Optional)",
