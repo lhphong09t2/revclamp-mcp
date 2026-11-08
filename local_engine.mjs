@@ -34,32 +34,108 @@ const LOCAL_LIVE_SECRET_GUARD_RE =
   /(?:[sr]k_live_[A-Za-z0-9_-]{4,}|whsec_live_[A-Za-z0-9_-]{4,}|whsec_(?!test_|synth_|sandbox_|demo_|sample_|mock_|example_|fake_|dummy_)[A-Za-z0-9_-]{10,}|shpss_live_[A-Za-z0-9_-]{4,}|shpss_[0-9a-fA-F]{16,}|shp(?:at|ua|ca|pa)_[A-Za-z0-9_-]{8,}|lsq_[A-Za-z0-9_-]{4,}|r[gc]_live_[A-Za-z0-9_-]{4,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
 
 const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
-  revclamp_verify_webhook_signature: Object.freeze([
-    Object.freeze({ canonical: "provider", aliases: Object.freeze(["webhookProvider"]) }),
-    Object.freeze({ canonical: "rawPayload", aliases: Object.freeze(["payload", "body"]) }),
+  revclamp_audit_revenue_leakage: Object.freeze([
     Object.freeze({
-      canonical: "signatureHeader",
-      aliases: Object.freeze(["signature", "header", "stripeSignature", "shopifyHmac"]),
+      canonical: "dunningGracePeriodDays",
+      aliases: Object.freeze([
+        "dunning_grace_period_days",
+        "gracePeriodDays",
+        "grace_period_days",
+      ]),
     }),
     Object.freeze({
-      canonical: "secret",
-      aliases: Object.freeze(["webhookSecret", "signingSecret"]),
+      canonical: "costPerEventCents",
+      aliases: Object.freeze([
+        "cost_per_event_cents",
+        "eventCostCents",
+        "event_cost_cents",
+      ]),
     }),
-    Object.freeze({ canonical: "timestampSec", aliases: Object.freeze(["timestamp"]) }),
     Object.freeze({
-      canonical: "toleranceSec",
-      aliases: Object.freeze(["toleranceSeconds", "tolerance"]),
+      canonical: "customers",
+      aliases: Object.freeze([
+        "customer_snapshots",
+        "customerSnapshots",
+        "stripe_customers",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "usageEvents",
+      aliases: Object.freeze(["usage_events", "events"]),
+    }),
+    Object.freeze({
+      canonical: "disputes",
+      aliases: Object.freeze(["stripe_disputes", "open_disputes"]),
     }),
   ]),
-  revclamp_simulate_webhook_replay: Object.freeze([
-    Object.freeze({ canonical: "scenarioPreset", aliases: Object.freeze(["preset"]) }),
+  revclamp_evaluate_ghost_usage: Object.freeze([
     Object.freeze({
-      canonical: "events",
-      aliases: Object.freeze(["webhookEvents", "eventSequence"]),
+      canonical: "customerId",
+      aliases: Object.freeze(["customer_id", "stripeCustomerId", "stripe_customer_id"]),
     }),
     Object.freeze({
-      canonical: "idempotencyWindowSec",
-      aliases: Object.freeze(["windowSec", "dedupWindowSec"]),
+      canonical: "subscriptionsHasMore",
+      aliases: Object.freeze(["hasMore", "has_more", "subscriptions_has_more"]),
+    }),
+    Object.freeze({
+      canonical: "dunningGracePeriodDays",
+      aliases: Object.freeze([
+        "gracePeriodDays",
+        "dunning_grace_period_days",
+        "grace_period_days",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "usageTimestampSec",
+      aliases: Object.freeze([
+        "timestampSec",
+        "usage_timestamp_sec",
+        "usageTimestamp",
+        "occurred_at_sec",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "usageEvent",
+      aliases: Object.freeze(["usage_event"]),
+    }),
+  ]),
+  revclamp_stage_stripe_dispute_ce3: Object.freeze([
+    Object.freeze({
+      canonical: "disputeId",
+      aliases: Object.freeze(["dispute_id", "stripeDisputeId", "stripe_dispute_id"]),
+    }),
+    Object.freeze({
+      canonical: "customerId",
+      aliases: Object.freeze(["customer_id", "stripeCustomerId", "stripe_customer_id"]),
+    }),
+    Object.freeze({
+      canonical: "disputeReason",
+      aliases: Object.freeze(["dispute_reason", "reason"]),
+    }),
+    Object.freeze({
+      canonical: "existingUncategorizedText",
+      aliases: Object.freeze([
+        "existing_uncategorized_text",
+        "uncategorized_text",
+        "existing_merchant_notes",
+        "existingMerchantNotes",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "existingAccessActivityLog",
+      aliases: Object.freeze(["existing_access_activity_log", "access_activity_log"]),
+    }),
+    Object.freeze({
+      canonical: "disputedTransaction",
+      aliases: Object.freeze(["disputed_transaction", "disputed_charge", "disputedCharge"]),
+    }),
+    Object.freeze({
+      canonical: "priorTransactions",
+      aliases: Object.freeze(["prior_transactions", "prior_charges", "priorCharges"]),
+    }),
+    Object.freeze({
+      canonical: "usageEvents",
+      aliases: Object.freeze(["usage_events", "events"]),
     }),
   ]),
   revclamp_validate_eu_vat_vies: Object.freeze([
@@ -79,23 +155,244 @@ const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
       canonical: "buyerCountry",
       aliases: Object.freeze([
         "countryCode",
+        "country_code",
         "country",
         "vatCountryCode",
         "buyer_country",
         "buyerCountryCode",
+        "buyer_country_code",
       ]),
     }),
     Object.freeze({
       canonical: "buyerVatId",
-      aliases: Object.freeze(["vatId", "buyer_vat_id", "vatNumber", "vat_number", "vat"]),
+      aliases: Object.freeze(["vatId", "vat_id", "buyer_vat_id", "vatNumber", "vat_number", "vat"]),
     }),
     Object.freeze({
       canonical: "viesMode",
-      aliases: Object.freeze(["vies_mode"]),
+      aliases: Object.freeze(["vies_mode", "mode"]),
     }),
     Object.freeze({
       canonical: "supplyType",
       aliases: Object.freeze(["supply_type"]),
+    }),
+    Object.freeze({
+      canonical: "consultationNumber",
+      aliases: Object.freeze(["consultation_number", "consultationId", "consultation_id"]),
+    }),
+  ]),
+  revclamp_reconcile_b2b_net_terms: Object.freeze([
+    Object.freeze({
+      canonical: "orderId",
+      aliases: Object.freeze(["order_id", "invoice_id", "invoiceId"]),
+    }),
+    Object.freeze({
+      canonical: "totalOrderCents",
+      aliases: Object.freeze(["total_order_cents", "invoice_total_cents", "invoiceTotalCents"]),
+    }),
+    Object.freeze({
+      canonical: "orderTotalCents",
+      aliases: Object.freeze(["order_total_cents"]),
+    }),
+    Object.freeze({
+      canonical: "paidAmountCents",
+      aliases: Object.freeze(["paid_amount_cents", "paid_cents", "paidCents"]),
+    }),
+    Object.freeze({
+      canonical: "creditNoteCents",
+      aliases: Object.freeze(["credit_note_cents"]),
+    }),
+    Object.freeze({
+      canonical: "creditNotesCents",
+      aliases: Object.freeze(["credit_notes_cents"]),
+    }),
+    Object.freeze({
+      canonical: "requiredDepositCents",
+      aliases: Object.freeze(["required_deposit_cents", "deposit_cents", "depositCents"]),
+    }),
+    Object.freeze({
+      canonical: "requiredDepositPercent",
+      aliases: Object.freeze([
+        "required_deposit_percent",
+        "deposit_percent",
+        "depositPercent",
+        "required_deposit_pct",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "paymentTermsDays",
+      aliases: Object.freeze([
+        "payment_terms_days",
+        "terms_days",
+        "termsDays",
+        "net_terms_days",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "daysElapsedSinceInvoice",
+      aliases: Object.freeze([
+        "days_elapsed_since_invoice",
+        "days_elapsed",
+        "daysElapsed",
+        "invoice_age_days",
+        "invoiceAgeDays",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "toleranceCents",
+      aliases: Object.freeze(["tolerance_cents"]),
+    }),
+  ]),
+  revclamp_verify_webhook_signature: Object.freeze([
+    Object.freeze({
+      canonical: "provider",
+      aliases: Object.freeze(["webhookProvider", "webhook_provider"]),
+    }),
+    Object.freeze({
+      canonical: "rawPayload",
+      aliases: Object.freeze(["payload", "body", "raw_payload", "rawBody", "raw_body"]),
+    }),
+    Object.freeze({
+      canonical: "signatureHeader",
+      aliases: Object.freeze([
+        "signature",
+        "header",
+        "stripeSignature",
+        "shopifyHmac",
+        "signature_header",
+        "stripe_signature",
+        "shopify_hmac",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "secret",
+      aliases: Object.freeze([
+        "webhookSecret",
+        "signingSecret",
+        "webhook_secret",
+        "signing_secret",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "timestampSec",
+      aliases: Object.freeze(["timestamp", "timestamp_sec"]),
+    }),
+    Object.freeze({
+      canonical: "toleranceSec",
+      aliases: Object.freeze([
+        "toleranceSeconds",
+        "tolerance",
+        "tolerance_sec",
+        "tolerance_seconds",
+      ]),
+    }),
+  ]),
+  revclamp_calculate_roi_and_plan_fit: Object.freeze([
+    Object.freeze({
+      canonical: "monthlyWonDisputeUsd",
+      aliases: Object.freeze([
+        "monthly_won_dispute_usd",
+        "won_dispute_usd",
+        "wonDisputeUsd",
+        "dispute_usd",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "monthlyGhostBleedUsd",
+      aliases: Object.freeze([
+        "monthly_ghost_bleed_usd",
+        "ghost_bleed_usd",
+        "ghostBleedUsd",
+        "bleed_usd",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "contingencyTakeRatePercent",
+      aliases: Object.freeze([
+        "contingency_take_rate_percent",
+        "take_rate_percent",
+        "takeRatePercent",
+        "take_rate_pct",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "monthlyUsageEvents",
+      aliases: Object.freeze([
+        "monthly_usage_events",
+        "usage_events_count",
+        "monthly_events",
+        "monthlyEvents",
+      ]),
+    }),
+  ]),
+  revclamp_simulate_webhook_replay: Object.freeze([
+    Object.freeze({
+      canonical: "scenarioPreset",
+      aliases: Object.freeze(["preset", "scenario_preset", "scenario"]),
+    }),
+    Object.freeze({
+      canonical: "events",
+      aliases: Object.freeze([
+        "webhookEvents",
+        "eventSequence",
+        "webhook_events",
+        "event_sequence",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "idempotencyWindowSec",
+      aliases: Object.freeze([
+        "windowSec",
+        "dedupWindowSec",
+        "idempotency_window_sec",
+        "window_sec",
+        "dedup_window_sec",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "nowSec",
+      aliases: Object.freeze(["now_sec", "current_time_sec", "currentTimeSec"]),
+    }),
+  ]),
+  revclamp_lint_dispute_evidence: Object.freeze([
+    Object.freeze({
+      canonical: "preset",
+      aliases: Object.freeze(["scenario_preset", "scenarioPreset", "scenario"]),
+    }),
+    Object.freeze({
+      canonical: "existingMerchantNotes",
+      aliases: Object.freeze(["existing_merchant_notes", "merchant_notes", "merchantNotes"]),
+    }),
+    Object.freeze({
+      canonical: "evidenceLogText",
+      aliases: Object.freeze(["evidence_log_text"]),
+    }),
+    Object.freeze({
+      canonical: "accessActivityLog",
+      aliases: Object.freeze(["access_activity_log"]),
+    }),
+    Object.freeze({
+      canonical: "priorMatchedCount",
+      aliases: Object.freeze([
+        "prior_matched_count",
+        "matched_priors_count",
+        "prior_count",
+      ]),
+    }),
+    Object.freeze({
+      canonical: "hasIpMatch",
+      aliases: Object.freeze(["has_ip_match", "ip_match", "ipMatch"]),
+    }),
+    Object.freeze({
+      canonical: "hasDeviceMatch",
+      aliases: Object.freeze(["has_device_match", "device_match", "deviceMatch"]),
+    }),
+    Object.freeze({
+      canonical: "disputedTransaction",
+      aliases: Object.freeze(["disputed_transaction", "disputed_charge"]),
+    }),
+    Object.freeze({
+      canonical: "priorTransactions",
+      aliases: Object.freeze(["prior_transactions", "prior_charges"]),
     }),
   ]),
 });
@@ -1509,27 +1806,40 @@ function isValidUnixSec(val) {
 }
 
 function parseEventTimestampSec(ev) {
-  for (const numCandidate of [
-    ev?.occurred_at_sec,
-    ev?.occurredAtSec,
-    ev?.timestampSec,
-    ev?.usageTimestampSec,
-    ev?.occurred_at,
-    ev?.created,
+  if (!ev || typeof ev !== "object") return null;
+  const resolvedSecs = [];
+  for (const intKey of [
+    "occurred_at_sec",
+    "occurredAtSec",
+    "timestampSec",
+    "usageTimestampSec",
   ]) {
-    if (isValidUnixSec(numCandidate)) {
-      return numCandidate;
+    if (ev[intKey] !== undefined) {
+      if (!isValidUnixSec(ev[intKey])) return null;
+      resolvedSecs.push(ev[intKey]);
     }
   }
-  for (const strCandidate of [ev?.occurred_at, ev?.created]) {
-    if (typeof strCandidate === "string" && strCandidate.trim()) {
-      const ms = Date.parse(strCandidate.trim());
-      if (!Number.isFinite(ms)) return null;
-      const s = Math.floor(ms / 1000);
-      return isValidUnixSec(s) ? s : null;
+  for (const flexKey of ["occurred_at", "created"]) {
+    if (ev[flexKey] !== undefined) {
+      const val = ev[flexKey];
+      if (typeof val === "number") {
+        if (!isValidUnixSec(val)) return null;
+        resolvedSecs.push(val);
+      } else if (typeof val === "string" && val.trim()) {
+        const ms = Date.parse(val.trim());
+        if (!Number.isFinite(ms)) return null;
+        const s = Math.floor(ms / 1000);
+        if (!isValidUnixSec(s)) return null;
+        resolvedSecs.push(s);
+      } else {
+        return null;
+      }
     }
   }
-  return null;
+  if (resolvedSecs.length === 0 || new Set(resolvedSecs).size > 1) {
+    return null;
+  }
+  return resolvedSecs[0];
 }
 
 function extractSubPeriodEndSec(sub) {
@@ -1609,7 +1919,9 @@ function extractCanonicalCustomerId(obj) {
   if (!obj || typeof obj !== "object") return "";
   const raw =
     obj.customer_id ||
+    obj.customerId ||
     obj.stripe_customer_id ||
+    obj.stripeCustomerId ||
     (typeof obj.customer === "string" ? obj.customer : obj.customer?.id) ||
     "";
   return typeof raw === "string" ? raw.trim() : "";
@@ -4004,6 +4316,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
   }
 
   if (toolName === "revclamp_evaluate_ghost_usage") {
+    if (args.demo !== undefined && typeof args.demo !== "boolean") {
+      const err = new Error("Invalid params: demo must be a boolean.");
+      err.code = -32602;
+      throw err;
+    }
     if (
       args.customerId !== undefined &&
       (typeof args.customerId !== "string" ||
@@ -4014,36 +4331,128 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
+    if (
+      args.usageEvent !== undefined &&
+      (!args.usageEvent ||
+        typeof args.usageEvent !== "object" ||
+        Array.isArray(args.usageEvent))
+    ) {
+      const err = new Error("Invalid params: usageEvent must be a JSON object.");
+      err.code = -32602;
+      throw err;
+    }
     const topCustomerId =
-      typeof args.customerId === "string" ? args.customerId.trim() : "";
+      typeof args.customerId === "string" ? args.customerId.trim().slice(0, 64) : "";
     const evObj =
       args.usageEvent && typeof args.usageEvent === "object" && !Array.isArray(args.usageEvent)
         ? args.usageEvent
         : null;
-    const evCustomerId = evObj ? extractCanonicalCustomerId(evObj) : "";
+    const nestedCusCandidates = [];
+    if (evObj) {
+      for (const rawCand of [
+        evObj.customer_id,
+        evObj.customerId,
+        evObj.stripe_customer_id,
+        evObj.stripeCustomerId,
+        typeof evObj.customer === "string" ? evObj.customer : evObj.customer?.id,
+      ]) {
+        if (typeof rawCand === "string" && rawCand.trim().length > 0) {
+          nestedCusCandidates.push(rawCand.trim().slice(0, 64));
+        }
+      }
+    }
+    const evCustomerId = nestedCusCandidates[0] || "";
+    const allCusCandidates = [
+      ...(topCustomerId ? [topCustomerId] : []),
+      ...nestedCusCandidates,
+    ];
     const evEmail = evObj ? normalizeEmailToken(evObj.email || evObj.customer_email) : "";
-    if (topCustomerId && evCustomerId && topCustomerId !== evCustomerId) {
+    if (new Set(allCusCandidates).size > 1) {
       const err = new Error(
         "CONFLICTING_GHOST_USAGE_CUSTOMER_ID: customerId and usageEvent customer_id must match when both are provided."
       );
       err.code = -32602;
       throw err;
     }
+    if (
+      args.dunningGracePeriodDays !== undefined &&
+      (typeof args.dunningGracePeriodDays !== "number" ||
+        !Number.isInteger(args.dunningGracePeriodDays) ||
+        args.dunningGracePeriodDays < 0 ||
+        args.dunningGracePeriodDays > 14)
+    ) {
+      const err = new Error(
+        "Invalid params: dunningGracePeriodDays must be an integer between 0 and 14."
+      );
+      err.code = -32602;
+      throw err;
+    }
+    if (
+      args.usageTimestampSec !== undefined &&
+      (typeof args.usageTimestampSec !== "number" ||
+        !Number.isInteger(args.usageTimestampSec) ||
+        args.usageTimestampSec <= 0)
+    ) {
+      const err = new Error("Invalid params: usageTimestampSec must be a positive integer.");
+      err.code = -32602;
+      throw err;
+    }
+    if (
+      args.occurredAtSec !== undefined &&
+      (typeof args.occurredAtSec !== "number" ||
+        !Number.isInteger(args.occurredAtSec) ||
+        args.occurredAtSec <= 0)
+    ) {
+      const err = new Error("Invalid params: occurredAtSec must be a positive integer.");
+      err.code = -32602;
+      throw err;
+    }
     const tsCandidates = [];
-    if (args.usageTimestampSec !== undefined) tsCandidates.push(Number(args.usageTimestampSec));
-    if (args.occurredAtSec !== undefined) tsCandidates.push(Number(args.occurredAtSec));
-    if (evObj && evObj.occurred_at_sec !== undefined) tsCandidates.push(Number(evObj.occurred_at_sec));
-    if (evObj && evObj.occurredAtSec !== undefined) tsCandidates.push(Number(evObj.occurredAtSec));
-    if (evObj && evObj.timestampSec !== undefined) tsCandidates.push(Number(evObj.timestampSec));
-    if (evObj && evObj.usageTimestampSec !== undefined) tsCandidates.push(Number(evObj.usageTimestampSec));
-    for (const flexKey of ["occurred_at", "created"]) {
-      if (evObj && evObj[flexKey] !== undefined) {
-        if (typeof evObj[flexKey] === "number") {
-          tsCandidates.push(evObj[flexKey]);
-        } else if (typeof evObj[flexKey] === "string" && evObj[flexKey].trim().length > 0) {
-          const parsedMs = Date.parse(evObj[flexKey].trim());
-          if (Number.isFinite(parsedMs) && parsedMs > 0) {
+    if (args.usageTimestampSec !== undefined) tsCandidates.push(args.usageTimestampSec);
+    if (args.occurredAtSec !== undefined) tsCandidates.push(args.occurredAtSec);
+    if (evObj) {
+      for (const intKey of [
+        "occurred_at_sec",
+        "occurredAtSec",
+        "timestampSec",
+        "usageTimestampSec",
+      ]) {
+        if (evObj[intKey] !== undefined) {
+          if (
+            typeof evObj[intKey] !== "number" ||
+            !Number.isSafeInteger(evObj[intKey]) ||
+            evObj[intKey] <= 0
+          ) {
+            const err = new Error(
+              `Invalid params: usageEvent.${intKey} must be a positive integer.`
+            );
+            err.code = -32602;
+            throw err;
+          }
+          tsCandidates.push(evObj[intKey]);
+        }
+      }
+      for (const flexKey of ["occurred_at", "created"]) {
+        if (evObj[flexKey] !== undefined) {
+          const rawFlex = evObj[flexKey];
+          if (typeof rawFlex === "number" && Number.isSafeInteger(rawFlex) && rawFlex > 0) {
+            tsCandidates.push(rawFlex);
+          } else if (typeof rawFlex === "string" && rawFlex.trim().length > 0) {
+            const parsedMs = Date.parse(rawFlex.trim());
+            if (!Number.isFinite(parsedMs) || parsedMs <= 0) {
+              const err = new Error(
+                `Invalid params: usageEvent.${flexKey} must be a valid timestamp.`
+              );
+              err.code = -32602;
+              throw err;
+            }
             tsCandidates.push(Math.floor(parsedMs / 1000));
+          } else {
+            const err = new Error(
+              `Invalid params: usageEvent.${flexKey} must be a positive integer or ISO-8601 string.`
+            );
+            err.code = -32602;
+            throw err;
           }
         }
       }
@@ -4055,7 +4464,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
-    if (!evObj && !topCustomerId && args.demo !== true) {
+    if (!evCustomerId && !evEmail && !topCustomerId && args.demo !== true) {
       const err = new Error(
         "Invalid params: provide customerId or usageEvent (with customer_id / email)."
       );
@@ -4076,6 +4485,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       throw err;
     }
     const rawSubsList = isSubsArray ? args.subscriptions : args.subscriptions.data;
+    if (rawSubsList.some((s) => !s || typeof s !== "object" || Array.isArray(s))) {
+      const err = new Error("Invalid params: every item in subscriptions must be an object.");
+      err.code = -32602;
+      throw err;
+    }
     const isCompletePagination =
       rawSubsList.length <= 50 &&
       args.subscriptions?.has_more !== true &&
@@ -4802,16 +5216,52 @@ export function executeLocalMcpJsonRpc(
     const toolArgs = normalizedRes.args;
 
     const exampleCallMap = {
+      revclamp_audit_revenue_leakage: {
+        dunningGracePeriodDays: 7,
+        costPerEventCents: 142,
+      },
+      revclamp_evaluate_ghost_usage: {
+        customerId: "cus_test_01",
+        subscriptions: {
+          data: [{ id: "sub_test_01", status: "canceled", current_period_end: 1760000000 }],
+          has_more: false,
+        },
+        usageTimestampSec: 1760086400,
+      },
+      revclamp_stage_stripe_dispute_ce3: {
+        disputeId: "du_test_01",
+        customerId: "cus_test_01",
+        disputeReason: "fraudulent",
+      },
+      revclamp_validate_eu_vat_vies: {
+        sellerCountry: "DE",
+        buyerVatId: "NL123456789B01",
+        supplyType: "GOODS",
+        viesMode: "SYNTAX",
+      },
+      revclamp_reconcile_b2b_net_terms: {
+        orderId: "ord_test_01",
+        totalOrderCents: 250000,
+        paidAmountCents: 75000,
+        requiredDepositPercent: 30,
+        paymentTermsDays: 30,
+      },
       revclamp_verify_webhook_signature: {
         provider: "stripe",
         secret: "whsec_test_secret_revclamp_2026",
         rawPayload: '{"id":"evt_test_01","type":"customer.subscription.deleted"}',
-        toleranceSec: 300,
-        demo: true,
+      },
+      revclamp_calculate_roi_and_plan_fit: {
+        monthlyWonDisputeUsd: 10000,
+        monthlyGhostBleedUsd: 600,
+        contingencyTakeRatePercent: 25,
+        monthlyUsageEvents: 250000,
       },
       revclamp_simulate_webhook_replay: {
         scenarioPreset: "out_of_order_stale_update_after_cancel",
-        demo: true,
+      },
+      revclamp_lint_dispute_evidence: {
+        preset: "valid_ce3_non_destructive",
       },
     };
 
