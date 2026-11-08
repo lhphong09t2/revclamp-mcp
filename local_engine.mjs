@@ -2508,16 +2508,34 @@ export const MCP_TOOL_TO_WEB_SLUG_MAP = Object.freeze({
   revclamp_validate_eu_vat_vies: "vies-vat-validator",
   revclamp_reconcile_b2b_net_terms: "b2b-net-terms-calculator",
   revclamp_verify_webhook_signature: "webhook-signature-tester",
-  revclamp_calculate_roi_and_plan_fit: "roi-calculator",
+  revclamp_calculate_roi_and_plan_fit: "b2b-chargeback-roi-calculator",
   revclamp_simulate_webhook_replay: "webhook-replay-simulator",
   revclamp_lint_dispute_evidence: "dispute-evidence-linter",
 });
 
+export const DEFAULT_AUTORUN_PRESET_BY_MCP_TOOL = Object.freeze({
+  revclamp_audit_revenue_leakage: "basil_expired_items",
+  revclamp_evaluate_ghost_usage: "basil_expired_items",
+  revclamp_stage_stripe_dispute_ce3: "qualified_120d_365d",
+  revclamp_validate_eu_vat_vies: "sample",
+  revclamp_reconcile_b2b_net_terms: "deposit_shortfall_hold",
+  revclamp_verify_webhook_signature: "stripe",
+  revclamp_calculate_roi_and_plan_fit: "saas_growth_10k",
+  revclamp_simulate_webhook_replay: "out_of_order_stale_update_after_cancel",
+  revclamp_lint_dispute_evidence: "valid_ce3_non_destructive",
+});
+
 export function buildLocalCloudUpgradeHint(toolName = "") {
-  const webSlug = MCP_TOOL_TO_WEB_SLUG_MAP[String(toolName || "").trim()] || "";
+  const cleanToolName = String(toolName || "").trim();
+  const webSlug = MCP_TOOL_TO_WEB_SLUG_MAP[cleanToolName] || "";
+  const defaultPreset = DEFAULT_AUTORUN_PRESET_BY_MCP_TOOL[cleanToolName] || "";
   const interactiveWebToolUrl = webSlug
     ? `https://revclamp.com/tools/${webSlug}?source=mcp_cli`
     : "https://revclamp.com/tools?source=mcp_cli";
+  const interactiveWebAutorunUrl =
+    webSlug && defaultPreset
+      ? `https://revclamp.com/tools/${webSlug}?preset=${encodeURIComponent(defaultPreset)}&autorun=1&source=mcp_cli`
+      : interactiveWebToolUrl;
   return Object.freeze({
     mode: "LOCAL_STATELESS_OPEN_CORE",
     message:
@@ -2527,6 +2545,7 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
     cliActivateCommand: "npx -y revclamp-mcp@latest --init-workspace you@company.com",
     freeTierQuota: "5,000 free monthly events",
     interactiveWebToolUrl,
+    interactiveWebAutorunUrl,
     consoleUpgradeUrl:
       "https://revclamp.com/dashboard?plan=starter_19&method=visa&source=mcp_cli",
     upgradeUrl: "https://revclamp.com/pricing?source=mcp_cli",
@@ -2545,9 +2564,11 @@ export function executeLocalMcpTool(toolName, rawArgs = {}, options = {}) {
     result.ok !== false &&
     !result.error
   ) {
+    const cloudUpgradeHint = buildLocalCloudUpgradeHint(toolName);
     return {
       ...result,
-      cloudUpgradeHint: buildLocalCloudUpgradeHint(toolName),
+      interactiveWebAutorunUrl: cloudUpgradeHint.interactiveWebAutorunUrl,
+      cloudUpgradeHint,
     };
   }
   return result;

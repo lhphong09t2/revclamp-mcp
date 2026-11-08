@@ -24,13 +24,13 @@
       ]
     }
   ],
-  "version": "1.20.25",
+  "version": "1.20.26",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "revclamp-mcp",
-      "version": "1.20.25",
+      "version": "1.20.26",
       "transport": {
         "type": "stdio"
       },
