@@ -20,6 +20,8 @@ import crypto from 'node:crypto';
 import {
   normalizeAdPulseInputAliases,
   resolveAdvertiserEntities,
+  tryResolveEntitiesFromCompositeCursor,
+  decodePaginationCursor,
   fetchAdvertiserCreatives,
   getCreativeDetailsById,
   createEmptyUntrustedAdContent,
@@ -1715,29 +1717,40 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
   }
   input = aliasNorm.normalized;
 
-  // Step 1: Resolve Advertiser Entities
-  const entityRes = await resolveAdvertiserEntities({
-    query: input?.query,
-    domain: input?.domain,
-    brand: input?.brand,
-    company: input?.company,
-    advertiser: input?.advertiser,
-    url: input?.url,
-    advertiserId: input?.advertiserId,
-    advertiserName: input?.advertiserName,
-    countryCode: input?.countryCode,
-    country: input?.country,
-    region: input?.region,
-    includeSubsidiaries: input?.includeSubsidiaries,
-    maxEntities: input?.maxEntities,
-    fetchImpl: hooks.fetchImpl,
-    nowFn: nowMs,
-    sleepFn,
-    randomFn,
-    timeoutMs: input?.timeoutMs,
-    maxRetries: input?.maxRetries,
-    deadlineAtMs: rpcDeadlineAtMs,
-  });
+  // Step 1: Resolve Advertiser Entities (use zero-RPC composite cursor entity cache on Page 2+ when matched)
+  const cursorCachedEntityRes = tryResolveEntitiesFromCompositeCursor(input);
+  const incomingCursorMeta =
+    !cursorCachedEntityRes && typeof input?.pageToken === 'string'
+      ? decodePaginationCursor(input.pageToken)
+      : null;
+  const entityRes =
+    cursorCachedEntityRes ||
+    (await resolveAdvertiserEntities({
+      query: input?.query,
+      domain: input?.domain,
+      brand: input?.brand,
+      company: input?.company,
+      advertiser: input?.advertiser,
+      url: input?.url,
+      advertiserId: input?.advertiserId,
+      advertiserName: input?.advertiserName,
+      countryCode: input?.countryCode,
+      country: input?.country,
+      region: input?.region,
+      includeSubsidiaries: input?.includeSubsidiaries,
+      maxEntities: incomingCursorMeta?.subsidiariesSkippedOnRateLimit ? 1 : input?.maxEntities,
+      preferDirectory: input?.preferDirectory,
+      fallbackToDirectoryOnRateLimit: input?.fallbackToDirectoryOnRateLimit,
+      allowPrimaryDirectoryFallbackWhenSubsidiariesRequested:
+        input?.fallbackToDirectoryOnRateLimit !== false,
+      fetchImpl: hooks.fetchImpl,
+      nowFn: nowMs,
+      sleepFn,
+      randomFn,
+      timeoutMs: input?.timeoutMs,
+      maxRetries: input?.maxRetries,
+      deadlineAtMs: rpcDeadlineAtMs,
+    }));
 
   if (!entityRes.ok) {
     const durationMs = Math.max(1, nowMs() - startedAtMs);
@@ -1810,6 +1823,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
   const creativesRes = await fetchAdvertiserCreatives({
     advertiserIds,
     entities: entityRes.selectedEntities,
+    subsidiariesSkippedOnRateLimit: Boolean(entityRes.subsidiariesSkippedOnRateLimit),
     maxResults: input?.maxResults,
     limit: input?.limit,
     max_results: input?.max_results,
@@ -2043,6 +2057,15 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
   let finalOk = true;
   let haltReason = undefined;
   const runtimeWarnings = Array.isArray(creativesRes.warnings) ? [...creativesRes.warnings] : [];
+  if (
+    entityRes.subsidiariesSkippedOnRateLimit &&
+    entityRes.resolutionSource !== 'CURSOR_ENTITY_CACHE'
+  ) {
+    const fallbackWarnMsg = `SearchSuggestions rate-limited (HTTP 429); degraded gracefully to primary entity ${entityRes.primaryEntity?.advertiserId} (${entityRes.primaryEntity?.advertiserName}) from KNOWN_ADVERTISER_DIRECTORY without subsidiary expansion.`;
+    if (!runtimeWarnings.includes(fallbackWarnMsg)) {
+      runtimeWarnings.unshift(fallbackWarnMsg);
+    }
+  }
   const persistCheckpointPostCharge = async () => {
     try {
       await persistCheckpoint();

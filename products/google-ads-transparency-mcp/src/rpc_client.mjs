@@ -1153,13 +1153,30 @@ export function encodeCompositeCursor({
   o = 1,
   qh = undefined,
   ac = undefined,
+  e = undefined,
+  fs = undefined,
 }) {
   const safePs = Math.min(40, Math.max(1, Number(ps) || 40));
   const safeRl =
     Number.isInteger(rl) && rl >= 1 && rl <= 40 ? rl : safePs;
   const safeAc =
     typeof ac === 'string' && CREATIVE_ID_RE.test(ac.trim()) ? ac.trim() : undefined;
-  const payload = {
+  const safeEntities = Array.isArray(e)
+    ? e
+        .slice(0, 3)
+        .map((item) => {
+          const id = String(item?.id ?? item?.advertiserId ?? '').trim();
+          const name = String(item?.name ?? item?.advertiserName ?? id).trim().slice(0, 120);
+          const rawReg = String(item?.reg ?? item?.regionCode ?? 'ALL').trim().toUpperCase();
+          const reg = rawReg === 'ALL' || ISO_COUNTRY_RE.test(rawReg) ? rawReg : 'ALL';
+          if (!ADVERTISER_ID_RE.test(id) || !name || /[\x00-\x1f\x7f]/.test(name)) {
+            return null;
+          }
+          return { id, name, reg };
+        })
+        .filter(Boolean)
+    : [];
+  const basePayload = {
     u: String(u || ''),
     n: typeof n === 'string' && n.trim() ? n.trim() : null,
     ps: safePs,
@@ -1167,8 +1184,20 @@ export function encodeCompositeCursor({
     o: Number.isInteger(o) && o >= 0 ? o : 1,
     ...(typeof qh === 'string' && qh ? { qh } : {}),
     ...(safeAc ? { ac: safeAc } : {}),
+    ...(fs === true ? { fs: true } : {}),
   };
-  return `${COMPOSITE_CURSOR_PREFIX}${Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')}`;
+  const payloadWithEntities = {
+    ...basePayload,
+    ...(safeEntities.length > 0 ? { e: safeEntities } : {}),
+  };
+  const encodedWithEntities = `${COMPOSITE_CURSOR_PREFIX}${Buffer.from(
+    JSON.stringify(payloadWithEntities),
+    'utf8'
+  ).toString('base64url')}`;
+  if (encodedWithEntities.length <= MAX_CURSOR_LENGTH) {
+    return encodedWithEntities;
+  }
+  return `${COMPOSITE_CURSOR_PREFIX}${Buffer.from(JSON.stringify(basePayload), 'utf8').toString('base64url')}`;
 }
 
 /**
@@ -1176,7 +1205,7 @@ export function encodeCompositeCursor({
  *
  * @param {unknown} rawToken
  * @param {string} [expectedScopeHash]
- * @returns {{ok: boolean, isComposite: boolean, upstreamToken: string|null, nextUpstreamToken: string|null, pageSize: number|null, rawRowLength: number|null, rowOffset: number, queryHash: string|null, anchorCreativeId: string|null, reason?: string}}
+ * @returns {{ok: boolean, isComposite: boolean, upstreamToken: string|null, nextUpstreamToken: string|null, pageSize: number|null, rawRowLength: number|null, rowOffset: number, queryHash: string|null, anchorCreativeId: string|null, resolvedEntities: Array<{advertiserId: string, advertiserName: string, regionCode: string}>|null, reason?: string}}
  */
 export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) {
   if (rawToken === undefined || rawToken === null || rawToken === '') {
@@ -1190,6 +1219,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
       rowOffset: 0,
       queryHash: null,
       anchorCreativeId: null,
+      resolvedEntities: null,
     };
   }
   if (typeof rawToken !== 'string') {
@@ -1203,6 +1233,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
       rowOffset: 0,
       queryHash: null,
       anchorCreativeId: null,
+      resolvedEntities: null,
       reason: 'pageToken must be a string',
     };
   }
@@ -1218,6 +1249,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
       rowOffset: 0,
       queryHash: null,
       anchorCreativeId: null,
+      resolvedEntities: null,
       reason: 'pageToken cannot be whitespace-only',
     };
   }
@@ -1232,6 +1264,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
       rowOffset: 0,
       queryHash: null,
       anchorCreativeId: null,
+      resolvedEntities: null,
       reason: `pageToken exceeds ${MAX_CURSOR_LENGTH} chars or contains control characters`,
     };
   }
@@ -1249,6 +1282,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
         rowOffset: 0,
         queryHash: null,
         anchorCreativeId: null,
+        resolvedEntities: null,
         reason: 'Malformed composite pageToken base64url encoding',
       };
     }
@@ -1259,6 +1293,47 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
         Number.isInteger(parsed?.rl) && parsed.rl >= 1 && parsed.rl <= 40
           ? parsed.rl
           : parsed?.ps;
+      let resolvedEntities = null;
+      if (parsed?.e !== undefined) {
+        if (
+          !Array.isArray(parsed.e) ||
+          parsed.e.length < 1 ||
+          parsed.e.length > 3 ||
+          !parsed.e.every(
+            (item) =>
+              item &&
+              typeof item === 'object' &&
+              !Array.isArray(item) &&
+              typeof item.id === 'string' &&
+              ADVERTISER_ID_RE.test(item.id) &&
+              typeof item.name === 'string' &&
+              item.name.trim().length >= 1 &&
+              item.name.length <= 120 &&
+              !/[\x00-\x1f\x7f]/.test(item.name) &&
+              typeof item.reg === 'string' &&
+              (item.reg === 'ALL' || ISO_COUNTRY_RE.test(item.reg))
+          )
+        ) {
+          return {
+            ok: false,
+            isComposite: false,
+            upstreamToken: null,
+            nextUpstreamToken: null,
+            pageSize: null,
+            rawRowLength: null,
+            rowOffset: 0,
+            queryHash: null,
+            anchorCreativeId: null,
+            resolvedEntities: null,
+            reason: 'Malformed composite pageToken cached entities payload',
+          };
+        }
+        resolvedEntities = parsed.e.map((item) => ({
+          advertiserId: item.id,
+          advertiserName: item.name.trim(),
+          regionCode: item.reg,
+        }));
+      }
       if (
         !parsed ||
         typeof parsed !== 'object' ||
@@ -1277,7 +1352,8 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
         parsed.o < 0 ||
         parsed.o >= boundRowCap ||
         (parsed.qh !== undefined && (typeof parsed.qh !== 'string' || !/^[0-9a-f]{12}$/.test(parsed.qh))) ||
-        (parsed.ac !== undefined && (typeof parsed.ac !== 'string' || !CREATIVE_ID_RE.test(parsed.ac)))
+        (parsed.ac !== undefined && (typeof parsed.ac !== 'string' || !CREATIVE_ID_RE.test(parsed.ac))) ||
+        (parsed.fs !== undefined && typeof parsed.fs !== 'boolean')
       ) {
         return {
           ok: false,
@@ -1289,6 +1365,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
           rowOffset: 0,
           queryHash: null,
           anchorCreativeId: null,
+          resolvedEntities: null,
           reason: 'Malformed composite pageToken payload invariants',
         };
       }
@@ -1303,6 +1380,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
           rowOffset: 0,
           queryHash: parsed.qh,
           anchorCreativeId: null,
+          resolvedEntities: null,
           reason:
             'pageToken scope mismatch: composite cursor belongs to a different advertiser query, countryCode, or formatFilter',
         };
@@ -1317,6 +1395,8 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
         rowOffset: parsed.o,
         queryHash: parsed.qh || null,
         anchorCreativeId: parsed.ac || null,
+        resolvedEntities,
+        subsidiariesSkippedOnRateLimit: Boolean(parsed.fs),
       };
     } catch {
       return {
@@ -1329,6 +1409,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
         rowOffset: 0,
         queryHash: null,
         anchorCreativeId: null,
+        resolvedEntities: null,
         reason: 'Malformed composite pageToken JSON',
       };
     }
@@ -1344,6 +1425,7 @@ export function decodePaginationCursor(rawToken, expectedScopeHash = undefined) 
     rowOffset: 0,
     queryHash: null,
     anchorCreativeId: null,
+    resolvedEntities: null,
   };
 }
 
@@ -2926,13 +3008,15 @@ export async function resolveAdvertiserEntities(options = {}) {
     if (
       rpcRes.status === 'UPSTREAM_RATE_LIMITED' &&
       knownDirectoryEntity &&
-      singleEntityDirectoryEligible &&
+      (singleEntityDirectoryEligible ||
+        options.allowPrimaryDirectoryFallbackWhenSubsidiariesRequested === true) &&
       options.fallbackToDirectoryOnRateLimit !== false
     ) {
       return {
         ok: true,
         status: 'OK',
         resolutionSource: 'KNOWN_ADVERTISER_DIRECTORY_FALLBACK',
+        subsidiariesSkippedOnRateLimit: !singleEntityDirectoryEligible,
         queryMeta,
         primaryEntity: knownDirectoryEntity,
         selectedEntities: [knownDirectoryEntity],
@@ -3976,6 +4060,142 @@ export function normalizeCreativeRecord(rawRow, context = {}) {
 }
 
 /**
+ * Resolves advertiser entities directly from a query-bound composite pagination cursor (`rcp1_...`)
+ * on Page 2+ so continuation runs require zero `SearchSuggestions` RPC calls while preserving
+ * strict scope-hash (`qh`) and positive brand-identity validation.
+ *
+ * @param {object} [options]
+ * @returns {{ok: boolean, status: string, resolutionSource: string, queryMeta: object, primaryEntity: object, selectedEntities: object[], allCandidates: object[], rpcAttempts: number, billableCount: number}|null}
+ */
+export function tryResolveEntitiesFromCompositeCursor(options = {}) {
+  const aliasNorm = normalizeAdPulseInputAliases(options);
+  if (!aliasNorm.ok) {
+    return null;
+  }
+  const normalized = aliasNorm.normalized;
+  if (
+    typeof normalized.pageToken !== 'string' ||
+    !normalized.pageToken.trim().startsWith(COMPOSITE_CURSOR_PREFIX)
+  ) {
+    return null;
+  }
+
+  const cursorCheck = decodePaginationCursor(normalized.pageToken);
+  if (
+    !cursorCheck.ok ||
+    !cursorCheck.isComposite ||
+    !cursorCheck.queryHash ||
+    !Array.isArray(cursorCheck.resolvedEntities) ||
+    cursorCheck.resolvedEntities.length === 0
+  ) {
+    return null;
+  }
+
+  const rawCountryNorm = String(normalized.countryCode ?? '').trim().toUpperCase();
+  const countryCode = rawCountryNorm === 'ALL' ? '' : rawCountryNorm;
+  if (countryCode && !ISO_COUNTRY_RE.test(countryCode)) {
+    return null;
+  }
+
+  const formatFilter = String(normalized.formatFilter ?? normalized.format ?? 'ALL')
+    .trim()
+    .toUpperCase();
+  if (!['ALL', 'TEXT', 'IMAGE', 'VIDEO'].includes(formatFilter)) {
+    return null;
+  }
+
+  const cachedIds = cursorCheck.resolvedEntities.map((e) => e.advertiserId);
+  const expectedScopeHash = computePaginationScopeHash({
+    advertiserIds: cachedIds,
+    countryCode,
+    formatFilter,
+  });
+  if (expectedScopeHash !== cursorCheck.queryHash) {
+    return null;
+  }
+
+  const explicitAdvertiserId = String(normalized.advertiserId ?? '').trim();
+  if (explicitAdvertiserId) {
+    if (explicitAdvertiserId !== cachedIds[0]) {
+      return null;
+    }
+    const queryMeta = parseBrandQueryTokens(normalized.query || explicitAdvertiserId);
+    const scoredEntities = cursorCheck.resolvedEntities.map((ent) =>
+      scoreAdvertiserCandidate(
+        {
+          advertiserId: ent.advertiserId,
+          advertiserName: ent.advertiserName,
+          regionCode: ent.regionCode,
+          minAds: 100,
+          maxAds: 1000,
+        },
+        queryMeta,
+        rawCountryNorm
+      )
+    );
+    return {
+      ok: true,
+      status: 'OK',
+      resolutionSource: 'CURSOR_ENTITY_CACHE',
+      subsidiariesSkippedOnRateLimit: Boolean(cursorCheck.subsidiariesSkippedOnRateLimit),
+      queryMeta,
+      primaryEntity: scoredEntities[0],
+      selectedEntities: scoredEntities,
+      allCandidates: scoredEntities,
+      rpcAttempts: 0,
+      billableCount: 0,
+    };
+  }
+
+  const rawQueryTrimmed = String(normalized.query ?? '').trim();
+  if (!rawQueryTrimmed || rawQueryTrimmed.length > MAX_QUERY_LENGTH) {
+    return null;
+  }
+  const queryMeta = parseBrandQueryTokens(rawQueryTrimmed);
+  if (queryMeta.extractedAdvertiserId && queryMeta.extractedAdvertiserId !== cachedIds[0]) {
+    return null;
+  }
+  if (!queryMeta.brandStem && !queryMeta.extractedAdvertiserId) {
+    return null;
+  }
+
+  const scoredEntities = cursorCheck.resolvedEntities.map((ent) =>
+    scoreAdvertiserCandidate(
+      {
+        advertiserId: ent.advertiserId,
+        advertiserName: ent.advertiserName,
+        regionCode: ent.regionCode,
+        minAds: 100,
+        maxAds: 1000,
+      },
+      queryMeta,
+      rawCountryNorm
+    )
+  );
+  const primary = scoredEntities[0];
+  const matchesPrimaryQuery =
+    queryMeta.extractedAdvertiserId === primary.advertiserId ||
+    (!primary.substringOnlyLookalike &&
+      (primary.exactBrandWordMatch || primary.domainStemPrefixMatch));
+  if (!matchesPrimaryQuery) {
+    return null;
+  }
+
+  return {
+    ok: true,
+    status: 'OK',
+    resolutionSource: 'CURSOR_ENTITY_CACHE',
+    subsidiariesSkippedOnRateLimit: Boolean(cursorCheck.subsidiariesSkippedOnRateLimit),
+    queryMeta,
+    primaryEntity: primary,
+    selectedEntities: scoredEntities,
+    allCandidates: scoredEntities,
+    rpcAttempts: 0,
+    billableCount: 0,
+  };
+}
+
+/**
  * Step 2: Fetches and normalizes ad creatives for one or more verified `AR...` advertiser entities
  * using cursor-based pagination (`SearchCreatives`).
  *
@@ -4019,15 +4239,27 @@ export async function fetchAdvertiserCreatives(options = {}) {
       ? [String(options.advertiserId).trim()]
       : [];
 
+  let preSearchWarnings = [];
+  let subsidiariesSkippedFlag = Boolean(options.subsidiariesSkippedOnRateLimit);
   if (
     advertiserIds.length === 0 &&
     typeof options.query === 'string' &&
     options.query.trim().length > 0
   ) {
-    const entityRes = await resolveAdvertiserEntities({
-      ...options,
-      preferDirectory: options.preferDirectory !== false,
-    });
+    const cursorCachedRes = tryResolveEntitiesFromCompositeCursor(options);
+    const incomingCursorMeta =
+      !cursorCachedRes && typeof options.pageToken === 'string'
+        ? decodePaginationCursor(options.pageToken)
+        : null;
+    const entityRes =
+      cursorCachedRes ||
+      (await resolveAdvertiserEntities({
+        ...options,
+        ...(incomingCursorMeta?.subsidiariesSkippedOnRateLimit ? { maxEntities: 1 } : {}),
+        preferDirectory: options.preferDirectory !== false,
+        allowPrimaryDirectoryFallbackWhenSubsidiariesRequested:
+          options.fallbackToDirectoryOnRateLimit !== false,
+      }));
     if (!entityRes.ok) {
       return {
         ok: false,
@@ -4057,6 +4289,12 @@ export async function fetchAdvertiserCreatives(options = {}) {
         cursorResumeContext: null,
         billableCount: 0,
       };
+    }
+    if (entityRes.subsidiariesSkippedOnRateLimit) {
+      subsidiariesSkippedFlag = true;
+      preSearchWarnings.push(
+        `SearchSuggestions rate-limited (HTTP 429); degraded gracefully to primary entity ${entityRes.primaryEntity?.advertiserId} (${entityRes.primaryEntity?.advertiserName}) from KNOWN_ADVERTISER_DIRECTORY without subsidiary expansion.`
+      );
     }
     advertiserIds = entityRes.selectedEntities.map((e) => e.advertiserId);
     if (!Array.isArray(options.entities)) {
@@ -4240,9 +4478,20 @@ export async function fetchAdvertiserCreatives(options = {}) {
       }
     }
   }
+  const compactCursorEntities = advertiserIds.slice(0, 3).map((advId) => ({
+    id: advId,
+    name: String(
+      entityNameByAdvId.get(advId) || options.fallbackAdvertiserName || advId
+    )
+      .trim()
+      .slice(0, 120),
+    reg: String(entityRegionByAdvId.get(advId) || countryCode || 'ALL')
+      .trim()
+      .toUpperCase(),
+  }));
 
   const deduplicatedCreatives = [];
-  const itemLocations = []; // tracks { u, n, ps, rl, nextOffset, qh } per returned item for mid-run truncation/halt rewind
+  const itemLocations = []; // tracks { u, n, ps, rl, nextOffset, qh, e } per returned item for mid-run truncation/halt rewind
   const seenCreativeIds = new Set();
   let currentUpstreamToken = cursorCheck.upstreamToken;
   let initialRowOffset = cursorCheck.isComposite ? cursorCheck.rowOffset : 0;
@@ -4260,7 +4509,12 @@ export async function fetchAdvertiserCreatives(options = {}) {
   let outputNextPageToken = null;
   let paginationStatus = 'EXHAUSTED';
   let paginationIncompleteReason = null;
-  const warnings = [];
+  const warnings = [...preSearchWarnings];
+  if (cursorCheck.subsidiariesSkippedOnRateLimit && warnings.length === 0) {
+    warnings.push(
+      `SearchSuggestions rate-limited (HTTP 429) on prior page; pagination continues on primary entity ${advertiserIds[0]} from KNOWN_ADVERTISER_DIRECTORY without subsidiary expansion.`
+    );
+  }
 
   while (pagesFetched < maxPages && deduplicatedCreatives.length < maxResults) {
     if (options.deadlineAtMs && nowFn() >= options.deadlineAtMs) {
@@ -4452,6 +4706,10 @@ export async function fetchAdvertiserCreatives(options = {}) {
           qh: scopeHash,
           cid: normalized.creativeId,
           prevCid: idx > 0 ? String(rawRows[idx - 1]?.['2'] || '').trim() : undefined,
+          e: compactCursorEntities,
+          ...(subsidiariesSkippedFlag || cursorCheck.subsidiariesSkippedOnRateLimit
+            ? { fs: true }
+            : {}),
         });
         if (deduplicatedCreatives.length >= maxResults) {
           if (idx + 1 < rawRows.length) {
@@ -4475,6 +4733,10 @@ export async function fetchAdvertiserCreatives(options = {}) {
         o: stoppedMidPageAtIdx,
         qh: scopeHash,
         ac: anchorIdAtStop,
+        e: compactCursorEntities,
+        ...(subsidiariesSkippedFlag || cursorCheck.subsidiariesSkippedOnRateLimit
+          ? { fs: true }
+          : {}),
       });
       paginationStatus = 'HAS_MORE_MID_PAGE';
       break;
@@ -4582,6 +4844,8 @@ export function computeRewoundCursorForDeliveredPrefix(
           o: startOffset,
           qh: firstLoc.qh,
           ...(startOffset > 0 && firstLoc.prevCid ? { ac: firstLoc.prevCid } : {}),
+          ...(Array.isArray(firstLoc.e) ? { e: firstLoc.e } : {}),
+          ...(firstLoc.fs === true ? { fs: true } : {}),
         });
       }
       return firstLoc.u || cursorResumeContext.initialPageToken || null;
@@ -4601,6 +4865,8 @@ export function computeRewoundCursorForDeliveredPrefix(
       o: lastDeliveredLoc.nextOffset,
       qh: lastDeliveredLoc.qh,
       ac: lastDeliveredLoc.cid,
+      ...(Array.isArray(lastDeliveredLoc.e) ? { e: lastDeliveredLoc.e } : {}),
+      ...(lastDeliveredLoc.fs === true ? { fs: true } : {}),
     });
   }
   return lastDeliveredLoc.n || fallbackNextPageToken;
