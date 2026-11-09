@@ -1418,6 +1418,7 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
         monthlyGhostBleedUsd: { type: "number", minimum: 0, maximum: 10000000, default: 600 },
         contingencyTakeRatePercent: { type: "number", minimum: 1, maximum: 50, default: 25 },
         monthlyUsageEvents: { type: "integer", minimum: 0, maximum: 50000000, default: 250000 },
+        demo: { type: "boolean", default: false },
       },
     },
   },
@@ -1571,6 +1572,7 @@ export function validateArgsAgainstSchema(schema, args) {
   }
   if (Array.isArray(schema.required)) {
     for (const reqKey of schema.required) {
+      if (reqKey === "subscriptions" && args.demo === true) continue;
       if (args[reqKey] === undefined || args[reqKey] === null || args[reqKey] === "") {
         return { ok: false, message: `Missing required argument '${reqKey}'.` };
       }
@@ -1813,13 +1815,15 @@ function parseEventTimestampSec(ev) {
     "occurredAtSec",
     "timestampSec",
     "usageTimestampSec",
+    "createdAtSec",
+    "settledAtSec",
   ]) {
     if (ev[intKey] !== undefined) {
       if (!isValidUnixSec(ev[intKey])) return null;
       resolvedSecs.push(ev[intKey]);
     }
   }
-  for (const flexKey of ["occurred_at", "created"]) {
+  for (const flexKey of ["occurred_at", "created", "timestamp", "created_at", "settled_at"]) {
     if (ev[flexKey] !== undefined) {
       const val = ev[flexKey];
       if (typeof val === "number") {
@@ -2267,8 +2271,11 @@ function extractNormalizedCe3Identifiers(tx) {
   }
   const rawUserId =
     tx.user_id ||
+    tx.userId ||
     tx.customer_id ||
+    tx.customerId ||
     tx.stripe_customer_id ||
+    tx.stripeCustomerId ||
     (typeof tx.customer === "string" ? tx.customer : tx.customer?.id) ||
     tx.metadata?.user_id ||
     "";
@@ -2283,15 +2290,19 @@ function extractNormalizedCe3Identifiers(tx) {
   const email = sanitizeLogToken(String(rawEmail || "").toLowerCase(), 96);
   const rawIp =
     tx.ip_address ||
+    tx.ipAddress ||
     tx.ip ||
     tx.client_ip ||
+    tx.clientIp ||
     tx.metadata?.ip_address ||
     (typeof tx.ip_subnet === "string" ? tx.ip_subnet.replace(/\/\d{1,3}$/, "") : "") ||
     "";
   const ipSubnet = normalizeIpForCe3Correlation(typeof rawIp === "string" ? rawIp : "");
   const rawDevice =
     tx.device_id ||
+    tx.deviceId ||
     tx.device_fingerprint ||
+    tx.deviceFingerprint ||
     tx.metadata?.device_id ||
     tx.metadata?.device_fingerprint ||
     "";
@@ -4453,7 +4464,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           tsCandidates.push(evObj[intKey]);
         }
       }
-      for (const flexKey of ["occurred_at", "created"]) {
+      for (const flexKey of ["occurred_at", "created", "timestamp"]) {
         if (evObj[flexKey] !== undefined) {
           const rawFlex = evObj[flexKey];
           if (typeof rawFlex === "number" && Number.isSafeInteger(rawFlex) && rawFlex > 0) {
@@ -4485,41 +4496,106 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
-    if (!evCustomerId && !evEmail && !topCustomerId && args.demo !== true) {
-      const err = new Error(
-        "Invalid params: provide customerId or usageEvent (with customer_id / email)."
-      );
-      err.code = -32602;
-      throw err;
-    }
-    const isSubsArray = Array.isArray(args.subscriptions);
+    const effectiveSubscriptionsArg =
+      args.subscriptions === undefined && args.demo === true
+        ? {
+            has_more: false,
+            data: [
+              {
+                id: "sub_demo_ghost_01",
+                customer: topCustomerId || evCustomerId || "cus_demo_ghost_01",
+                status: "canceled",
+                current_period_end: 1700000000,
+              },
+            ],
+          }
+        : args.subscriptions;
+    const isSubsArray = Array.isArray(effectiveSubscriptionsArg);
     const isSubsObj =
       !isSubsArray &&
-      args.subscriptions !== null &&
-      typeof args.subscriptions === "object" &&
-      Array.isArray(args.subscriptions.data);
-    if (!isSubsArray && !isSubsObj) {
+      effectiveSubscriptionsArg !== null &&
+      typeof effectiveSubscriptionsArg === "object" &&
+      Array.isArray(effectiveSubscriptionsArg.data);
+    const isSingleSubObj =
+      !isSubsArray &&
+      !isSubsObj &&
+      effectiveSubscriptionsArg !== null &&
+      typeof effectiveSubscriptionsArg === "object" &&
+      !Array.isArray(effectiveSubscriptionsArg) &&
+      (typeof effectiveSubscriptionsArg.id === "string" ||
+        typeof effectiveSubscriptionsArg.status === "string" ||
+        effectiveSubscriptionsArg.current_period_end !== undefined ||
+        effectiveSubscriptionsArg.currentPeriodEnd !== undefined ||
+        effectiveSubscriptionsArg.items !== undefined);
+    if (!isSubsArray && !isSubsObj && !isSingleSubObj) {
       const err = new Error(
         "Invalid params: subscriptions must be an array or Stripe list object { data: [...] }."
       );
       err.code = -32602;
       throw err;
     }
-    const rawSubsList = isSubsArray ? args.subscriptions : args.subscriptions.data;
+    const rawSubsList = isSubsArray
+      ? effectiveSubscriptionsArg
+      : isSubsObj
+        ? effectiveSubscriptionsArg.data
+        : [effectiveSubscriptionsArg];
     if (rawSubsList.some((s) => !s || typeof s !== "object" || Array.isArray(s))) {
       const err = new Error("Invalid params: every item in subscriptions must be an object.");
       err.code = -32602;
       throw err;
     }
+    const subCusIds = [];
+    const subEmails = [];
+    for (const s of rawSubsList) {
+      const sc = extractCanonicalCustomerId(s);
+      if (sc) subCusIds.push(sc);
+      const se = normalizeEmailToken(s?.customer_email || s?.email);
+      if (se) subEmails.push(se);
+    }
+    const inheritedSubCustomerId =
+      !topCustomerId && !evCustomerId && subCusIds.length > 0 && new Set(subCusIds).size === 1
+        ? subCusIds[0]
+        : "";
+    const inheritedSubEmail =
+      !topCustomerId &&
+      !evCustomerId &&
+      !inheritedSubCustomerId &&
+      !evEmail &&
+      subEmails.length > 0 &&
+      new Set(subEmails).size === 1
+        ? subEmails[0]
+        : "";
+    if (
+      !evCustomerId &&
+      !evEmail &&
+      !topCustomerId &&
+      !inheritedSubCustomerId &&
+      !inheritedSubEmail &&
+      args.demo !== true
+    ) {
+      const err = new Error(
+        "Invalid params: provide customerId or usageEvent (with customer_id / email)."
+      );
+      err.code = -32602;
+      throw err;
+    }
+    const effectiveTopCustomerId = topCustomerId || inheritedSubCustomerId;
     const isCompletePagination =
       rawSubsList.length <= 50 &&
-      args.subscriptions?.has_more !== true &&
+      effectiveSubscriptionsArg?.has_more !== true &&
       args.subscriptionsHasMore !== true &&
-      (args.subscriptions?.has_more === false || args.subscriptionsHasMore === false);
+      (effectiveSubscriptionsArg?.has_more === false ||
+        args.subscriptionsHasMore === false ||
+        isSingleSubObj);
     const normalizedSubsList = rawSubsList.slice(0, 50).map((s) => {
       if (!s || typeof s !== "object" || Array.isArray(s)) return s;
-      if (topCustomerId && !extractCanonicalCustomerId(s) && !s.customer_email && !s.email) {
-        return { ...s, customer: topCustomerId };
+      if (
+        effectiveTopCustomerId &&
+        !extractCanonicalCustomerId(s) &&
+        !s.customer_email &&
+        !s.email
+      ) {
+        return { ...s, customer: effectiveTopCustomerId };
       }
       return s;
     });
@@ -4534,7 +4610,9 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     const normalizedUsageEvent = evObj
       ? {
           ...evObj,
-          ...(topCustomerId && !evCustomerId ? { customer_id: topCustomerId } : {}),
+          ...(effectiveTopCustomerId && !evCustomerId
+            ? { customer_id: effectiveTopCustomerId }
+            : {}),
           ...(fallbackTsSec !== undefined &&
           evObj.occurred_at === undefined &&
           evObj.occurred_at_sec === undefined &&
@@ -4544,7 +4622,9 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
             : {}),
         }
       : {
-          customer_id: topCustomerId || (args.demo === true ? "cus_demo_ghost_01" : ""),
+          customer_id:
+            effectiveTopCustomerId || (args.demo === true ? "cus_demo_ghost_01" : ""),
+          ...(inheritedSubEmail ? { email: inheritedSubEmail } : {}),
           occurred_at_sec: fallbackTsSec,
         };
     const res = evaluateLocalGhostUsage(
@@ -4603,7 +4683,18 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       throw err;
     }
     const cleanDisputeId = sanitizeLogToken(args.disputeId || "du_mcp_staged_01", 64);
-    const cleanCustomerId = sanitizeLogToken(args.customerId || "cus_mcp_enterprise_01", 64);
+    const inheritedCe3CustomerId =
+      extractCanonicalCustomerId(args.disputedTransaction) ||
+      (Array.isArray(args.usageEvents) && args.usageEvents.length > 0
+        ? extractCanonicalCustomerId(args.usageEvents[0])
+        : "") ||
+      (Array.isArray(args.priorTransactions) && args.priorTransactions.length > 0
+        ? extractCanonicalCustomerId(args.priorTransactions[0])
+        : "");
+    const cleanCustomerId = sanitizeLogToken(
+      args.customerId || inheritedCe3CustomerId || "cus_mcp_enterprise_01",
+      64
+    );
     const disputeReason = String(args.disputeReason || "fraudulent").trim();
     const isDemo = args.demo === true;
     const rawEvents = Array.isArray(args.usageEvents) ? args.usageEvents : null;
@@ -4635,13 +4726,19 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         continue;
       }
       const tsSec = parseEventTimestampSec(ev);
-      const eventName = sanitizeLogToken(ev.event_name, 80);
+      const eventName = sanitizeLogToken(
+        ev.event_name || ev.eventName || ev.action || ev.event_id || ev.eventId,
+        80
+      );
       if (tsSec === null || !eventName) continue;
       const isoTs = new Date(tsSec * 1000).toISOString().replace(".000Z", "Z");
       const parts = [`${isoTs}`, `event=${eventName}`, `actor=${cleanCustomerId}`];
-      const cleanIp = sanitizeLogToken(ev.ip_address || ev.ip, 64);
+      const cleanIp = sanitizeLogToken(ev.ip_address || ev.ipAddress || ev.ip, 64);
       if (cleanIp) parts.push(`ip=${cleanIp}`);
-      const cleanDev = sanitizeLogToken(ev.device_id || ev.device_fingerprint, 80);
+      const cleanDev = sanitizeLogToken(
+        ev.device_id || ev.deviceId || ev.device_fingerprint || ev.deviceFingerprint,
+        80
+      );
       if (cleanDev) parts.push(`device=${cleanDev}`);
       const cleanModel = sanitizeLogToken(ev.model, 80);
       if (cleanModel) parts.push(`model=${cleanModel}`);
@@ -4821,6 +4918,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       disputeId: cleanDisputeId,
       customerId: cleanCustomerId,
       disputeReason,
+      ce3Eligible: Boolean(ce3Qualification?.qualified),
       ce3Qualification,
       submit: false,
       utf16CodeUnits: merged.length,

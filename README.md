@@ -8,6 +8,7 @@
 
 - **100% Local In-Process Execution (Default — Zero Network / Zero API Key Required):** All 9 MCP tools (`initialize`, `tools/list`, and `tools/call`) execute locally in-process inside [`local_engine.mjs`](./local_engine.mjs) using pure Node.js (`node:crypto` HMAC-SHA256 verification, integer-cent double-entry accounting, 72-hour webhook replay state machines, and `18,000` UTF-16 code unit CE 3.0 linting). Zero network calls are ever made unless `REVCLAMP_API_KEY` or `REVCLAMP_MCP_URL` is explicitly configured.
 - **Optional Hosted Cloud Workspace Sync (`REVCLAMP_API_KEY`):** When `REVCLAMP_API_KEY` (`rg_live_...`) is configured, `revclamp-mcp` connects to [**RevClamp Enterprise**](https://revclamp.com) (`https://api.revclamp.com/api/mcp`) to unlock the **90-day durable transactional usage & audit ledger**, **24/7 autonomous Stripe dispute & entitlement webhook outbox**, and **real-time EU Commission VIES SOAP gateway consultation numbers**.
+- **Flat-JSON REST, OpenAPI 3.0.3 & RapidAPI Hub Gateway (Clay.com / n8n / Make.com):** In addition to MCP stdio/HTTP, all 9 deterministic tools plus **B2B Domain Tech Stack & Payment Rail Intelligence** (`POST /api/v1/b2b/domain-intelligence`) are available as flat-JSON REST endpoints via [`https://revclamp.com/openapi.json`](https://revclamp.com/openapi.json), [`https://revclamp.com/api/v1/integrations/templates`](https://revclamp.com/api/v1/integrations/templates), and the [**RapidAPI Hub Gateway**](https://rapidapi.com/lhphong09t2/api/revclamp-b2b-revenue-and-compliance-api).
 
 ## Local Open-Core (`local_engine.mjs`) vs. Hosted Cloud (`REVCLAMP_API_KEY`)
 
@@ -61,14 +62,14 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 
 ```bash
 # Run a <60s local CLI smoke check (verifies all 9 tool schemas & executes a local_engine.mjs sample audit with zero API key)
-npx -y github:lhphong09t2/revclamp-mcp#v1.20.26 --self-test
+npx -y github:lhphong09t2/revclamp-mcp#v1.20.27 --self-test
 
 # Provision a free Cloud Workspace instantly (zero email required; saves to ~/.revclamp/credentials.json) or bind a work email via 6-digit OTP
-npx -y revclamp-mcp@1.20.26 --init-workspace
-npx -y revclamp-mcp@1.20.26 --init-workspace you@company.com
+npx -y revclamp-mcp@1.20.27 --init-workspace
+npx -y revclamp-mcp@1.20.27 --init-workspace you@company.com
 
 # Verify the 6-digit OTP using REVCLAMP_API_KEY from environment
-REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.26 --verify-otp you@company.com 123456
+REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.27 --verify-otp you@company.com 123456
 
 # List all 9 MCP tools and JSON schemas (runs locally in-process)
 node index.mjs --list-tools
