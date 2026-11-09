@@ -74,6 +74,10 @@ const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
       aliases: Object.freeze(["customer_id", "stripeCustomerId", "stripe_customer_id"]),
     }),
     Object.freeze({
+      canonical: "subscriptionStatus",
+      aliases: Object.freeze(["subscription_status"]),
+    }),
+    Object.freeze({
       canonical: "subscriptionsHasMore",
       aliases: Object.freeze(["hasMore", "has_more", "subscriptions_has_more"]),
     }),
@@ -1243,7 +1247,6 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["subscriptions"],
       properties: {
         customerId: {
           type: "string",
@@ -1253,6 +1256,39 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
         subscriptions: {
           description:
             "Stripe subscriptions list envelope ({ data: [...], has_more: false }) or raw array of subscription objects.",
+        },
+        subscriptionStatus: {
+          type: "string",
+          description:
+            "Optional flat Stripe subscription status shorthand ('active', 'trialing', 'past_due', 'canceled', 'unpaid', 'incomplete', 'incomplete_expired', 'paused') when subscriptions is omitted.",
+        },
+        subscription_status: {
+          type: "string",
+          description: "Optional snake_case alias for subscriptionStatus.",
+        },
+        currentPeriodEndSec: {
+          type: "integer",
+          minimum: 1,
+          description:
+            "Optional flat subscription current_period_end in Unix epoch integer seconds.",
+        },
+        current_period_end: {
+          description:
+            "Optional flat subscription current_period_end (Unix epoch seconds, epoch milliseconds, or ISO-8601 string).",
+        },
+        currentPeriodEnd: {
+          description:
+            "Optional camelCase alias for current_period_end (Unix epoch seconds, epoch milliseconds, or ISO-8601 string).",
+        },
+        latestInvoiceFailedAtSec: {
+          type: "integer",
+          minimum: 1,
+          description:
+            "Optional flat latest_invoice_failed_at timestamp in Unix epoch integer seconds for past_due grace evaluation.",
+        },
+        latest_invoice_failed_at: {
+          description:
+            "Optional flat latest_invoice_failed_at timestamp (Unix epoch seconds, epoch milliseconds, or ISO-8601 string).",
         },
         usageEvent: {
           type: "object",
@@ -1278,6 +1314,18 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
           type: "integer",
           minimum: 1,
           description: "Optional alias for usageTimestampSec.",
+        },
+        occurredAt: {
+          description:
+            "Optional usage event timestamp as ISO-8601 string, Unix epoch seconds, or Unix epoch milliseconds.",
+        },
+        occurred_at: {
+          description:
+            "Optional snake_case alias for occurredAt (ISO-8601 string, Unix epoch seconds, or Unix epoch milliseconds).",
+        },
+        timestamp: {
+          description:
+            "Optional alias for occurredAt (ISO-8601 string, Unix epoch seconds, or Unix epoch milliseconds).",
         },
         demo: {
           type: "boolean",
@@ -1327,7 +1375,6 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["buyerVatId"],
       properties: {
         sellerCountry: { type: "string", default: "DE" },
         buyerVatId: { type: "string" },
@@ -1366,7 +1413,6 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["paidAmountCents"],
       properties: {
         orderId: { type: "string" },
         totalOrderCents: { type: "integer", minimum: 1 },
@@ -1827,8 +1873,12 @@ function parseEventTimestampSec(ev) {
     if (ev[flexKey] !== undefined) {
       const val = ev[flexKey];
       if (typeof val === "number") {
-        if (!isValidUnixSec(val)) return null;
-        resolvedSecs.push(val);
+        const normSec =
+          Number.isSafeInteger(val) && val >= 100_000_000_000 && val <= 10_000_000_000_000
+            ? Math.floor(val / 1000)
+            : val;
+        if (!isValidUnixSec(normSec)) return null;
+        resolvedSecs.push(normSec);
       } else if (typeof val === "string" && val.trim()) {
         const ms = Date.parse(val.trim());
         if (!Number.isFinite(ms)) return null;
@@ -2566,24 +2616,89 @@ export function buildLocalCloudUpgradeHint(toolName = "") {
 export const LOCAL_STATELESS_CLOUD_UPGRADE_HINT = buildLocalCloudUpgradeHint("");
 
 export function executeLocalMcpTool(toolName, rawArgs = {}, options = {}) {
+  const isZeroArgCall =
+    rawArgs === undefined ||
+    (rawArgs !== null &&
+      typeof rawArgs === "object" &&
+      !Array.isArray(rawArgs) &&
+      Object.keys(rawArgs).length === 0);
   const result = executeLocalMcpToolCore(toolName, rawArgs);
   const suppressHint = Boolean(options?.suppressCloudUpgradeHint || options?.apiKey);
-  if (
-    !suppressHint &&
-    result &&
-    typeof result === "object" &&
-    result.ok !== false &&
-    !result.error
-  ) {
+  if (result && typeof result === "object" && result.ok !== false && !result.error) {
     const cloudUpgradeHint = buildLocalCloudUpgradeHint(toolName);
-    return {
-      ...result,
-      interactiveWebAutorunUrl: cloudUpgradeHint.interactiveWebAutorunUrl,
-      cloudUpgradeHint,
-    };
+    if (!suppressHint) {
+      return {
+        ...result,
+        ...(isZeroArgCall ? { sample: true, demo: true } : {}),
+        interactiveWebAutorunUrl: cloudUpgradeHint.interactiveWebAutorunUrl,
+        cloudUpgradeHint,
+      };
+    }
+    if (isZeroArgCall) {
+      return {
+        ...result,
+        sample: true,
+        demo: true,
+        interactiveWebAutorunUrl:
+          result.interactiveWebAutorunUrl || cloudUpgradeHint.interactiveWebAutorunUrl,
+      };
+    }
   }
   return result;
 }
+
+function parseGhostFlexibleTimestampSec(rawVal, fieldLabel) {
+  if (typeof rawVal === "number" && Number.isSafeInteger(rawVal) && rawVal > 0) {
+    if (rawVal >= 100_000_000_000) {
+      const sec = Math.floor(rawVal / 1000);
+      if (sec <= 0 || sec > 10_000_000_000) {
+        const err = new Error(
+          `Invalid params: ${fieldLabel} millisecond epoch timestamp is out of bounds.`
+        );
+        err.code = -32602;
+        throw err;
+      }
+      return sec;
+    }
+    if (rawVal > 10_000_000_000) {
+      const err = new Error(`Invalid params: ${fieldLabel} timestamp is out of bounds.`);
+      err.code = -32602;
+      throw err;
+    }
+    return rawVal;
+  }
+  if (typeof rawVal === "string" && rawVal.trim().length > 0) {
+    const parsedMs = Date.parse(rawVal.trim());
+    if (!Number.isFinite(parsedMs) || parsedMs <= 0) {
+      const err = new Error(`Invalid params: ${fieldLabel} must be a valid timestamp.`);
+      err.code = -32602;
+      throw err;
+    }
+    const sec = Math.floor(parsedMs / 1000);
+    if (sec <= 0 || sec > 10_000_000_000) {
+      const err = new Error(`Invalid params: ${fieldLabel} ISO-8601 timestamp is out of bounds.`);
+      err.code = -32602;
+      throw err;
+    }
+    return sec;
+  }
+  const err = new Error(
+    `Invalid params: ${fieldLabel} must be a positive integer (epoch seconds or milliseconds) or ISO-8601 string.`
+  );
+  err.code = -32602;
+  throw err;
+}
+
+const VALID_STRIPE_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "canceled",
+  "unpaid",
+  "incomplete",
+  "incomplete_expired",
+  "paused",
+]);
 
 function executeLocalMcpToolCore(toolName, rawArgs = {}) {
   const inputArgs =
@@ -2598,14 +2713,16 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     err.reason = "INVALID_ARGUMENTS_OBJECT";
     throw err;
   }
-  const secretScan = scanLocalMcpPayloadForSecrets(inputArgs);
+  const isZeroArgCall = Object.keys(inputArgs).length === 0;
+  const effectiveInputArgs = isZeroArgCall ? { demo: true } : inputArgs;
+  const secretScan = scanLocalMcpPayloadForSecrets(effectiveInputArgs);
   if (!secretScan.ok) {
     const err = new Error(`Invalid params: ${secretScan.reason}`);
     err.code = -32602;
     err.reason = secretScan.reason;
     throw err;
   }
-  const normalizedRes = normalizeMcpToolArgs(toolName, inputArgs);
+  const normalizedRes = normalizeMcpToolArgs(toolName, effectiveInputArgs);
   if (!normalizedRes.ok) {
     const err = new Error(normalizedRes.message);
     err.code = -32602;
@@ -3848,9 +3965,21 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     }
     const supplyType =
       args.supplyType === undefined ? "GOODS" : args.supplyType.trim().toUpperCase();
-    const norm = normalizeVatId(args.buyerVatId || "");
-    const viesMode = String(args.viesMode || "FORMAT_ONLY").toUpperCase();
     const isDemo = args.demo === true;
+    if (
+      args.buyerVatId !== undefined &&
+      (typeof args.buyerVatId !== "string" || args.buyerVatId.trim().length === 0)
+    ) {
+      const err = new Error("Invalid params: buyerVatId string is required.");
+      err.code = -32602;
+      throw err;
+    }
+    const effectiveBuyerVatId =
+      args.buyerVatId === undefined && isDemo ? "NL123456789B01" : args.buyerVatId || "";
+    const norm = normalizeVatId(effectiveBuyerVatId);
+    const viesMode = String(
+      args.viesMode || (args.buyerVatId === undefined && isDemo ? "VALID" : "FORMAT_ONLY")
+    ).toUpperCase();
     const crossBorder = Boolean(norm.validFormat && sellerCountry !== norm.memberState);
     const goodsOnlyProtocol = Boolean(
       crossBorder && (sellerCountry === "XI" || norm.memberState === "XI")
@@ -4145,6 +4274,16 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
   }
 
   if (toolName === "revclamp_reconcile_b2b_net_terms") {
+    if (args.demo !== undefined && typeof args.demo !== "boolean") {
+      const err = new Error("Invalid params: demo must be a boolean.");
+      err.code = -32602;
+      throw err;
+    }
+    const isNetDemoPreview =
+      args.demo === true &&
+      args.totalOrderCents === undefined &&
+      args.orderTotalCents === undefined &&
+      args.paidAmountCents === undefined;
     if (
       args.orderId !== undefined &&
       (typeof args.orderId !== "string" ||
@@ -4155,7 +4294,12 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
-    const orderId = args.orderId !== undefined ? args.orderId.trim() : "ord_local_b2b_01";
+    const orderId =
+      args.orderId !== undefined
+        ? args.orderId.trim()
+        : isNetDemoPreview
+          ? "ord_demo_b2b_01"
+          : "ord_local_b2b_01";
     if (
       args.totalOrderCents !== undefined &&
       args.orderTotalCents !== undefined &&
@@ -4167,7 +4311,9 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
-    const orderTotalCents = args.totalOrderCents ?? args.orderTotalCents;
+    const orderTotalCents = isNetDemoPreview
+      ? 250_000
+      : args.totalOrderCents ?? args.orderTotalCents;
     if (!Number.isSafeInteger(orderTotalCents) || orderTotalCents <= 0) {
       const err = new Error(
         "INVALID_TOTAL_ORDER_CENTS: totalOrderCents / orderTotalCents must be a positive safe integer."
@@ -4175,7 +4321,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
-    const paidAmountCents = args.paidAmountCents;
+    const paidAmountCents = isNetDemoPreview ? 75_000 : args.paidAmountCents;
     if (
       typeof paidAmountCents !== "number" ||
       !Number.isSafeInteger(paidAmountCents) ||
@@ -4330,6 +4476,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     return {
       ok: true,
       executionMode: "local_open_source_engine",
+      ...(isNetDemoPreview || args.demo === true ? { sample: true, demo: true } : {}),
       orderId,
       state,
       status,
@@ -4422,8 +4569,9 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     if (
       args.usageTimestampSec !== undefined &&
       (typeof args.usageTimestampSec !== "number" ||
-        !Number.isInteger(args.usageTimestampSec) ||
-        args.usageTimestampSec <= 0)
+        !Number.isSafeInteger(args.usageTimestampSec) ||
+        args.usageTimestampSec <= 0 ||
+        args.usageTimestampSec > 10_000_000_000)
     ) {
       const err = new Error("Invalid params: usageTimestampSec must be a positive integer.");
       err.code = -32602;
@@ -4432,8 +4580,9 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     if (
       args.occurredAtSec !== undefined &&
       (typeof args.occurredAtSec !== "number" ||
-        !Number.isInteger(args.occurredAtSec) ||
-        args.occurredAtSec <= 0)
+        !Number.isSafeInteger(args.occurredAtSec) ||
+        args.occurredAtSec <= 0 ||
+        args.occurredAtSec > 10_000_000_000)
     ) {
       const err = new Error("Invalid params: occurredAtSec must be a positive integer.");
       err.code = -32602;
@@ -4442,6 +4591,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     const tsCandidates = [];
     if (args.usageTimestampSec !== undefined) tsCandidates.push(args.usageTimestampSec);
     if (args.occurredAtSec !== undefined) tsCandidates.push(args.occurredAtSec);
+    for (const topFlexTsKey of ["occurredAt", "occurred_at", "timestamp"]) {
+      if (args[topFlexTsKey] !== undefined) {
+        tsCandidates.push(parseGhostFlexibleTimestampSec(args[topFlexTsKey], topFlexTsKey));
+      }
+    }
     if (evObj) {
       for (const intKey of [
         "occurred_at_sec",
@@ -4453,7 +4607,8 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           if (
             typeof evObj[intKey] !== "number" ||
             !Number.isSafeInteger(evObj[intKey]) ||
-            evObj[intKey] <= 0
+            evObj[intKey] <= 0 ||
+            evObj[intKey] > 10_000_000_000
           ) {
             const err = new Error(
               `Invalid params: usageEvent.${intKey} must be a positive integer.`
@@ -4466,50 +4621,171 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       }
       for (const flexKey of ["occurred_at", "created", "timestamp"]) {
         if (evObj[flexKey] !== undefined) {
-          const rawFlex = evObj[flexKey];
-          if (typeof rawFlex === "number" && Number.isSafeInteger(rawFlex) && rawFlex > 0) {
-            tsCandidates.push(rawFlex);
-          } else if (typeof rawFlex === "string" && rawFlex.trim().length > 0) {
-            const parsedMs = Date.parse(rawFlex.trim());
-            if (!Number.isFinite(parsedMs) || parsedMs <= 0) {
-              const err = new Error(
-                `Invalid params: usageEvent.${flexKey} must be a valid timestamp.`
-              );
-              err.code = -32602;
-              throw err;
-            }
-            tsCandidates.push(Math.floor(parsedMs / 1000));
-          } else {
-            const err = new Error(
-              `Invalid params: usageEvent.${flexKey} must be a positive integer or ISO-8601 string.`
-            );
-            err.code = -32602;
-            throw err;
-          }
+          tsCandidates.push(
+            parseGhostFlexibleTimestampSec(evObj[flexKey], `usageEvent.${flexKey}`)
+          );
         }
       }
     }
     if (tsCandidates.length > 1 && new Set(tsCandidates).size > 1) {
       const err = new Error(
-        "CONFLICTING_GHOST_USAGE_TIMESTAMPS: usageTimestampSec, occurredAtSec, and usageEvent timestamps must match when multiple are provided."
+        "CONFLICTING_GHOST_USAGE_TIMESTAMPS: usageTimestampSec, occurredAtSec, occurredAt/timestamp, and usageEvent timestamps must match when multiple are provided."
       );
       err.code = -32602;
+      err.reason = "CONFLICTING_GHOST_USAGE_TIMESTAMPS";
       throw err;
     }
-    const effectiveSubscriptionsArg =
-      args.subscriptions === undefined && args.demo === true
-        ? {
-            has_more: false,
-            data: [
-              {
-                id: "sub_demo_ghost_01",
-                customer: topCustomerId || evCustomerId || "cus_demo_ghost_01",
-                status: "canceled",
-                current_period_end: 1700000000,
-              },
-            ],
-          }
-        : args.subscriptions;
+
+    let normalizedFlatSubStatus = "";
+    if (args.subscriptionStatus !== undefined) {
+      if (typeof args.subscriptionStatus !== "string" || !args.subscriptionStatus.trim()) {
+        const err = new Error(
+          "INVALID_SUBSCRIPTION_STATUS: subscriptionStatus must be a non-empty Stripe subscription status string."
+        );
+        err.code = -32602;
+        err.reason = "INVALID_SUBSCRIPTION_STATUS";
+        throw err;
+      }
+      const candidateSt = args.subscriptionStatus.trim().toLowerCase();
+      if (!VALID_STRIPE_SUBSCRIPTION_STATUSES.has(candidateSt)) {
+        const err = new Error(
+          `INVALID_SUBSCRIPTION_STATUS: unsupported Stripe subscriptionStatus '${candidateSt}'.`
+        );
+        err.code = -32602;
+        err.reason = "INVALID_SUBSCRIPTION_STATUS";
+        throw err;
+      }
+      normalizedFlatSubStatus = candidateSt;
+    }
+
+    const periodEndCandidates = [];
+    if (args.currentPeriodEndSec !== undefined) {
+      if (
+        typeof args.currentPeriodEndSec !== "number" ||
+        !Number.isSafeInteger(args.currentPeriodEndSec) ||
+        args.currentPeriodEndSec <= 0 ||
+        args.currentPeriodEndSec > 10_000_000_000
+      ) {
+        const err = new Error(
+          "Invalid params: currentPeriodEndSec must be a positive integer in Unix epoch seconds."
+        );
+        err.code = -32602;
+        throw err;
+      }
+      periodEndCandidates.push(args.currentPeriodEndSec);
+    }
+    for (const flexPeKey of ["current_period_end", "currentPeriodEnd"]) {
+      if (args[flexPeKey] !== undefined) {
+        periodEndCandidates.push(parseGhostFlexibleTimestampSec(args[flexPeKey], flexPeKey));
+      }
+    }
+    if (periodEndCandidates.length > 1 && new Set(periodEndCandidates).size > 1) {
+      const err = new Error(
+        "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS: currentPeriodEndSec and current_period_end must match when multiple are provided."
+      );
+      err.code = -32602;
+      err.reason = "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS";
+      throw err;
+    }
+    const resolvedPeriodEndSec =
+      periodEndCandidates.length > 0 ? periodEndCandidates[0] : undefined;
+
+    const failedAtCandidates = [];
+    if (args.latestInvoiceFailedAtSec !== undefined) {
+      if (
+        typeof args.latestInvoiceFailedAtSec !== "number" ||
+        !Number.isSafeInteger(args.latestInvoiceFailedAtSec) ||
+        args.latestInvoiceFailedAtSec <= 0 ||
+        args.latestInvoiceFailedAtSec > 10_000_000_000
+      ) {
+        const err = new Error(
+          "Invalid params: latestInvoiceFailedAtSec must be a positive integer in Unix epoch seconds."
+        );
+        err.code = -32602;
+        throw err;
+      }
+      failedAtCandidates.push(args.latestInvoiceFailedAtSec);
+    }
+    if (args.latest_invoice_failed_at !== undefined) {
+      failedAtCandidates.push(
+        parseGhostFlexibleTimestampSec(args.latest_invoice_failed_at, "latest_invoice_failed_at")
+      );
+    }
+    if (failedAtCandidates.length > 1 && new Set(failedAtCandidates).size > 1) {
+      const err = new Error(
+        "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS: latestInvoiceFailedAtSec and latest_invoice_failed_at must match when both are provided."
+      );
+      err.code = -32602;
+      err.reason = "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS";
+      throw err;
+    }
+    const resolvedFailedAtSec = failedAtCandidates.length > 0 ? failedAtCandidates[0] : undefined;
+
+    const hasFlatSubShorthand =
+      normalizedFlatSubStatus !== "" ||
+      resolvedPeriodEndSec !== undefined ||
+      resolvedFailedAtSec !== undefined;
+
+    let effectiveSubscriptionsArg = args.subscriptions;
+    if (args.subscriptions === undefined && hasFlatSubShorthand) {
+      if (!normalizedFlatSubStatus) {
+        const err = new Error(
+          "Invalid params: subscriptionStatus is required when passing currentPeriodEndSec / latestInvoiceFailedAtSec without subscriptions."
+        );
+        err.code = -32602;
+        throw err;
+      }
+      if (
+        DELINQUENT_OR_TERMINAL_SUB_STATUSES.has(normalizedFlatSubStatus) &&
+        resolvedPeriodEndSec === undefined &&
+        resolvedFailedAtSec === undefined &&
+        args.demo !== true
+      ) {
+        const err = new Error(
+          "Invalid params: currentPeriodEndSec (or latestInvoiceFailedAtSec) is required when using flat subscriptionStatus for canceled or delinquent subscriptions."
+        );
+        err.code = -32602;
+        throw err;
+      }
+      const synthCustomer = topCustomerId || evCustomerId || "cus_flat_shorthand_01";
+      const synthPeriodEndSec =
+        resolvedPeriodEndSec ??
+        (args.demo === true ? 1700000000 : Math.floor(Date.now() / 1000) + 30 * 86_400);
+      effectiveSubscriptionsArg = {
+        has_more: false,
+        data: [
+          {
+            id: "sub_flat_shorthand_01",
+            customer: synthCustomer,
+            status: normalizedFlatSubStatus,
+            current_period_end: synthPeriodEndSec,
+            ...(resolvedFailedAtSec !== undefined
+              ? { latest_invoice_failed_at: resolvedFailedAtSec }
+              : normalizedFlatSubStatus === "past_due" && resolvedPeriodEndSec !== undefined
+                ? { latest_invoice_failed_at: resolvedPeriodEndSec }
+                : {}),
+            ...((normalizedFlatSubStatus === "unpaid" ||
+              normalizedFlatSubStatus === "incomplete_expired") &&
+            resolvedPeriodEndSec !== undefined
+              ? { ended_at: resolvedPeriodEndSec }
+              : {}),
+          },
+        ],
+      };
+    } else if (args.subscriptions === undefined && args.demo === true) {
+      effectiveSubscriptionsArg = {
+        has_more: false,
+        data: [
+          {
+            id: "sub_demo_ghost_01",
+            customer: topCustomerId || evCustomerId || "cus_demo_ghost_01",
+            status: "canceled",
+            current_period_end: 1700000000,
+          },
+        ],
+      };
+    }
+
     const isSubsArray = Array.isArray(effectiveSubscriptionsArg);
     const isSubsObj =
       !isSubsArray &&
@@ -4543,6 +4819,36 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       const err = new Error("Invalid params: every item in subscriptions must be an object.");
       err.code = -32602;
       throw err;
+    }
+    if (args.subscriptions !== undefined && hasFlatSubShorthand) {
+      if (rawSubsList.length === 0) {
+        const err = new Error(
+          "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS: subscriptions array is empty while flat subscriptionStatus was provided."
+        );
+        err.code = -32602;
+        err.reason = "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS";
+        throw err;
+      }
+      for (const s of rawSubsList) {
+        const subSt = typeof s?.status === "string" ? s.status.trim().toLowerCase() : "";
+        if (normalizedFlatSubStatus && subSt !== normalizedFlatSubStatus) {
+          const err = new Error(
+            `CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS: flat subscriptionStatus '${normalizedFlatSubStatus}' conflicts with subscriptions status '${subSt || "missing"}'.`
+          );
+          err.code = -32602;
+          err.reason = "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS";
+          throw err;
+        }
+        const subPe = extractSubPeriodEndSec(s);
+        if (resolvedPeriodEndSec !== undefined && subPe !== null && subPe !== resolvedPeriodEndSec) {
+          const err = new Error(
+            "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS: flat currentPeriodEndSec conflicts with subscriptions current_period_end."
+          );
+          err.code = -32602;
+          err.reason = "CONFLICTING_GHOST_USAGE_SUBSCRIPTIONS";
+          throw err;
+        }
+      }
     }
     const subCusIds = [];
     const subEmails = [];
@@ -4604,9 +4910,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       has_more: isCompletePagination ? false : true,
     };
     const fallbackTsSec =
-      args.usageTimestampSec ??
-      args.occurredAtSec ??
-      (evObj ? undefined : Math.floor(Date.now() / 1000));
+      tsCandidates.length > 0
+        ? tsCandidates[0]
+        : evObj
+          ? undefined
+          : Math.floor(Date.now() / 1000);
     const normalizedUsageEvent = evObj
       ? {
           ...evObj,
@@ -4634,6 +4942,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     );
     return {
       ...res,
+      ...(args.demo === true ? { sample: true, demo: true } : {}),
       isGhostLeak: res.isGhostUsage,
       evaluation: {
         ...res,
@@ -5424,6 +5733,29 @@ export function executeLocalMcpJsonRpc(
                 },
               }
             : {}),
+        },
+      };
+    }
+
+    const isZeroArgRpcCall = Object.keys(rawToolArgs).length === 0;
+    if (
+      !isZeroArgRpcCall &&
+      toolName === "revclamp_validate_eu_vat_vies" &&
+      effectiveToolArgs.demo !== true &&
+      (typeof effectiveToolArgs.buyerVatId !== "string" ||
+        effectiveToolArgs.buyerVatId.trim().length === 0)
+    ) {
+      return {
+        jsonrpc: "2.0",
+        id: safeId,
+        error: {
+          code: -32602,
+          message: "Invalid params: buyerVatId string is required",
+          data: {
+            tool: toolName,
+            reason: "SCHEMA_VALIDATION_ERROR",
+            exampleCall: exampleCallMap[toolName],
+          },
         },
       };
     }
