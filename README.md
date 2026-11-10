@@ -62,14 +62,14 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 
 ```bash
 # Run a <60s local CLI smoke check (verifies all 9 tool schemas & executes a local_engine.mjs sample audit with zero API key)
-npx -y github:lhphong09t2/revclamp-mcp#v1.20.28 --self-test
+npx -y github:lhphong09t2/revclamp-mcp#v1.20.29 --self-test
 
 # Provision a free Cloud Workspace instantly (zero email required; saves to ~/.revclamp/credentials.json) or bind a work email via 6-digit OTP
-npx -y revclamp-mcp@1.20.28 --init-workspace
-npx -y revclamp-mcp@1.20.28 --init-workspace you@company.com
+npx -y revclamp-mcp@1.20.29 --init-workspace
+npx -y revclamp-mcp@1.20.29 --init-workspace you@company.com
 
 # Verify the 6-digit OTP using REVCLAMP_API_KEY from environment
-REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.28 --verify-otp you@company.com 123456
+REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.29 --verify-otp you@company.com 123456
 
 # List all 9 MCP tools and JSON schemas (runs locally in-process)
 node index.mjs --list-tools
@@ -133,6 +133,12 @@ node index.mjs --call revclamp_stage_stripe_dispute_ce3 '{"disputeId":"du_1Qxyz0
 | **RevClamp AdPulse** (`@revclamp/google-ads-transparency-mcp`) | Zero-browser Google Ads Transparency Center (`AR...` entity disambiguation, `CR...` creatives, static `content.js` ad copy, regional disclosures) | `npx -y @revclamp/google-ads-transparency-mcp --mcp-stdio` | [Apify Store](https://apify.com/revclamp/google-ads-transparency-mcp) · [npm](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp) |
 | **RevClamp TalentPulse** (`@revclamp/unified-ats-jobs-mcp`) | Zero-browser 5-in-1 B2B ATS Job & Hiring Signal Feed across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters | `npx -y @revclamp/unified-ats-jobs-mcp --mcp-stdio` | [Apify Store](https://apify.com/revclamp/unified-ats-jobs-mcp) · [npm](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) |
 | **RevClamp ContactPulse** (`@revclamp/b2b-domain-contact-enricher-mcp`) | Zero-browser B2B Domain Contact, RFC 9116 `/.well-known/security.txt`, Schema.org `ContactPoint`, and DoH `MX` / `SPF` / `_dmarc` Enricher | `npx -y @revclamp/b2b-domain-contact-enricher-mcp --mcp-stdio` | [Apify Store](https://apify.com/revclamp/b2b-domain-contact-enricher-mcp) · [npm](https://www.npmjs.com/package/@revclamp/b2b-domain-contact-enricher-mcp) |
+
+### Continuous Daily Hiring Diff Monitoring (`search_ats_job_postings` / `resolve_company_ats_board` + `/api/v1/b2b/ats-watchlist` + `n8n-nodes-revclamp`)
+
+- **Point-in-Time Discovery (`search_ats_job_postings` & `resolve_company_ats_board` in `@revclamp/unified-ats-jobs-mcp` / `POST /api/v1/b2b/ats-jobs`):** Resolves any company domain or career page URL across Greenhouse, Ashby, Lever, SmartRecruiters, and Workday into normalized job postings and hiring velocity metrics.
+- **Stateful Daily Diff Watchlist (`/api/v1/b2b/ats-watchlist`):** Pairs with `search_ats_job_postings` and `resolve_company_ats_board` to persist canonical board snapshots (50-to-1 deduplicated upstream polling) and emit structured daily `JOB_OPENED`, `COMPENSATION_UPDATED`, and `JOB_CLOSED` diffs via `/api/v1/b2b/ats-watchlist/preview-diff`, `/api/v1/b2b/ats-watchlist/sync`, and `/api/v1/b2b/ats-watchlist/events`. Try the interactive browser sandbox at [`https://revclamp.com/tools/ats-hiring-watchlist`](https://revclamp.com/tools/ats-hiring-watchlist).
+- **Official n8n Community Nodes (`n8n-nodes-revclamp`):** Install `n8n-nodes-revclamp` (`RevClampHiringWatchlist` Action node + `RevClampHiringWatchlistTrigger` Polling Trigger node) to trigger automated outbound, recruiting, and CRM enrichment workflows whenever target accounts open new roles or raise salary bands.
 
 ## Security & Resource Bounds
 
