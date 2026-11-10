@@ -133,6 +133,14 @@ Every job posting across all 5 ATS providers is normalized into a deterministic 
 
 ---
 
+## Companion Web Playground, Daily Watchlist & n8n Workflow Nodes
+
+- **Interactive Career Page Hiring Watchlist Sandbox:** [https://revclamp.com/tools/ats-hiring-watchlist](https://revclamp.com/tools/ats-hiring-watchlist)
+- **Official n8n Community Nodes (`RevClampHiringWatchlist` Action + Trigger):** [https://www.npmjs.com/package/n8n-nodes-revclamp](https://www.npmjs.com/package/n8n-nodes-revclamp) ([GitHub](https://github.com/lhphong09t2/n8n-nodes-revclamp))
+- **RevClamp MCP Hub:** [https://revclamp.com/mcp#mcp-talentpulse-companion-card](https://revclamp.com/mcp#mcp-talentpulse-companion-card)
+
+---
+
 ## RevClamp B2B Intelligence Suite (Companion Tools)
 
 | Product | npm Package | Primary Use Case |
@@ -140,6 +148,8 @@ Every job posting across all 5 ATS providers is normalized into a deterministic 
 | **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Paddle`, `Lemon Squeezy`, `Shopify`) |
 | **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp)** | [`@revclamp/google-ads-transparency-mcp`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
 | **[RevClamp TalentPulse](https://apify.com/revclamp/unified-ats-jobs-mcp)** | [`@revclamp/unified-ats-jobs-mcp`](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) | Unified 5-in-1 B2B ATS job postings, salary ranges & tech-stack hiring signals (`Greenhouse`, `Workday CXS`, `Ashby`, `Lever`, `SmartRecruiters`) |
+| **[RevClamp TalentPulse Watchlist](https://revclamp.com/tools/ats-hiring-watchlist)** | [`/api/v1/b2b/ats-watchlist`](https://revclamp.com/tools/ats-hiring-watchlist) | Stateful daily B2B career page diff engine (`JOB_OPENED`, `COMPENSATION_UPDATED`, `JOB_CLOSED`) with 50-to-1 deduplicated ATS polling & verified-email/webhook alerts |
+| **[RevClamp n8n Community Nodes](https://www.npmjs.com/package/n8n-nodes-revclamp)** | [`n8n-nodes-revclamp`](https://github.com/lhphong09t2/n8n-nodes-revclamp) | Official Creator-Portal-compliant n8n Action & Polling Trigger nodes (`RevClampHiringWatchlist` & `RevClampHiringWatchlistTrigger`) for automated B2B hiring-signal workflows |
 | **[RevClamp ContactPulse](https://apify.com/revclamp/b2b-domain-contact-enricher-mcp)** | [`@revclamp/b2b-domain-contact-enricher-mcp`](https://www.npmjs.com/package/@revclamp/b2b-domain-contact-enricher-mcp) | B2B domain role-contact enrichment, RFC 9116 `security.txt` audit & DNS-over-HTTPS MX/SPF/DMARC deliverability posture |
 
 ---
