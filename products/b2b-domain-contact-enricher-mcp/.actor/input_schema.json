@@ -7,10 +7,10 @@
     "query": {
       "title": "Target B2B Domain(s) or Company URL",
       "type": "string",
-      "description": "Single domain or comma/space-separated B2B domains/URLs (e.g. 'stripe.com', 'linear.app, cloudflare.com, shopify.com, github.com').",
+      "description": "Single domain or comma/space-separated B2B domains/URLs (e.g. 'stripe.com', 'linear.app, cloudflare.com, shopify.com').",
       "editor": "textfield",
-      "default": "stripe.com, linear.app, cloudflare.com, shopify.com, github.com",
-      "prefill": "stripe.com, linear.app, cloudflare.com, shopify.com, github.com"
+      "default": "stripe.com, linear.app, cloudflare.com, shopify.com",
+      "prefill": "stripe.com, linear.app, cloudflare.com, shopify.com"
     },
     "domain": {
       "title": "Target B2B Domain (Alias)",
@@ -82,8 +82,8 @@
       "type": "integer",
       "description": "Maximum number of enriched B2B domain profiles to return in a single call (bounded to 1..25).",
       "editor": "number",
-      "default": 5,
-      "prefill": 5,
+      "default": 4,
+      "prefill": 4,
       "minimum": 1,
       "maximum": 25
     },

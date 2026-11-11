@@ -1,7 +1,7 @@
 {
   "name": "@revclamp/b2b-domain-contact-enricher-mcp",
   "mcpName": "com.revclamp/b2b-domain-contact-enricher-mcp",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "description": "B2B Domain Contact, Email & DNS Enricher MCP. Deterministic company domain contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher. Independent B2B tool by RevClamp.",
   "license": "MIT",

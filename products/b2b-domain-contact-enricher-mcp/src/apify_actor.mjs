@@ -195,6 +195,8 @@ export async function loadApifyActorInput(
 
   const isAtHome = env?.APIFY_IS_AT_HOME === '1' || env?.APIFY_IS_AT_HOME === 'true';
   const DEFAULT_SCHEMA_QUERY =
+    'stripe.com, linear.app, cloudflare.com, shopify.com';
+  const LEGACY_SCHEMA_QUERY =
     'stripe.com, linear.app, cloudflare.com, shopify.com, github.com';
   const applyAtHomeSchemaDefaults = (parsedInput) => {
     if (!parsedInput || typeof parsedInput !== 'object' || Array.isArray(parsedInput)) {
@@ -209,12 +211,15 @@ export async function loadApifyActorInput(
         return String(v).trim() !== '';
       });
     if (
-      next.query === DEFAULT_SCHEMA_QUERY &&
+      (next.query === DEFAULT_SCHEMA_QUERY || next.query === LEGACY_SCHEMA_QUERY) &&
       hasNonEmptyAlias(['domains', 'domain', 'company', 'url'])
     ) {
       delete next.query;
     }
-    if (next.maxResults === 5 && hasNonEmptyAlias(['limit', 'max_results'])) {
+    if (
+      (next.maxResults === 4 || next.maxResults === 5) &&
+      hasNonEmptyAlias(['limit', 'max_results'])
+    ) {
       delete next.maxResults;
     }
     if (
@@ -233,9 +238,13 @@ export async function loadApifyActorInput(
       !Object.prototype.hasOwnProperty.call(next, 'url') &&
       !hasNonEmptyAlias(['pageToken', 'cursor'])
     ) {
+      const hasExplicitLimit =
+        Object.prototype.hasOwnProperty.call(next, 'maxResults') ||
+        Object.prototype.hasOwnProperty.call(next, 'limit') ||
+        Object.prototype.hasOwnProperty.call(next, 'max_results');
       return {
         query: DEFAULT_SCHEMA_QUERY,
-        maxResults: 5,
+        ...(!hasExplicitLimit ? { maxResults: 4 } : {}),
         ...next,
       };
     }
