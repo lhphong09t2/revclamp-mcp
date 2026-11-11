@@ -22,7 +22,7 @@
   ],
   "manifest": {
     "name": "google-ads-transparency-mcp",
-    "version": "1.0.17",
+    "version": "1.0.18",
     "title": "Google Ads Transparency Center Scraper & MCP | RevClamp AdPulse",
     "websiteUrl": "https://revclamp.com",
     "description": "Google Ads Transparency Center and Google Ad Library scraper & MCP server. Find verified advertiser entities and extract active or historical ad creatives (Text, Image, Video), preview links, and run dates. Independent tool by RevClamp.",

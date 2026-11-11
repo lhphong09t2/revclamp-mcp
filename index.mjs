@@ -213,7 +213,7 @@ export function writeSavedWorkspaceCredentials(
 }
 
 const LIVE_SECRET_GUARD_RE =
-  /(?:[sr]k_live_[A-Za-z0-9_-]{4,}|whsec_live_[A-Za-z0-9_-]{4,}|whsec_(?!test_|synth_|sandbox_|demo_|sample_|mock_|example_|fake_|dummy_)[A-Za-z0-9_-]{10,}|shpss_live_[A-Za-z0-9_-]{4,}|shpss_[0-9a-fA-F]{16,}|shp(?:at|ua|ca|pa)_[A-Za-z0-9_-]{8,}|lsq_[A-Za-z0-9_-]{4,}|r[gc]_live_[A-Za-z0-9_-]{4,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
+  /(?:[sr]k_live_[A-Za-z0-9_-]{4,}|whsec_live_[A-Za-z0-9_-]{4,}|whsec_(?!test_|synth_|sandbox_|demo_|sample_|mock_|example_|fake_|dummy_)[A-Za-z0-9_-]{10,}|shpss_live_[A-Za-z0-9_-]{4,}|shpss_[0-9a-fA-F]{16,}|shp(?:at|ua|ca|pa)_[A-Za-z0-9_-]{8,}|r[gc]_live_[A-Za-z0-9_-]{4,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
 
 export function toSafeRpcId(rawId) {
   if (typeof rawId === "number" && Number.isFinite(rawId)) {
@@ -276,13 +276,24 @@ export function resolveValidatedMcpEndpoint(rawUrl = DEFAULT_MCP_ENDPOINT) {
   } catch {
     throw new Error("INVALID_MCP_ENDPOINT_URL");
   }
-  if (parsed.protocol !== "https:") {
-    throw new Error("UNSAFE_MCP_ENDPOINT_PROTOCOL");
-  }
   if (parsed.username || parsed.password) {
     throw new Error("UNSAFE_MCP_ENDPOINT_CREDENTIALS");
   }
-  if (!ALLOWED_MCP_ORIGINS.has(parsed.origin)) {
+  const baseOriginWithoutPort = `${parsed.protocol}//${parsed.hostname}`;
+  const validOptionalPort =
+    parsed.port === "" ||
+    (Number.isInteger(Number(parsed.port)) &&
+      Number(parsed.port) >= 1 &&
+      Number(parsed.port) <= 65535);
+  const isLoopbackHttp =
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+    validOptionalPort &&
+    ALLOWED_MCP_ORIGINS.has(baseOriginWithoutPort);
+  if (parsed.protocol !== "https:" && !isLoopbackHttp) {
+    throw new Error("UNSAFE_MCP_ENDPOINT_PROTOCOL");
+  }
+  if (!isLoopbackHttp && !ALLOWED_MCP_ORIGINS.has(parsed.origin)) {
     throw new Error(`UNTRUSTED_MCP_ENDPOINT_ORIGIN:${parsed.origin}`);
   }
   if (parsed.pathname !== "/api/mcp") {
@@ -398,6 +409,9 @@ export async function forwardMcpJsonRpc(
     apiKey || effectiveEnv.REVCLAMP_API_KEY || savedCred?.apiKey || ""
   ).trim();
   const effectiveFetch = fetchImpl || globalThis.fetch;
+  const effectiveMode = String(
+    mode || effectiveEnv.REVCLAMP_MCP_MODE || process.env.REVCLAMP_MCP_MODE || ""
+  ).toLowerCase();
   const hasExplicitRemote =
     Boolean(fetchImpl) ||
     Boolean(endpointUrl) ||
@@ -405,7 +419,7 @@ export async function forwardMcpJsonRpc(
     Boolean(apiUrl) ||
     Boolean(resolvedApiKey) ||
     Boolean(effectiveEnv.REVCLAMP_MCP_URL || process.env.REVCLAMP_MCP_URL) ||
-    String(mode || "").toLowerCase() === "remote";
+    effectiveMode === "remote";
   const resolvedEndpointUrl =
     endpointUrl ||
     endpoint ||
@@ -532,7 +546,6 @@ export async function forwardMcpJsonRpc(
   }
 
   try {
-    const validatedEndpoint = resolveValidatedMcpEndpoint(resolvedEndpointUrl);
     const serialized = JSON.stringify(rpcRequest);
     if (Buffer.byteLength(serialized, "utf8") > MAX_PAYLOAD_BYTES) {
       if (isNotification) {
@@ -556,7 +569,7 @@ export async function forwardMcpJsonRpc(
     const cleanKey = resolvedApiKey;
 
     if (
-      String(mode || "").toLowerCase() === "local" ||
+      effectiveMode === "local" ||
       !hasExplicitRemote ||
       isLocalOnlyViesCall
     ) {
@@ -567,6 +580,8 @@ export async function forwardMcpJsonRpc(
         { suppressCloudUpgradeHint: Boolean(cleanKey) }
       );
     }
+
+    const validatedEndpoint = resolveValidatedMcpEndpoint(resolvedEndpointUrl);
 
     const boundedTimeoutMs = Math.min(10_000, Math.max(100, Number(timeoutMs) || REQUEST_TIMEOUT_MS));
     const headers = {
@@ -1863,8 +1878,29 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
     const sellerCountry = String(positional[1] || "DE")
       .trim()
       .toUpperCase();
+    const cliEnv =
+      effectiveOptions.env && typeof effectiveOptions.env === "object"
+        ? effectiveOptions.env
+        : process.env;
+    const savedCliCred =
+      !effectiveOptions.apiKey && !cliEnv.REVCLAMP_API_KEY
+        ? readSavedWorkspaceCredentials(cliEnv, {
+            allowDefaultHome:
+              !effectiveOptions.fetchImpl && cliEnv === process.env,
+          })
+        : null;
+    const resolvedCliApiKey = String(
+      effectiveOptions.apiKey ||
+        cliEnv.REVCLAMP_API_KEY ||
+        process.env.REVCLAMP_API_KEY ||
+        savedCliCred?.apiKey ||
+        ""
+    ).trim();
     const effectiveMode = String(
-      effectiveOptions.mode || process.env.REVCLAMP_MCP_MODE || ""
+      effectiveOptions.mode ||
+        cliEnv.REVCLAMP_MCP_MODE ||
+        process.env.REVCLAMP_MCP_MODE ||
+        ""
     ).toLowerCase();
     const cliHasExplicitRemote =
       effectiveMode !== "local" &&
@@ -1872,8 +1908,8 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
         Boolean(effectiveOptions.endpointUrl) ||
         Boolean(effectiveOptions.endpoint) ||
         Boolean(effectiveOptions.apiUrl) ||
-        Boolean(String(effectiveOptions.apiKey || process.env.REVCLAMP_API_KEY || "").trim()) ||
-        Boolean(process.env.REVCLAMP_MCP_URL) ||
+        Boolean(resolvedCliApiKey) ||
+        Boolean(cliEnv.REVCLAMP_MCP_URL || process.env.REVCLAMP_MCP_URL) ||
         effectiveMode === "remote");
     const defaultViesMode = cliHasExplicitRemote ? "LIVE" : "FORMAT_ONLY";
     const viesMode = String(flagMode || positional[2] || defaultViesMode)
@@ -2248,7 +2284,22 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
   return 1;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+export function isDirectCliInvocation(
+  metaUrl = import.meta.url,
+  argv1 = process.argv[1]
+) {
+  if (!argv1 || typeof argv1 !== "string") return false;
+  const selfPath = fileURLToPath(metaUrl);
+  try {
+    return (
+      fs.realpathSync(selfPath) === fs.realpathSync(path.resolve(argv1))
+    );
+  } catch {
+    return path.resolve(selfPath) === path.resolve(argv1);
+  }
+}
+
+if (isDirectCliInvocation(import.meta.url, process.argv[1])) {
   const cliLaunchState = {};
   runCli(process.argv.slice(2), cliLaunchState).then((code) => {
     if (!cliLaunchState._stdioServerStarted) {

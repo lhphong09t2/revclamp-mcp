@@ -10,10 +10,15 @@ import { fileURLToPath } from 'node:url';
 import {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
   LIVE_SECRET_GUARD_RE,
+  SSRF_BLOCKED_HOST_RE,
   containsLiveSecretToken,
+  parseIpv6Hextets,
+  isPrivateOrReservedIp,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  resolveAndVerifyPublicHostname,
   createEphemeralHttpsAgent,
+  executePinnedHttpsRequest,
 } from './src/egress_guard.mjs';
 
 import {
@@ -89,10 +94,15 @@ import {
 export {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
   LIVE_SECRET_GUARD_RE,
+  SSRF_BLOCKED_HOST_RE,
   containsLiveSecretToken,
+  parseIpv6Hextets,
+  isPrivateOrReservedIp,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  resolveAndVerifyPublicHostname,
   createEphemeralHttpsAgent,
+  executePinnedHttpsRequest,
   GOOGLE_ADS_RPC_ENDPOINTS,
   ADVERTISER_ID_RE,
   CREATIVE_ID_RE,
@@ -240,8 +250,9 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
   }
 
   if (args.includes('--playground') || args.includes('--web-preview')) {
-    const portArg = Number(process.env.PORT || 4410);
-    const srv = await createAdPulsePreviewServer({ port: portArg });
+    const srv = await createAdPulsePreviewServer({
+      port: process.env.PORT !== undefined ? process.env.PORT : 4410,
+    });
     writeStdout(`RevClamp AdPulse Web Playground listening on ${srv.url}\n`);
     return srv;
   }

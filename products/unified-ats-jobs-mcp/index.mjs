@@ -258,8 +258,9 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
   }
 
   if (args.includes('--playground') || args.includes('--web-preview')) {
-    const portArg = Number(process.env.PORT || 4411);
-    const srv = await createTalentPulsePreviewServer({ port: portArg });
+    const srv = await createTalentPulsePreviewServer({
+      port: process.env.PORT !== undefined ? process.env.PORT : 4411,
+    });
     writeStdout(`RevClamp TalentPulse Web Playground listening on ${srv.url}\n`);
     return srv;
   }

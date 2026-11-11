@@ -168,6 +168,13 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           description:
             'When true, enriches up to 5 returned creatives with GetCreativeById regional presence and legal entity details.',
         },
+        includeAdCopy: {
+          title: 'Include Static Ad Copy (Optional)',
+          type: 'boolean',
+          default: false,
+          description:
+            'When true alongside includeCreativeDetails, extracts static headline, body text, CTA, and destination domain from allowlisted preview scripts.',
+        },
         maxEntities: {
           title: 'Max Advertiser Entities',
           type: 'integer',
@@ -175,6 +182,14 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maximum: 3,
           default: 3,
           description: 'Maximum number of verified advertiser entities to query (1 to 3).',
+        },
+        maxPages: {
+          title: 'Max Upstream Pages (Optional)',
+          type: 'integer',
+          minimum: 1,
+          maximum: 5,
+          default: 5,
+          description: 'Maximum number of upstream SearchCreatives pages to scan per call (1 to 5).',
         },
         limit: {
           title: 'Max Creatives per Call',
@@ -1220,6 +1235,7 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
           countryCode: args.countryCode,
           includeAdCopy: args.includeAdCopy === true,
           fetchImpl: options.fetchImpl,
+          dnsLookup: options.dnsLookup,
           timeoutMs: options.timeoutMs,
           maxRetries: options.maxRetries,
           deadlineAtMs,
@@ -1260,6 +1276,7 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
           includeSubsidiaries: args.includeSubsidiaries !== false,
           maxEntities: args.maxEntities ?? 3,
           fetchImpl: options.fetchImpl,
+          dnsLookup: options.dnsLookup,
           timeoutMs: options.timeoutMs,
           maxRetries: options.maxRetries,
           deadlineAtMs,
@@ -1313,6 +1330,7 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
         },
         {
           fetchImpl: options.fetchImpl,
+          dnsLookup: options.dnsLookup,
         }
       );
 

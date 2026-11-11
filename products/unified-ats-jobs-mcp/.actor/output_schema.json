@@ -1,0 +1,19 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Unified ATS Job Postings & Hiring Signal Summary",
+  "description": "Normalized B2B ATS job postings across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters (Default Dataset) and execution/billing telemetry (Key-Value Store OUTPUT).",
+  "properties": {
+    "jobPostings": {
+      "type": "string",
+      "title": "Normalized ATS Job Postings",
+      "description": "Canonical B2B job postings with compensation ranges, workplaceType, seniorityLevel, techStackKeywords, and prompt-injection sanitized excerpts.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    },
+    "runSummary": {
+      "type": "string",
+      "title": "Run Summary & Telemetry (OUTPUT)",
+      "description": "Structured execution summary, resolved ATS board metadata, pagination cursor, and billing receipt summary.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    }
+  }
+}

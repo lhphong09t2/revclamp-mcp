@@ -74,10 +74,19 @@
           title: 'Include Creative Region & Legal Details',
           hint: 'Fetch regional presence and legal entity details for up to 5 returned creatives.',
         },
+        includeAdCopy: {
+          title: 'Include Static Ad Copy (Optional)',
+          hint: 'Extract static headline, body text, CTA, and destination domain when creative details are enabled.',
+        },
         maxEntities: {
           title: 'Max Advertiser Entities',
           placeholder: '1 to 3',
           hint: 'Maximum number of verified advertiser entities to query (1 to 3).',
+        },
+        maxPages: {
+          title: 'Max Upstream Pages (Optional)',
+          placeholder: '1 to 5',
+          hint: 'Maximum number of upstream SearchCreatives pages to scan per call (1 to 5).',
         },
         limit: {
           title: 'Max Creatives per Call',
@@ -133,6 +142,10 @@
           title: 'Direct Creative Transparency URL (Optional)',
           placeholder: 'https://adstransparency.google.com/advertiser/AR.../creative/CR...?region=US',
           hint: 'Optional: Paste a full creative URL to auto-extract advertiserId (AR...), creativeId (CR...), and region.',
+        },
+        includeAdCopy: {
+          title: 'Include Static Ad Copy (Optional)',
+          hint: 'Extract static headline, body text, CTA, and destination domain from allowlisted preview scripts.',
         },
       },
     },
@@ -193,7 +206,9 @@
       .replace(/\bformatFilter\b/g, 'Ad Format')
       .replace(/\bincludeSubsidiaries\b/g, 'Include Regional Subsidiaries')
       .replace(/\bincludeCreativeDetails\b/g, 'Include Creative Region & Legal Details')
+      .replace(/\bincludeAdCopy\b/g, 'Include Static Ad Copy')
       .replace(/\bmaxEntities\b/g, 'Max Advertiser Entities')
+      .replace(/\bmaxPages\b/g, 'Max Upstream Pages')
       .replace(/\b(?:cursor|pageToken)\b/g, 'Pagination Cursor');
     if (/CONFLICTING_PARAMETER_ALIASES/i.test(rawMsg)) {
       return 'Conflicting input aliases provided. Please pass a single target or matching alias values.';

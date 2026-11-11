@@ -29,7 +29,7 @@
 | `revclamp_evaluate_ghost_usage` | Stripe `2025-03-31.basil` | Evaluates multi-subscription customer snapshots (`has_more: false` enforced) and 0–14d dunning grace windows for unpaid API/LLM bleed | Local In-Process (or Optional Cloud Key) |
 | `revclamp_stage_stripe_dispute_ce3` | Visa 10.4 / CE 3.0 | Evaluates 120d–365d prior undisputed charges (`ip_subnet`/`device_id` overlap) against caller-supplied `usageEvents` (`demo: true` for sample) and stages a non-destructive `submit: false` draft (`<= 18,000` UTF-16 code units) | Local In-Process (or Optional Cloud Key) |
 | `revclamp_validate_eu_vat_vies` | EU & `XI` B2B VAT | Normalizes 27 EU member states + Northern Ireland (`XI`) VAT IDs (`GR -> EL`), supports split (`buyerCountryCode` + `vatNumber` including numeric VAT IDs) or combined (`buyerVatId` / `vatId`) aliases with fail-closed `CONFLICTING_PARAMETER_ALIASES` guards, checks syntax locally (`FORMAT_ONLY`, `valid: null`), simulates `errorWrappers` (`demo: true`), or queries live EU VIES (`viesMode: "LIVE"` + `REVCLAMP_API_KEY`) | Local In-Process (or Optional Live VIES) |
-| `revclamp_reconcile_b2b_net_terms` | B2B Wholesale Net-30 | Reconciles Net-15/30/60 upfront deposits and credit notes using integer EUR-cent double-entry accounting | Local In-Process (or Optional Cloud Key) |
+| `revclamp_reconcile_b2b_net_terms` | B2B Wholesale Net-Terms | Reconciles Net-15/30/60 and custom 1–180d upfront deposits and credit notes using integer EUR-cent double-entry accounting | Local In-Process (or Optional Cloud Key) |
 | `revclamp_verify_webhook_signature` | Webhook HMAC-SHA256 | Generates and verifies `Stripe-Signature`, `X-Shopify-Hmac-Sha256`, and `X-RevClamp-Signature` over raw UTF-8 bytes (`node:crypto`) with 300s replay checks | Local In-Process (or Optional Cloud Key) |
 | `revclamp_calculate_roi_and_plan_fit` | 0% Take-Rate ROI & Plan Fit | Calculates monthly and annual B2B margin savings in integer USD cents vs. 25%–30% chargeback agencies and recommends the optimal tier | Local In-Process (or Optional Cloud Key) |
 | `revclamp_simulate_webhook_replay` | Webhook Replay & FSM | Simulates subscription lifecycle webhooks against a 72h deduplication `Set` and monotonic `createdSec` guard vs. naive arrival-order handlers | Local In-Process (or Optional Cloud Key) |
@@ -62,14 +62,14 @@ curl -sS -X POST https://api.revclamp.com/api/mcp \
 
 ```bash
 # Run a <60s local CLI smoke check (verifies all 9 tool schemas & executes a local_engine.mjs sample audit with zero API key)
-npx -y github:lhphong09t2/revclamp-mcp#v1.20.29 --self-test
+npx -y github:lhphong09t2/revclamp-mcp#v1.20.30 --self-test
 
 # Provision a free Cloud Workspace instantly (zero email required; saves to ~/.revclamp/credentials.json) or bind a work email via 6-digit OTP
-npx -y revclamp-mcp@1.20.29 --init-workspace
-npx -y revclamp-mcp@1.20.29 --init-workspace you@company.com
+npx -y revclamp-mcp@1.20.30 --init-workspace
+npx -y revclamp-mcp@1.20.30 --init-workspace you@company.com
 
 # Verify the 6-digit OTP using REVCLAMP_API_KEY from environment
-REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.29 --verify-otp you@company.com 123456
+REVCLAMP_API_KEY="rg_live_..." npx -y revclamp-mcp@1.20.30 --verify-otp you@company.com 123456
 
 # List all 9 MCP tools and JSON schemas (runs locally in-process)
 node index.mjs --list-tools

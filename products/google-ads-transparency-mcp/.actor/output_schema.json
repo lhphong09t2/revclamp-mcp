@@ -1,0 +1,19 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Google Ads Transparency Creatives & Run Summary",
+  "description": "Extracted Google Ads Transparency creative records (Default Dataset) and run billing/telemetry summary (Key-Value Store OUTPUT).",
+  "properties": {
+    "creatives": {
+      "type": "string",
+      "title": "Extracted Ad Creatives",
+      "description": "Verified advertiser ad creatives (Text, Image, Video), ad copy, destination domains, and active run dates.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    },
+    "runSummary": {
+      "type": "string",
+      "title": "Run Summary & Telemetry (OUTPUT)",
+      "description": "Structured execution summary, resolved advertiser entities, pagination cursor, and billing receipt summary.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    }
+  }
+}

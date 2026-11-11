@@ -29,7 +29,7 @@
       "enumTitles": [
         "Auto-Detect (Recommended)",
         "Greenhouse (boards-api.greenhouse.io)",
-        "Workday CXS (*.wd1..5.myworkdayjobs.com)",
+        "Workday CXS (*.wd{N}.myworkdayjobs.com)",
         "Ashby (api.ashbyhq.com)",
         "Lever (api.lever.co)",
         "SmartRecruiters (api.smartrecruiters.com)"

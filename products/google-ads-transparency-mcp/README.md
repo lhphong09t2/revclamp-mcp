@@ -153,7 +153,7 @@ npm test
 
 | Product | npm Package | Primary Use Case |
 | :--- | :--- | :--- |
-| **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Paddle`, `Lemon Squeezy`, `Shopify`) |
+| **[RevClamp Enterprise](https://revclamp.com/mcp)** | [`revclamp-mcp`](https://www.npmjs.com/package/revclamp-mcp) | Pre-deploy subscription revenue, webhook idempotency & compliance guard (`Stripe`, `Polar.sh`, `Shopify`) |
 | **[RevClamp AdPulse](https://apify.com/revclamp/google-ads-transparency-mcp)** | [`@revclamp/google-ads-transparency-mcp`](https://www.npmjs.com/package/@revclamp/google-ads-transparency-mcp) | Verified Google Ads advertiser entity disambiguation & active/historical creative intelligence |
 | **[RevClamp TalentPulse](https://apify.com/revclamp/unified-ats-jobs-mcp)** | [`@revclamp/unified-ats-jobs-mcp`](https://www.npmjs.com/package/@revclamp/unified-ats-jobs-mcp) | Unified 5-in-1 B2B ATS job postings, salary ranges & tech-stack hiring signals (`Greenhouse`, `Workday CXS`, `Ashby`, `Lever`, `SmartRecruiters`) |
 | **[RevClamp TalentPulse Watchlist](https://revclamp.com/tools/ats-hiring-watchlist)** | [`/api/v1/b2b/ats-watchlist`](https://revclamp.com/tools/ats-hiring-watchlist) | Stateful daily B2B career page diff engine (`JOB_OPENED`, `COMPENSATION_UPDATED`, `JOB_CLOSED`) with 50-to-1 deduplicated ATS polling & verified-email/webhook alerts |

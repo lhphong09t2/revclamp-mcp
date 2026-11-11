@@ -4,7 +4,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY --chown=node:node package.json index.mjs actor_config.json server.json glama.json README.md ./
+COPY --chown=node:node package.json index.mjs actor_config.json server.json glama.json README.md LICENSE ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node assets ./assets
 COPY --chown=node:node .actor ./.actor

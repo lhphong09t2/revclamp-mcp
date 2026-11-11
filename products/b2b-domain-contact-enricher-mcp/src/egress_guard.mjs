@@ -15,8 +15,8 @@ export const ALLOWED_DOH_HOSTS = new Set(['cloudflare-dns.com', 'dns.google']);
 export const LIVE_SECRET_GUARD_RE =
   /\b(sk_live_[0-9a-zA-Z]{10,}|rk_live_[0-9a-zA-Z]{10,}|whsec_[0-9a-zA-Z]{10,}|shpat_[0-9a-fA-F]{10,}|shppa_[0-9a-fA-F]{10,}|ghp_[0-9a-zA-Z]{20,}|github_pat_[0-9a-zA-Z_]{20,}|apify_api_[0-9a-zA-Z]{16,}|rg_live_[0-9a-zA-Z_]{10,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9a-zA-Z-]{10,})\b/;
 
-const SSRF_BLOCKED_HOST_RE =
-  /^(localhost|.*\.localhost|.*\.local|.*\.internal|.*\.arpa|.*\.nip\.io|.*\.sslip\.io|.*\.xip\.io|metadata\.google\.internal|metadata|instance-data|\d+\.\d+\.\d+\.\d+|\[.*\])$/i;
+export const SSRF_BLOCKED_HOST_RE =
+  /^(?:localhost|.*\.localhost|.*\.local|.*\.internal|.*\.arpa|.*\.nip\.io|.*\.sslip\.io|.*\.xip\.io|.*\.lan|.*\.corp|.*\.home|.*\.invalid|.*\.test|.*\.example|.*\.onion|.*\.cluster|.*\.svc|.*\.pod|.*\.k8s|.*\.docker|.*\.intranet|metadata\.google\.internal|metadata|instance-data|.*\.amazonaws\.com\.internal|\d+\.\d+\.\d+\.\d+|\[.*\])$/i;
 
 const PUBLIC_DOMAIN_SYNTAX_RE =
   /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
@@ -35,15 +35,76 @@ export function containsLiveSecretToken(rawText) {
 }
 
 /**
- * Checks whether an IPv4 or IPv6 address belongs to a private, loopback, link-local,
- * CGNAT, documentation, multicast, or cloud metadata range.
+ * Deterministically parses a canonical or uncompressed IPv6 address into 8 16-bit hextets.
+ * Returns `null` on invalid syntax, zone identifiers (`%`), or trailing dots.
+ *
+ * @param {string} rawIpv6
+ * @returns {number[]|null}
+ */
+export function parseIpv6Hextets(rawIpv6) {
+  if (typeof rawIpv6 !== 'string') return null;
+  let s = rawIpv6.trim().toLowerCase();
+  if (s.startsWith('[') && s.endsWith(']')) {
+    s = s.slice(1, -1);
+  }
+  if (!s || s.includes('%') || s.endsWith('.') || net.isIP(s) !== 6) {
+    return null;
+  }
+
+  if (s.includes('.')) {
+    const lastColon = s.lastIndexOf(':');
+    if (lastColon === -1) return null;
+    const ipv4Tail = s.slice(lastColon + 1);
+    if (net.isIP(ipv4Tail) !== 4) return null;
+    const octets = ipv4Tail.split('.').map((p) => Number(p));
+    if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      return null;
+    }
+    const hiHex = (((octets[0] << 8) | octets[1]) >>> 0).toString(16);
+    const loHex = (((octets[2] << 8) | octets[3]) >>> 0).toString(16);
+    s = `${s.slice(0, lastColon + 1)}${hiHex}:${loHex}`;
+  }
+
+  const dblParts = s.split('::');
+  if (dblParts.length > 2) return null;
+
+  let groups;
+  if (dblParts.length === 2) {
+    const left = dblParts[0] ? dblParts[0].split(':') : [];
+    const right = dblParts[1] ? dblParts[1].split(':') : [];
+    const missing = 8 - (left.length + right.length);
+    if (missing < 1) return null;
+    groups = [...left, ...new Array(missing).fill('0'), ...right];
+  } else {
+    groups = s.split(':');
+    if (groups.length !== 8) return null;
+  }
+
+  const hextets = new Array(8);
+  for (let i = 0; i < 8; i += 1) {
+    const g = groups[i];
+    if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+    hextets[i] = parseInt(g, 16);
+  }
+  return hextets;
+}
+
+/**
+ * Checks whether an IPv4 or IPv6 address belongs to any RFC 6890 / RFC 4291 /
+ * RFC 6052 / RFC 9637 private, loopback, link-local, transition, documentation, or
+ * special-purpose range.
  *
  * @param {string} rawIp
  * @returns {boolean}
  */
 export function isPrivateOrReservedIp(rawIp) {
-  const ip = String(rawIp ?? '').trim().toLowerCase();
-  if (!ip) return true;
+  if (typeof rawIp !== 'string') return true;
+  let ip = rawIp.trim();
+  if (ip.startsWith('[') && ip.endsWith(']')) {
+    ip = ip.slice(1, -1);
+  }
+  if (!ip || ip.includes('%') || ip.endsWith('.')) return true;
+
   const family = net.isIP(ip);
   if (family === 4) {
     const parts = ip.split('.').map((p) => Number(p));
@@ -52,28 +113,51 @@ export function isPrivateOrReservedIp(rawIp) {
     }
     const [a, b, c] = parts;
     if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
     if (a === 169 && b === 254) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
     if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+    if (a === 192 && b === 31 && c === 196) return true;
+    if (a === 192 && b === 52 && c === 193) return true;
+    if (a === 192 && b === 88 && c === 99) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 192 && b === 175 && c === 48) return true;
     if (a === 198 && (b === 18 || b === 19)) return true;
     if (a === 198 && b === 51 && c === 100) return true;
     if (a === 203 && b === 0 && c === 113) return true;
     if (a >= 224) return true;
     return false;
   }
+
   if (family === 6) {
-    if (ip === '::' || ip === '::1') return true;
-    if (ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) return true;
-    if (ip.startsWith('ff') || ip.startsWith('2001:db8:')) return true;
-    if (ip.startsWith('::ffff:')) {
-      const mapped = ip.slice('::ffff:'.length);
-      if (net.isIP(mapped) === 4) return isPrivateOrReservedIp(mapped);
+    const w = parseIpv6Hextets(ip);
+    if (!w) return true;
+    const [w0, w1, w2, w3, w4, w5, w6, w7] = w;
+    if (w0 === 0 && w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0) return true;
+    if (w0 === 0 && w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0xffff) {
+      const v4 = `${(w6 >> 8) & 0xff}.${w6 & 0xff}.${(w7 >> 8) & 0xff}.${w7 & 0xff}`;
+      return isPrivateOrReservedIp(v4);
+    }
+    if (w0 === 0 && w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0xffff && w5 === 0) return true;
+    if (
+      w0 === 0x0064 &&
+      w1 === 0xff9b &&
+      ((w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0) || w2 === 0x0001)
+    ) {
       return true;
     }
+    if (w0 === 0x0100 && w1 === 0 && w2 === 0 && w3 === 0) return true;
+    if (w0 === 0x2001 && (w1 < 0x0200 || w1 === 0x0db8)) return true;
+    if (w0 === 0x2002) return true;
+    if (w0 === 0x3fff && (w1 & 0xf000) === 0) return true;
+    if (w0 === 0x5f00) return true;
+    if ((w0 & 0xfe00) === 0xfc00) return true;
+    if ((w0 & 0xffc0) === 0xfe80) return true;
+    if ((w0 & 0xffc0) === 0xfec0) return true;
+    if ((w0 & 0xff00) === 0xff00) return true;
     return false;
   }
+
   return true;
 }
 

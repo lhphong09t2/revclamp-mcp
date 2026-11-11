@@ -149,8 +149,9 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
         wdInstance: {
           title: 'Workday Instance Subdomain (Optional)',
           type: 'string',
-          enum: ['wd1', 'wd2', 'wd3', 'wd4', 'wd5'],
-          description: 'Optional Workday CXS cluster subdomain (wd1..wd5).',
+          maxLength: 8,
+          pattern: '^wd[1-9]\\d{0,2}$',
+          description: 'Optional Workday CXS cluster subdomain (e.g. wd1, wd3, wd5, wd12, wd102).',
         },
         searchKeyword: {
           title: 'Role or Tech Keyword Filter (Optional)',
@@ -299,8 +300,9 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
         wdInstance: {
           title: 'Workday Instance Subdomain (Optional)',
           type: 'string',
-          enum: ['wd1', 'wd2', 'wd3', 'wd4', 'wd5'],
-          description: 'Optional Workday CXS cluster subdomain (wd1..wd5).',
+          maxLength: 8,
+          pattern: '^wd[1-9]\\d{0,2}$',
+          description: 'Optional Workday CXS cluster subdomain (e.g. wd1, wd3, wd5, wd12, wd102).',
         },
       },
       additionalProperties: false,
@@ -366,8 +368,33 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           maxLength: 128,
           description: 'Optional explicit company slug.',
         },
+        externalPath: {
+          title: 'Workday External Job Path (Optional)',
+          type: 'string',
+          maxLength: 512,
+          description:
+            'Optional Workday CXS externalPath (starting with "/job/...") returned by search_ats_job_postings for direct Workday detail hydration.',
+        },
+        workdayTenant: {
+          title: 'Workday Tenant Identifier (Optional)',
+          type: 'string',
+          maxLength: 128,
+          description: 'Optional Workday tenant identifier when provider is WORKDAY.',
+        },
+        workdaySite: {
+          title: 'Workday Career Site Identifier (Optional)',
+          type: 'string',
+          maxLength: 128,
+          description: 'Optional Workday career site path segment (e.g. NVIDIAExternalCareerSite).',
+        },
+        wdInstance: {
+          title: 'Workday Instance Subdomain (Optional)',
+          type: 'string',
+          maxLength: 8,
+          pattern: '^wd[1-9]\\d{0,2}$',
+          description: 'Optional Workday CXS cluster subdomain (e.g. wd1, wd3, wd5, wd12, wd102).',
+        },
       },
-      required: ['jobId'],
       additionalProperties: false,
     },
   },
@@ -842,26 +869,69 @@ export function validateMcpToolArguments(toolName, rawArgs) {
     }
   }
 
+  for (const strKey of ['workdayTenant', 'workdaySite', 'wdInstance', 'externalPath']) {
+    if (args[strKey] !== undefined && args[strKey] !== null && typeof args[strKey] !== 'string') {
+      return { ok: false, message: `Invalid ${strKey}: expected a string` };
+    }
+  }
+  if (args.wdInstance !== undefined && args.wdInstance !== null && args.wdInstance.trim() !== '') {
+    if (!/^wd[1-9]\d{0,2}$/i.test(args.wdInstance.trim())) {
+      return {
+        ok: false,
+        message: `Invalid wdInstance '${sliceUtf8Safe(args.wdInstance.trim(), 16)}': expected wd1..wd999 (e.g. wd1, wd5, wd12, wd102)`,
+      };
+    }
+  }
+  if (
+    args.externalPath !== undefined &&
+    args.externalPath !== null &&
+    args.externalPath.trim() !== ''
+  ) {
+    const cleanExtPath = args.externalPath.trim();
+    if (
+      cleanExtPath.length > 512 ||
+      !/^\/job\/[A-Za-z0-9_.~/%-]+$/.test(cleanExtPath) ||
+      cleanExtPath.includes('..')
+    ) {
+      return {
+        ok: false,
+        message: 'Invalid externalPath: must start with "/job/" and contain safe URL path segments',
+      };
+    }
+  }
+
   if (toolName === 'get_ats_job_posting_detail') {
-    if (typeof args.jobId !== 'string' || !args.jobId.trim()) {
+    if (args.jobId !== undefined && args.jobId !== null && typeof args.jobId !== 'string') {
       return {
         ok: false,
         message: 'Missing or invalid required parameter: jobId (non-empty string)',
       };
     }
-    const trimmedId = args.jobId.trim();
+    const trimmedId = typeof args.jobId === 'string' ? args.jobId.trim() : '';
+    const trimmedExtPath = typeof args.externalPath === 'string' ? args.externalPath.trim() : '';
+    const hasDirectJobUrl = [args.careerUrl, args.url, args.query].some(
+      (v) => typeof v === 'string' && /^https?:\/\//i.test(v.trim())
+    );
+    if (!trimmedId && !trimmedExtPath && !hasDirectJobUrl) {
+      return {
+        ok: false,
+        message: 'Missing or invalid required parameter: jobId (non-empty string)',
+      };
+    }
     if (trimmedId.length > 256) {
       return {
         ok: false,
         message: 'Invalid jobId: exceeds maximum length of 256 characters',
       };
     }
-    const isComposite = JOB_ID_RE.test(trimmedId);
+    const isComposite = trimmedId ? JOB_ID_RE.test(trimmedId) : false;
+    const isFullJobUrl = trimmedId ? /^https?:\/\//i.test(trimmedId) : hasDirectJobUrl;
     const hasBoardHint =
       (typeof args.query === 'string' && args.query.trim().length > 0) ||
       (typeof args.companySlug === 'string' && args.companySlug.trim().length > 0) ||
-      (typeof args.careerUrl === 'string' && args.careerUrl.trim().length > 0);
-    if (!isComposite && !hasBoardHint) {
+      (typeof args.careerUrl === 'string' && args.careerUrl.trim().length > 0) ||
+      (typeof args.workdayTenant === 'string' && args.workdayTenant.trim().length > 0);
+    if (!isComposite && !isFullJobUrl && !hasBoardHint) {
       return {
         ok: false,
         message:
@@ -1107,11 +1177,16 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
       if (rawToolName === 'get_ats_job_posting_detail') {
         const res = await getAtsJobPostingDetail({
           jobId: args.jobId,
+          externalPath: args.externalPath,
           query: args.query,
           provider: args.provider,
           companySlug: args.companySlug,
           careerUrl: args.careerUrl,
+          workdayTenant: args.workdayTenant,
+          workdaySite: args.workdaySite,
+          wdInstance: args.wdInstance,
           fetchImpl: options.fetchImpl,
+          dnsLookup: options.dnsLookup,
           timeoutMs: options.timeoutMs,
           maxRetries: options.maxRetries,
           deadlineAtMs,
@@ -1153,6 +1228,7 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
           workdaySite: args.workdaySite,
           wdInstance: args.wdInstance,
           fetchImpl: options.fetchImpl,
+          dnsLookup: options.dnsLookup,
           timeoutMs: options.timeoutMs,
           maxRetries: options.maxRetries,
           deadlineAtMs,
@@ -1208,6 +1284,7 @@ export async function handleMcpJsonRpcRequest(request, options = {}) {
         },
         {
           fetchImpl: options.fetchImpl,
+          dnsLookup: options.dnsLookup,
         }
       );
 

@@ -24,7 +24,7 @@
   "manifest": {
     "name": "unified-ats-jobs-mcp",
     "title": "Unified B2B ATS Jobs Scraper & MCP (Greenhouse, Workday, Lever, Ashby) | RevClamp TalentPulse",
-    "version": "1.0.12",
+    "version": "1.0.13",
     "websiteUrl": "https://revclamp.com",
     "description": "Unified B2B ATS Jobs Scraper & MCP across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters with salary normalization, hiring velocity signals, and tech-stack extraction. Independent B2B intelligence tool by RevClamp.",
     "categories": ["LEAD_GENERATION", "AI", "JOBS", "BUSINESS"],

@@ -24,7 +24,7 @@
   "manifest": {
     "name": "b2b-domain-contact-enricher-mcp",
     "title": "B2B Domain Contact, Email & DNS Enricher MCP | RevClamp ContactPulse",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "websiteUrl": "https://revclamp.com",
     "description": "B2B Domain Contact, Email & DNS Enricher MCP. Deterministic company domain contact, RFC 9116 security.txt, Schema.org ContactPoint, and DNS-over-HTTPS MX/SPF/DMARC deliverability enricher. Independent B2B tool by RevClamp.",
     "categories": ["LEAD_GENERATION", "AI", "BUSINESS", "DEVELOPER_TOOLS"],

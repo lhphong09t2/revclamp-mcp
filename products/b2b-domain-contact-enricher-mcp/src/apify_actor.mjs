@@ -348,6 +348,23 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       : '';
   const maxTotalChargeUsdRaw = rawMaxChargeStr !== '' ? Number(rawMaxChargeStr) : NaN;
   const hasMaxChargeUsd = Number.isFinite(maxTotalChargeUsdRaw) && maxTotalChargeUsdRaw >= 0;
+  const rawIncludeStartFee = String(env?.ACTOR_INCLUDE_START_FEE ?? '')
+    .trim()
+    .toLowerCase();
+  const includeStartFee =
+    rawIncludeStartFee === '' ? true : rawIncludeStartFee !== '0' && rawIncludeStartFee !== 'false';
+  const rawStartFeeUsd =
+    env?.ACTOR_START_FEE_USD !== undefined && env?.ACTOR_START_FEE_USD !== null
+      ? String(env.ACTOR_START_FEE_USD).trim()
+      : '';
+  const explicitStartFeeUsd = rawStartFeeUsd !== '' ? Number(rawStartFeeUsd) : NaN;
+  const rawIdempotencyFlag = String(env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED ?? '')
+    .trim()
+    .toLowerCase();
+  const idempotentChargeRetryEnabled =
+    rawIdempotencyFlag === ''
+      ? true
+      : rawIdempotencyFlag === '1' || rawIdempotencyFlag === 'true';
   const isPayingFlag = String(env?.APIFY_USER_IS_PAYING ?? '')
     .trim()
     .toLowerCase();
@@ -450,11 +467,15 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       pricingInfoChargeEvents?.['apify-actor-start'],
       { allowZero: true }
     );
-    const actorStartFeeUsdc = !startInfo.deterministic
+    const resolvedBaseStartFee = !startInfo.deterministic
       ? null
-      : Number.isFinite(startInfo.priceUsd) && startInfo.priceUsd >= 0
-        ? startInfo.priceUsd
-        : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
+      : Number.isFinite(explicitStartFeeUsd) && explicitStartFeeUsd >= 0
+        ? explicitStartFeeUsd
+        : Number.isFinite(startInfo.priceUsd) && startInfo.priceUsd >= 0
+          ? startInfo.priceUsd
+          : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
+    const actorStartFeeUsdc =
+      resolvedBaseStartFee === null ? (includeStartFee ? null : 0) : includeStartFee ? resolvedBaseStartFee : 0;
     const primaryInfo = resolveTieredEventPriceInfo(
       pricingInfoChargeEvents?.[ACTOR_PRICING_CONTRACT.eventName],
       { allowZero: false }
@@ -467,10 +488,13 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
     return {
       actorStartFeeUsdc,
       unitPriceUsdc,
-      deterministic: startInfo.deterministic && primaryInfo.deterministic,
+      deterministic: (startInfo.deterministic || !includeStartFee) && primaryInfo.deterministic,
     };
   };
   const initialPricingState = computeCurrentPricingState();
+  const maxBudgetMicros = hasMaxChargeUsd ? Math.round(maxTotalChargeUsdRaw * 1_000_000) : 0;
+  let cumulativeChargedInAdapter = 0;
+  let adapterChargeLimitLatched = false;
 
   const memStore = new Map();
   const memDataset = [];
@@ -559,18 +583,92 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
   const hooksObj = {
     runId,
     isAtHome,
+    hasMaxChargeUsd,
+    maxTotalChargeUsd: hasMaxChargeUsd ? maxTotalChargeUsdRaw : null,
+    includeStartFee,
     unitPriceUsdc: initialPricingState.unitPriceUsdc,
     actorStartFeeUsdc: initialPricingState.actorStartFeeUsdc,
     pricingDeterministic: initialPricingState.deterministic,
     resolveUserTier: ensureUserTierResolved,
     async loadCheckpoint() {
-      return (await getKvsRecord(ACTOR_PRICING_CONTRACT.checkpointKey)) || {
+      const loaded = (await getKvsRecord(ACTOR_PRICING_CONTRACT.checkpointKey)) || {
         chargedIds: [],
         deliveredIds: [],
       };
+      if (
+        loaded &&
+        Array.isArray(loaded.chargedIds) &&
+        (!loaded.runId || !runId || String(loaded.runId) === String(runId))
+      ) {
+        cumulativeChargedInAdapter = loaded.chargedIds.length;
+      }
+      return loaded;
     },
     async saveCheckpoint(state) {
       await putKvsRecord(ACTOR_PRICING_CONTRACT.checkpointKey, state);
+    },
+    async listDeliveredIds() {
+      if (memDataset.length > 0) {
+        return memDataset
+          .map((row) => (typeof row?.profileId === 'string' ? row.profileId : null))
+          .filter(Boolean);
+      }
+      if (localStorageDir) {
+        const dsFolder = path.join(localStorageDir, 'datasets', datasetId || 'default');
+        if (fs.existsSync(dsFolder)) {
+          const ids = [];
+          for (const file of fs.readdirSync(dsFolder).filter((f) => f.endsWith('.json'))) {
+            try {
+              const parsed = JSON.parse(fs.readFileSync(path.join(dsFolder, file), 'utf8'));
+              if (typeof parsed?.profileId === 'string') ids.push(parsed.profileId);
+            } catch {
+              // Ignore unreadable partial files
+            }
+          }
+          if (ids.length > 0) return ids;
+        }
+      }
+      if (datasetId && token && typeof fetchImpl === 'function') {
+        const apiBase = resolveSafeApifyApiBaseUrl(
+          env?.APIFY_API_BASE_URL,
+          env?.APIFY_API_PUBLIC_BASE_URL
+        );
+        const url = `${apiBase}/v2/datasets/${encodeURIComponent(datasetId)}/items?fields=profileId&clean=1`;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 2500);
+        try {
+          const res = await fetchImpl(url, {
+            method: 'GET',
+            headers: {
+              authorization: `Bearer ${token}`,
+              accept: 'application/json',
+            },
+            signal: controller.signal,
+          });
+          if (res && res.status >= 200 && res.status < 300) {
+            const text = typeof res.text === 'function' ? await res.text() : '';
+            const parsed =
+              text && text.trim()
+                ? JSON.parse(text)
+                : typeof res.json === 'function'
+                  ? await res.json()
+                  : [];
+            const arr = Array.isArray(parsed)
+              ? parsed
+              : Array.isArray(parsed?.data?.items)
+                ? parsed.data.items
+                : [];
+            return arr
+              .map((row) => (typeof row?.profileId === 'string' ? row.profileId : null))
+              .filter(Boolean);
+          }
+        } catch {
+          return [];
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+      return [];
     },
     async pushData(items = []) {
       const batch = Array.isArray(items) ? items : [items];
@@ -626,15 +724,64 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
       hooksObj.pricingDeterministic = currentPricing.deterministic;
       const requested = Math.max(0, Math.floor(Number(count) || 0));
       if (requested === 0 || !isAtHome) {
-        return { chargedCount: 0, eventChargeLimitReached: false };
+        return {
+          chargedCount: 0,
+          eventChargeLimitReached: false,
+          unitPriceUsdc: currentPricing.unitPriceUsdc,
+          pricingDeterministic: hooksObj.pricingDeterministic,
+        };
       }
+      if (adapterChargeLimitLatched) {
+        return {
+          chargedCount: 0,
+          eventChargeLimitReached: true,
+          unitPriceUsdc: currentPricing.unitPriceUsdc,
+          pricingDeterministic: hooksObj.pricingDeterministic,
+        };
+      }
+      const unitPriceMicros =
+        currentPricing.unitPriceUsdc === null
+          ? NaN
+          : Math.round(currentPricing.unitPriceUsdc * 1_000_000);
+      const startFeeMicros =
+        currentPricing.actorStartFeeUsdc === null
+          ? NaN
+          : Math.round(currentPricing.actorStartFeeUsdc * 1_000_000);
+      const canEnforceLocalBudgetCap =
+        hasMaxChargeUsd &&
+        currentPricing.deterministic &&
+        Number.isInteger(unitPriceMicros) &&
+        unitPriceMicros >= 1 &&
+        Number.isInteger(startFeeMicros) &&
+        startFeeMicros >= 0;
+      const maxPayableEvents = canEnforceLocalBudgetCap
+        ? Math.floor(Math.max(0, maxBudgetMicros - startFeeMicros) / unitPriceMicros)
+        : Infinity;
+      const remainingAllowance = Number.isFinite(maxPayableEvents)
+        ? Math.max(0, maxPayableEvents - cumulativeChargedInAdapter)
+        : requested;
+      const countToCharge = Math.min(requested, remainingAllowance);
+      const localCapReached =
+        Number.isFinite(maxPayableEvents) &&
+        cumulativeChargedInAdapter + countToCharge >= maxPayableEvents &&
+        countToCharge < requested;
+      if (countToCharge === 0) {
+        adapterChargeLimitLatched = Number.isFinite(maxPayableEvents);
+        return {
+          chargedCount: 0,
+          eventChargeLimitReached: Number.isFinite(maxPayableEvents),
+          unitPriceUsdc: currentPricing.unitPriceUsdc,
+          pricingDeterministic: hooksObj.pricingDeterministic,
+        };
+      }
+
       const apiBase = resolveSafeApifyApiBaseUrl(
         env?.APIFY_API_BASE_URL,
         env?.APIFY_API_PUBLIC_BASE_URL
       );
       const url = `${apiBase}/v2/actor-runs/${encodeURIComponent(runId)}/charge`;
       const safeIdemKey = String(idempotencyKey || `${runId}_${Date.now()}`);
-      const maxAttempts = 3;
+      const maxAttempts = idempotentChargeRetryEnabled ? 3 : 1;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 5000);
@@ -646,13 +793,22 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
               'content-type': 'application/json; charset=utf-8',
               'idempotency-key': safeIdemKey,
             },
-            body: JSON.stringify({ eventName, count: requested }),
+            body: JSON.stringify({ eventName, count: countToCharge }),
             signal: controller.signal,
           });
           if (res.status === 402) {
-            return { chargedCount: 0, eventChargeLimitReached: true };
+            adapterChargeLimitLatched = true;
+            return {
+              chargedCount: 0,
+              eventChargeLimitReached: true,
+              unitPriceUsdc: currentPricing.unitPriceUsdc,
+              pricingDeterministic: hooksObj.pricingDeterministic,
+            };
           }
-          if (res.status === 429 && attempt < maxAttempts) {
+          if (
+            attempt < maxAttempts &&
+            (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504)
+          ) {
             await new Promise((resolve) => setTimeout(resolve, attempt * 150));
             continue;
           }
@@ -668,28 +824,129 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
           const rawCharged = body?.data?.chargedCount ?? body?.chargedCount;
           const chargedCount =
             typeof rawCharged === 'number' && Number.isInteger(rawCharged) && rawCharged >= 0
-              ? Math.min(requested, rawCharged)
-              : requested;
+              ? Math.min(countToCharge, rawCharged)
+              : countToCharge;
+          cumulativeChargedInAdapter += chargedCount;
           const limitReached = Boolean(
-            body?.data?.eventChargeLimitReached || body?.eventChargeLimitReached
+            body?.data?.eventChargeLimitReached ||
+              body?.eventChargeLimitReached ||
+              localCapReached ||
+              (Number.isFinite(maxPayableEvents) && cumulativeChargedInAdapter >= maxPayableEvents)
           );
-          return { chargedCount, eventChargeLimitReached: limitReached };
+          if (limitReached) {
+            adapterChargeLimitLatched = true;
+          }
+          return {
+            chargedCount,
+            eventChargeLimitReached: limitReached,
+            unitPriceUsdc: currentPricing.unitPriceUsdc,
+            pricingDeterministic: hooksObj.pricingDeterministic,
+          };
         } finally {
           clearTimeout(timer);
         }
       }
-      throw new Error('Apify charge API rate limit exhausted after 3 attempts');
+      throw new Error(`Apify charge API rate limit exhausted after ${maxAttempts} attempt(s)`);
     },
     async saveOutput(outputRecord) {
       await putKvsRecord('OUTPUT', outputRecord);
     },
   };
+  Object.defineProperty(hooksObj, 'idempotentChargeRetryEnabled', {
+    enumerable: true,
+    configurable: true,
+    get: () => idempotentChargeRetryEnabled !== false,
+  });
   return hooksObj;
+}
+
+/**
+ * Computes the maximum number of new billable domains affordable under `ACTOR_MAX_TOTAL_CHARGE_USD`
+ * using integer micro-USD arithmetic (`Math.round(usd * 1_000_000)`).
+ *
+ * @param {object} hooks
+ * @param {number} [alreadyChargedCount=0]
+ * @returns {number}
+ */
+export function resolveMaxBillableDomainsForBudget(hooks, alreadyChargedCount = 0) {
+  if (!hooks || !hooks.isAtHome || !hooks.hasMaxChargeUsd) {
+    return Infinity;
+  }
+  if (
+    hooks.pricingDeterministic === false ||
+    hooks.unitPriceUsdc === null ||
+    hooks.actorStartFeeUsdc === null
+  ) {
+    return Infinity;
+  }
+  const maxUsd = Number(hooks.maxTotalChargeUsd);
+  if (!Number.isFinite(maxUsd) || maxUsd < 0) {
+    return Infinity;
+  }
+  const unitUsd =
+    Number.isFinite(Number(hooks.unitPriceUsdc)) && Number(hooks.unitPriceUsdc) > 0
+      ? Number(hooks.unitPriceUsdc)
+      : ACTOR_PRICING_CONTRACT.priceUsdc;
+  const startFeeUsd =
+    hooks.includeStartFee === false
+      ? 0
+      : Number.isFinite(Number(hooks.actorStartFeeUsdc)) && Number(hooks.actorStartFeeUsdc) >= 0
+        ? Number(hooks.actorStartFeeUsdc)
+        : ACTOR_PRICING_CONTRACT.actorStartFeeUsdc;
+
+  const maxMicros = Math.round(maxUsd * 1_000_000);
+  const startMicros = Math.round(startFeeUsd * 1_000_000);
+  const unitMicros = Math.max(1, Math.round(unitUsd * 1_000_000));
+  const totalPayable = Math.floor(Math.max(0, maxMicros - startMicros) / unitMicros);
+  const priorCharged = Math.max(0, Math.floor(Number(alreadyChargedCount) || 0));
+  return Math.max(0, totalPayable - priorCharged);
+}
+
+function normalizeBillingCheckpointState(rawState, runId) {
+  const s = rawState && typeof rawState === 'object' && !Array.isArray(rawState) ? rawState : {};
+  if (s.runId && runId && String(s.runId).trim() !== String(runId).trim()) {
+    return {
+      runId: String(runId || 'default_run'),
+      chargedIds: [],
+      deliveredIds: [],
+      inFlightIds: [],
+      inFlightIdempotencyKey: null,
+      unknownOutcomeIds: [],
+      stagedItemsById: {},
+    };
+  }
+  const toCleanStringList = (arr) =>
+    Array.isArray(arr)
+      ? Array.from(new Set(arr.filter((v) => typeof v === 'string' && v.trim())))
+      : [];
+  const rawStaged =
+    s.stagedItemsById && typeof s.stagedItemsById === 'object' && !Array.isArray(s.stagedItemsById)
+      ? s.stagedItemsById
+      : {};
+  const stagedItemsById = {};
+  for (const [k, v] of Object.entries(rawStaged)) {
+    if (k && v && typeof v === 'object') {
+      stagedItemsById[k] = v;
+    }
+  }
+  return {
+    runId: String(runId || s.runId || 'default_run'),
+    chargedIds: toCleanStringList(s.chargedIds),
+    deliveredIds: toCleanStringList(s.deliveredIds),
+    inFlightIds: toCleanStringList(s.inFlightIds),
+    inFlightIdempotencyKey:
+      typeof s.inFlightIdempotencyKey === 'string' && s.inFlightIdempotencyKey.trim()
+        ? s.inFlightIdempotencyKey.trim()
+        : null,
+    unknownOutcomeIds: toCleanStringList(s.unknownOutcomeIds),
+    stagedItemsById,
+  };
 }
 
 export async function runDomainContactEnricherActor(input = {}, options = {}) {
   const startedAtMs = Date.now();
-  const hooks = options?.platformHooks || createApifyPlatformHooks(options?.env || process.env, options?.fetchImpl);
+  const hooks =
+    options?.platformHooks || createApifyPlatformHooks(options?.env || process.env, options?.fetchImpl);
   const billingMode = hooks.isAtHome ? 'APIFY_PAY_PER_EVENT' : 'LOCAL_UNBILLED';
   const billingReserveMs = hooks.isAtHome ? 2500 : 0;
   const deadlineAtMs =
@@ -697,19 +954,228 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
       ? Number(options.deadlineAtMs)
       : startedAtMs + Math.max(2000, DEFAULT_RUN_DEADLINE_MS - billingReserveMs);
 
-  const batchRes = await resolveB2bDomainContactsBatch(input, {
-    ...options,
-    deadlineAtMs,
-  });
-  if (!batchRes.ok) {
+  const rawCheckpoint =
+    hooks.isAtHome && typeof hooks.loadCheckpoint === 'function'
+      ? await hooks.loadCheckpoint()
+      : null;
+  const checkpoint = normalizeBillingCheckpointState(rawCheckpoint, hooks.runId);
+  const alreadyCharged = new Set(checkpoint.chargedIds);
+  const alreadyDelivered = new Set(checkpoint.deliveredIds);
+  let inFlightSet = new Set(checkpoint.inFlightIds);
+  let inFlightIdempotencyKey = checkpoint.inFlightIdempotencyKey;
+  const unknownOutcomeSet = new Set(checkpoint.unknownOutcomeIds);
+  const stagedItemsById = { ...checkpoint.stagedItemsById };
+
+  const persistCheckpoint = async () => {
+    if (!hooks.isAtHome || typeof hooks.saveCheckpoint !== 'function') return;
+    await hooks.saveCheckpoint({
+      runId: String(hooks.runId || 'default_run'),
+      chargedIds: Array.from(alreadyCharged),
+      deliveredIds: Array.from(alreadyDelivered),
+      inFlightIds: Array.from(inFlightSet),
+      inFlightIdempotencyKey,
+      unknownOutcomeIds: Array.from(unknownOutcomeSet),
+      stagedItemsById,
+      updatedAtIso: new Date().toISOString(),
+    });
+  };
+
+  let reconciledDeliveredItems = [];
+  let chargeLimitReached = false;
+  let partialBillingFailure = false;
+  let haltErrorCode = null;
+  let haltStatusOverride = null;
+  let haltReasonOverride = null;
+
+  if (hooks.isAtHome) {
+    let existingDatasetIds = new Set();
+    if (typeof hooks.listDeliveredIds === 'function') {
+      try {
+        const listed = await hooks.listDeliveredIds();
+        if (Array.isArray(listed)) {
+          existingDatasetIds = new Set(listed.filter((v) => typeof v === 'string'));
+        }
+      } catch {
+        existingDatasetIds = new Set();
+      }
+    }
+
+    // Step 0a: Deliver any already-charged items not yet marked delivered
+    const pendingChargedUndelivered = Array.from(alreadyCharged).filter(
+      (id) => !alreadyDelivered.has(id) && stagedItemsById[id]
+    );
+    if (pendingChargedUndelivered.length > 0) {
+      const toReplayPush = pendingChargedUndelivered
+        .filter((id) => !existingDatasetIds.has(id))
+        .map((id) => stagedItemsById[id]);
+      if (toReplayPush.length > 0) {
+        await hooks.pushData(toReplayPush);
+      }
+      for (const id of pendingChargedUndelivered) {
+        alreadyDelivered.add(id);
+        reconciledDeliveredItems.push(stagedItemsById[id]);
+        delete stagedItemsById[id];
+      }
+      await persistCheckpoint();
+    }
+
+    // Step 0b: Reconcile any pre-crash IN_FLIGHT chunk via deterministic Idempotency-Key replay
+    if (inFlightSet.size > 0) {
+      const inFlightIdsList = Array.from(inFlightSet);
+      const canReplayIdempotently =
+        hooks.idempotentChargeRetryEnabled === true &&
+        Boolean(inFlightIdempotencyKey) &&
+        typeof hooks.chargeEvent === 'function';
+      if (!canReplayIdempotently) {
+        for (const id of inFlightIdsList) {
+          unknownOutcomeSet.add(id);
+        }
+        inFlightSet = new Set();
+        inFlightIdempotencyKey = null;
+        await persistCheckpoint();
+        partialBillingFailure = true;
+        haltStatusOverride = 'PARTIAL_BILLING_HALT';
+        haltErrorCode = 'PARTIAL_BILLING_HALT';
+        haltReasonOverride =
+          'Cannot replay in-flight Pay-per-Event charge without idempotent charge retry support';
+      } else {
+        try {
+          const replayRes = await hooks.chargeEvent({
+            eventName: ACTOR_PRICING_CONTRACT.eventName,
+            count: inFlightIdsList.length,
+            idempotencyKey: inFlightIdempotencyKey,
+          });
+          const replayChargedCount = Math.max(
+            0,
+            Math.min(inFlightIdsList.length, Number(replayRes?.chargedCount) || 0)
+          );
+          const replayChargedIds = inFlightIdsList.slice(0, replayChargedCount);
+          for (const id of replayChargedIds) {
+            alreadyCharged.add(id);
+          }
+          if (replayRes?.eventChargeLimitReached) {
+            chargeLimitReached = true;
+          } else if (replayChargedCount < inFlightIdsList.length) {
+            partialBillingFailure = true;
+            haltStatusOverride = 'PARTIAL_BILLING_HALT';
+            haltErrorCode = 'PARTIAL_BILLING_HALT';
+            haltReasonOverride = `Ambiguous partial charge replay (${replayChargedCount}/${inFlightIdsList.length})`;
+            for (const id of inFlightIdsList.slice(replayChargedCount)) {
+              unknownOutcomeSet.add(id);
+            }
+          }
+          inFlightSet = new Set();
+          inFlightIdempotencyKey = null;
+          await persistCheckpoint();
+
+          const toPushReplayed = replayChargedIds
+            .filter((id) => !alreadyDelivered.has(id) && stagedItemsById[id])
+            .filter((id) => !existingDatasetIds.has(id))
+            .map((id) => stagedItemsById[id]);
+          if (toPushReplayed.length > 0) {
+            await hooks.pushData(toPushReplayed);
+          }
+          for (const id of replayChargedIds) {
+            if (stagedItemsById[id]) {
+              alreadyDelivered.add(id);
+              reconciledDeliveredItems.push(stagedItemsById[id]);
+              delete stagedItemsById[id];
+            }
+          }
+          await persistCheckpoint();
+        } catch (replayErr) {
+          for (const id of inFlightIdsList) {
+            unknownOutcomeSet.add(id);
+          }
+          inFlightSet = new Set();
+          inFlightIdempotencyKey = null;
+          await persistCheckpoint();
+          partialBillingFailure = true;
+          haltStatusOverride = 'UNKNOWN_CHARGE_OUTCOME';
+          haltErrorCode = 'CHARGE_API_ERROR';
+          haltReasonOverride = `In-flight charge replay failed: ${replayErr?.message || replayErr}`;
+        }
+      }
+    }
+
+    if (!partialBillingFailure && unknownOutcomeSet.size > 0) {
+      partialBillingFailure = true;
+      haltStatusOverride = 'PARTIAL_BILLING_HALT';
+      haltErrorCode = 'PARTIAL_BILLING_HALT';
+      haltReasonOverride =
+        'Unreconciled unknown charge outcome from prior container attempt; halting fail-closed';
+    }
+  }
+
+  if (partialBillingFailure && haltStatusOverride) {
     const durationMs = Math.max(1, Date.now() - startedAtMs);
+    const chargedCountSoFar = hooks.isAtHome ? alreadyCharged.size : 0;
     const telemetry = computeRunEconomicsTelemetry({
-      billableCount: 0,
-      chargedEventCount: 0,
+      billableCount: reconciledDeliveredItems.length,
+      chargedEventCount: chargedCountSoFar,
       durationMs,
       requestCount: 1,
       unitPriceUsdc: hooks.unitPriceUsdc,
       actorStartFeeUsdc: hooks.actorStartFeeUsdc,
+      pricingDeterministic: hooks.pricingDeterministic,
+    });
+    const haltPayload = {
+      ok: false,
+      status: haltStatusOverride,
+      errorCode: haltErrorCode || 'PARTIAL_BILLING_HALT',
+      reason: haltReasonOverride || 'Billing reconciliation halted fail-closed',
+      billingMode,
+      extractedCount: reconciledDeliveredItems.length,
+      deliveredCount: reconciledDeliveredItems.length,
+      billableCount: reconciledDeliveredItems.length,
+      chargedEventCount: chargedCountSoFar,
+      items: reconciledDeliveredItems,
+      pagination: {
+        offset: 0,
+        limit: 5,
+        totalDomainsCount: reconciledDeliveredItems.length,
+        hasMore: true,
+        nextPageToken: null,
+        nextCursor: null,
+        paginationStatus: haltStatusOverride,
+      },
+      telemetry,
+    };
+    await hooks.saveOutput(haltPayload);
+    return haltPayload;
+  }
+
+  // Upfront micro-USD budget pre-cap before crawling upstream domains
+  let maxDomainsToProcess = undefined;
+  if (hooks.isAtHome && hooks.hasMaxChargeUsd) {
+    if (hooks.pricingDeterministic === false && typeof hooks.resolveUserTier === 'function') {
+      await hooks.resolveUserTier();
+    }
+    const maxAffordableNewDomains = resolveMaxBillableDomainsForBudget(hooks, alreadyCharged.size);
+    if (Number.isFinite(maxAffordableNewDomains)) {
+      maxDomainsToProcess = Math.max(0, maxAffordableNewDomains);
+      if (maxDomainsToProcess === 0) {
+        chargeLimitReached = true;
+      }
+    }
+  }
+
+  const batchRes = await resolveB2bDomainContactsBatch(input, {
+    ...options,
+    deadlineAtMs,
+    ...(maxDomainsToProcess !== undefined ? { maxDomainsToProcess } : {}),
+  });
+  if (!batchRes.ok) {
+    const durationMs = Math.max(1, Date.now() - startedAtMs);
+    const chargedCountOnInvalid = hooks.isAtHome ? alreadyCharged.size : 0;
+    const telemetry = computeRunEconomicsTelemetry({
+      billableCount: 0,
+      chargedEventCount: chargedCountOnInvalid,
+      durationMs,
+      requestCount: 1,
+      unitPriceUsdc: hooks.unitPriceUsdc,
+      actorStartFeeUsdc: hooks.actorStartFeeUsdc,
+      pricingDeterministic: hooks.pricingDeterministic,
     });
     const failPayload = {
       ok: false,
@@ -720,7 +1186,7 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
       extractedCount: 0,
       deliveredCount: 0,
       billableCount: 0,
-      chargedEventCount: 0,
+      chargedEventCount: chargedCountOnInvalid,
       items: [],
       pagination: {
         offset: 0,
@@ -738,14 +1204,7 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
   }
 
   const extractedItems = Array.isArray(batchRes.items) ? batchRes.items : [];
-  const checkpoint = await hooks.loadCheckpoint();
-  const alreadyDelivered = new Set(Array.isArray(checkpoint?.deliveredIds) ? checkpoint.deliveredIds : []);
-  const alreadyCharged = new Set(Array.isArray(checkpoint?.chargedIds) ? checkpoint.chargedIds : []);
-
   let deliveredItems = [];
-  let chargedEventCount = 0;
-  let chargeLimitReached = false;
-  let partialBillingFailure = false;
 
   const isItemBillable = (item) => {
     if (!item || item.emptyResult === true) return false;
@@ -762,28 +1221,53 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
     }
   } else if (extractedItems.length > 0) {
     const billableExtracted = extractedItems.filter(isItemBillable);
-    const unchargedBillableItems = billableExtracted.filter((item) => !alreadyCharged.has(item.profileId));
-    if (unchargedBillableItems.length > 0) {
-      const idempotencyKey = computeChunkIdempotencyKey(
-        hooks.runId,
-        unchargedBillableItems.map((i) => i.profileId)
-      );
+    const unchargedBillableItems = billableExtracted.filter(
+      (item) => !alreadyCharged.has(item.profileId)
+    );
+    const chunkSize = Math.max(1, Number(ACTOR_PRICING_CONTRACT.chunkSize) || 25);
+
+    for (let offset = 0; offset < unchargedBillableItems.length; offset += chunkSize) {
+      const chunk = unchargedBillableItems.slice(offset, offset + chunkSize);
+      const chunkIds = chunk.map((item) => item.profileId);
+      const idempotencyKey = computeChunkIdempotencyKey(hooks.runId, chunkIds);
+
+      // Phase 1 (PENDING -> IN_FLIGHT): Persist staged items & inFlightIds BEFORE calling chargeEvent
+      for (const item of chunk) {
+        stagedItemsById[item.profileId] = item;
+      }
+      inFlightSet = new Set(chunkIds);
+      inFlightIdempotencyKey = idempotencyKey;
+      await persistCheckpoint();
+
       let chargeRes;
       try {
         chargeRes = await hooks.chargeEvent({
           eventName: ACTOR_PRICING_CONTRACT.eventName,
-          count: unchargedBillableItems.length,
+          count: chunk.length,
           idempotencyKey,
         });
       } catch (chargeErr) {
+        for (const id of chunkIds) {
+          unknownOutcomeSet.add(id);
+        }
+        inFlightSet = new Set();
+        inFlightIdempotencyKey = null;
+        await persistCheckpoint();
+
+        const firstUnchargedIdx = extractedItems.findIndex(
+          (item) => isItemBillable(item) && !alreadyCharged.has(item.profileId)
+        );
+        const deliveredPrefix =
+          firstUnchargedIdx === -1 ? extractedItems : extractedItems.slice(0, firstUnchargedIdx);
         const durationMs = Math.max(1, Date.now() - startedAtMs);
         const telemetry = computeRunEconomicsTelemetry({
-          billableCount: 0,
-          chargedEventCount: 0,
+          billableCount: deliveredPrefix.filter(isItemBillable).length,
+          chargedEventCount: alreadyCharged.size,
           durationMs,
           requestCount: Math.max(1, extractedItems.length),
           unitPriceUsdc: hooks.unitPriceUsdc,
           actorStartFeeUsdc: hooks.actorStartFeeUsdc,
+          pricingDeterministic: hooks.pricingDeterministic,
         });
         const unknownChargePayload = {
           ok: false,
@@ -792,14 +1276,14 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
           reason: `Apify chargeEvent failed before dataset delivery: ${chargeErr?.message || chargeErr}`,
           billingMode,
           extractedCount: extractedItems.length,
-          deliveredCount: 0,
-          billableCount: 0,
-          chargedEventCount: 0,
-          items: [],
+          deliveredCount: deliveredPrefix.length,
+          billableCount: deliveredPrefix.filter(isItemBillable).length,
+          chargedEventCount: alreadyCharged.size,
+          items: deliveredPrefix,
           pagination: (() => {
             const rewound = computeRewoundCursorForDeliveredPrefix(
               batchRes.cursorResumeContext,
-              0,
+              deliveredPrefix.length,
               batchRes.pagination.nextPageToken
             );
             return {
@@ -815,23 +1299,40 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
         await hooks.saveOutput(unknownChargePayload);
         return unknownChargePayload;
       }
-      chargedEventCount = chargeRes.chargedCount;
-      const newlyChargedSlice = unchargedBillableItems.slice(0, chargedEventCount);
+
+      // Phase 2 (IN_FLIGHT -> CHARGED): Record charged subset and clear inFlightIds before pushData
+      const chunkChargedCount = Math.max(
+        0,
+        Math.min(chunk.length, Number(chargeRes?.chargedCount) || 0)
+      );
+      const newlyChargedSlice = chunk.slice(0, chunkChargedCount);
       for (const item of newlyChargedSlice) {
         alreadyCharged.add(item.profileId);
       }
-      if (chargeRes.eventChargeLimitReached) {
-        chargeLimitReached = true;
-      } else if (chargedEventCount < unchargedBillableItems.length) {
-        partialBillingFailure = true;
+      for (const item of chunk.slice(chunkChargedCount)) {
+        if (!alreadyCharged.has(item.profileId)) {
+          delete stagedItemsById[item.profileId];
+        }
       }
-      // Persist chargedIds immediately before pushData so dataset failures cannot cause double-billing on retry
-      await hooks.saveCheckpoint({
-        chargedIds: Array.from(alreadyCharged),
-        deliveredIds: Array.from(alreadyDelivered),
-      });
+      inFlightSet = new Set();
+      inFlightIdempotencyKey = null;
+      await persistCheckpoint();
+
+      if (chargeRes?.eventChargeLimitReached) {
+        chargeLimitReached = true;
+        break;
+      }
+      if (chunkChargedCount < chunk.length) {
+        partialBillingFailure = true;
+        for (const item of chunk.slice(chunkChargedCount)) {
+          unknownOutcomeSet.add(item.profileId);
+        }
+        await persistCheckpoint();
+        break;
+      }
     }
 
+    // Phase 3 (CHARGED -> DELIVERED): Push charged prefix to Dataset and purge stagedItemsById
     const firstUnchargedBillableIdx = extractedItems.findIndex(
       (item) => isItemBillable(item) && !alreadyCharged.has(item.profileId)
     );
@@ -844,16 +1345,21 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
       await hooks.pushData(toPush);
       for (const item of toPush) {
         alreadyDelivered.add(item.profileId);
+        delete stagedItemsById[item.profileId];
       }
     }
-    await hooks.saveCheckpoint({
-      chargedIds: Array.from(alreadyCharged),
-      deliveredIds: Array.from(alreadyDelivered),
-    });
+    for (const id of alreadyDelivered) {
+      delete stagedItemsById[id];
+    }
+    await persistCheckpoint();
   }
 
   const finalPagination = { ...batchRes.pagination };
-  if (deliveredItems.length < extractedItems.length && batchRes.cursorResumeContext) {
+  if (
+    (deliveredItems.length < extractedItems.length ||
+      (chargeLimitReached && extractedItems.length === 0 && finalPagination.hasMore)) &&
+    batchRes.cursorResumeContext
+  ) {
     finalPagination.nextPageToken = computeRewoundCursorForDeliveredPrefix(
       batchRes.cursorResumeContext,
       deliveredItems.length,
@@ -865,6 +1371,7 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
       deliveredItems.length === 0 ? 'PARTIAL_CHARGE_LIMIT_HALTED' : 'PARTIAL_CHARGE_LIMIT_REWOUND';
   }
 
+  const chargedEventCount = hooks.isAtHome ? alreadyCharged.size : 0;
   const durationMs = Math.max(1, Date.now() - startedAtMs);
   const billableCount = deliveredItems.filter(isItemBillable).length;
   const telemetry = computeRunEconomicsTelemetry({
@@ -874,6 +1381,7 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
     requestCount: Math.max(1, extractedItems.length),
     unitPriceUsdc: hooks.unitPriceUsdc,
     actorStartFeeUsdc: hooks.actorStartFeeUsdc,
+    pricingDeterministic: hooks.pricingDeterministic,
   });
 
   const status = partialBillingFailure
@@ -885,12 +1393,16 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
         : 'EMPTY_RESULT';
   const ok = !partialBillingFailure;
   const errorCode = partialBillingFailure ? 'PARTIAL_BILLING_HALT' : null;
+  const reason =
+    chargeLimitReached && extractedItems.length === 0
+      ? 'Actor maximum total charge budget reached before domain crawl; resume via nextPageToken.'
+      : batchRes.reason;
 
   const resultPayload = {
     ok,
     status,
     ...(errorCode ? { errorCode } : {}),
-    reason: batchRes.reason,
+    reason,
     billingMode,
     extractedCount: extractedItems.length,
     deliveredCount: deliveredItems.length,
@@ -905,7 +1417,7 @@ export async function runDomainContactEnricherActor(input = {}, options = {}) {
     ok,
     status,
     ...(errorCode ? { errorCode } : {}),
-    reason: batchRes.reason,
+    reason,
     billingMode,
     extractedCount: extractedItems.length,
     deliveredCount: deliveredItems.length,

@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import {
   ALLOWED_DOH_HOSTS,
   LIVE_SECRET_GUARD_RE,
+  SSRF_BLOCKED_HOST_RE,
   containsLiveSecretToken,
+  parseIpv6Hextets,
   isPrivateOrReservedIp,
   verifyEgressUrlSsrfSafe,
   resolveAndVerifyPublicHostname,
@@ -41,6 +43,8 @@ import {
   classifyContactEmailRole,
   validateExtractedB2bEmail,
   decodeCloudflareEmail,
+  sanitizeUntrustedDomainText,
+  buildUntrustedDomainExcerpt,
   extractContactsFromHtmlOrText,
   parseRfc9116SecurityTxt,
   detectEmailGatewayProvider,
@@ -59,6 +63,7 @@ import {
   computeChunkIdempotencyKey,
   computeRunEconomicsTelemetry,
   createApifyPlatformHooks,
+  resolveMaxBillableDomainsForBudget,
   loadApifyActorInput,
   runDomainContactEnricherActor,
 } from './src/apify_actor.mjs';
@@ -86,7 +91,9 @@ import {
 export {
   ALLOWED_DOH_HOSTS,
   LIVE_SECRET_GUARD_RE,
+  SSRF_BLOCKED_HOST_RE,
   containsLiveSecretToken,
+  parseIpv6Hextets,
   isPrivateOrReservedIp,
   verifyEgressUrlSsrfSafe,
   resolveAndVerifyPublicHostname,
@@ -114,6 +121,8 @@ export {
   classifyContactEmailRole,
   validateExtractedB2bEmail,
   decodeCloudflareEmail,
+  sanitizeUntrustedDomainText,
+  buildUntrustedDomainExcerpt,
   extractContactsFromHtmlOrText,
   parseRfc9116SecurityTxt,
   detectEmailGatewayProvider,
@@ -129,6 +138,7 @@ export {
   computeChunkIdempotencyKey,
   computeRunEconomicsTelemetry,
   createApifyPlatformHooks,
+  resolveMaxBillableDomainsForBudget,
   loadApifyActorInput,
   runDomainContactEnricherActor,
   MCP_MAX_ENVELOPE_BYTES,
@@ -234,8 +244,23 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
   }
 
   if (args.includes('--playground') || args.includes('--web-preview')) {
-    const portArg = Number(process.env.PORT || 4412);
-    const srv = await createContactPulsePreviewServer({ port: portArg });
+    const rawPort = process.env.PORT;
+    if (rawPort !== undefined && String(rawPort).trim() !== '') {
+      const parsedPort = Number(String(rawPort).trim());
+      if (!Number.isInteger(parsedPort) || parsedPort < 0 || parsedPort > 65535) {
+        const errOut = {
+          ok: false,
+          status: 'INVALID_PORT',
+          reason: `INVALID_PORT: Preview server port must be an integer between 0 and 65535 (got ${JSON.stringify(rawPort)})`,
+        };
+        writeStdout(`${JSON.stringify(errOut, null, 2)}\n`);
+        if (!options.noExit) exitFn(1);
+        return errOut;
+      }
+    }
+    const srv = await createContactPulsePreviewServer({
+      port: rawPort !== undefined && String(rawPort).trim() !== '' ? Number(String(rawPort).trim()) : 4412,
+    });
     writeStdout(`RevClamp ContactPulse Web Playground listening on ${srv.url}\n`);
     return srv;
   }

@@ -1,0 +1,47 @@
+{
+  "actorSpecification": 1,
+  "fields": {
+    "type": "object",
+    "properties": {
+      "jobId": { "type": "string", "title": "Job ID" },
+      "atsProvider": { "type": "string", "title": "ATS Provider" },
+      "companySlug": { "type": "string", "title": "Company Slug" },
+      "companyName": { "type": "string", "title": "Company Name" },
+      "title": { "type": "string", "title": "Job Title" },
+      "department": { "type": ["string", "null"], "title": "Department" },
+      "locationRaw": { "type": "string", "title": "Location" },
+      "workplaceType": { "type": "string", "title": "Workplace Type" },
+      "countryIso2": { "type": ["string", "null"], "title": "Country (ISO-2)" },
+      "employmentType": { "type": ["string", "null"], "title": "Employment Type" },
+      "seniorityLevel": { "type": ["string", "null"], "title": "Seniority Level" },
+      "postedAtIso": { "type": ["string", "null"], "title": "Posted At (ISO)" },
+      "daysOpen": { "type": ["integer", "null"], "title": "Days Open" },
+      "applyUrl": { "type": ["string", "null"], "title": "Apply URL" }
+    }
+  },
+  "views": {
+    "overview": {
+      "title": "Normalized ATS Job Postings Overview",
+      "transformation": {
+        "fields": [
+          "jobId",
+          "atsProvider",
+          "companyName",
+          "title",
+          "department",
+          "locationRaw",
+          "workplaceType",
+          "countryIso2",
+          "employmentType",
+          "seniorityLevel",
+          "postedAtIso",
+          "daysOpen",
+          "applyUrl"
+        ]
+      },
+      "display": {
+        "component": "table"
+      }
+    }
+  }
+}

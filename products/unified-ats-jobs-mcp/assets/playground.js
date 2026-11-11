@@ -2,7 +2,7 @@
   'use strict';
 
   const ALLOWED_EXTERNAL_HOSTS_RE =
-    /^(boards\.greenhouse\.io|job-boards\.greenhouse\.io|boards-api\.greenhouse\.io|jobs\.ashbyhq\.com|api\.ashbyhq\.com|jobs\.lever\.co|api\.lever\.co|jobs\.smartrecruiters\.com|api\.smartrecruiters\.com|[a-z0-9-]+\.wd[1-5]\.myworkdayjobs\.com)$/i;
+    /^(boards\.greenhouse\.io|job-boards\.greenhouse\.io|boards-api\.greenhouse\.io|jobs\.ashbyhq\.com|api\.ashbyhq\.com|jobs\.lever\.co|api\.lever\.co|jobs\.smartrecruiters\.com|api\.smartrecruiters\.com|[a-z0-9-]+\.wd[1-9]\d{0,2}\.myworkdayjobs\.com)$/i;
 
   function isSafeExternalJobUrl(rawUrl) {
     if (typeof rawUrl !== 'string' || !rawUrl.trim()) return false;
@@ -175,6 +175,26 @@
           title: 'Direct Career Board URL (Optional)',
           placeholder: 'https://jobs.ashbyhq.com/linear',
           hint: 'Optional direct HTTPS URL to a supported ATS career board.',
+        },
+        externalPath: {
+          title: 'Workday External Job Path (Optional)',
+          placeholder: 'e.g. /job/Santa-Clara/Senior-AI-Engineer_JR2027595',
+          hint: 'Optional Workday CXS externalPath (starting with /job/...) for direct Workday detail hydration.',
+        },
+        workdayTenant: {
+          title: 'Workday Tenant (Optional)',
+          placeholder: 'e.g. nvidia',
+          hint: 'Optional explicit Workday tenant subdomain.',
+        },
+        workdaySite: {
+          title: 'Workday Career Site (Optional)',
+          placeholder: 'e.g. NVIDIAExternalCareerSite',
+          hint: 'Optional explicit Workday CXS career site identifier.',
+        },
+        wdInstance: {
+          title: 'Workday Instance (Optional)',
+          placeholder: 'e.g. wd5, wd1, wd12',
+          hint: 'Optional Workday cluster instance (wd1, wd3, wd5, wd12, wd102).',
         },
       },
     },

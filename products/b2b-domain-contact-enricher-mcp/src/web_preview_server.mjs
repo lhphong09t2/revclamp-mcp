@@ -155,6 +155,7 @@ function buildPlaygroundHtml() {
 function applySecurityHeaders(res, isApiRoute = false) {
   res.setHeader('Content-Security-Policy', PLAYGROUND_CSP_HEADER);
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   if (isApiRoute) {
@@ -199,13 +200,37 @@ function isAllowedSamePortOrigin(originHeader, hostHeader) {
  * @param {number} [options.maxBodyBytes=65536]
  * @returns {Promise<{server: http.Server, host: string, port: number, url: string, close: () => Promise<void>}>}
  */
+function resolveValidatedPreviewPort(rawPort, defaultPort = 4412) {
+  if (rawPort === undefined || rawPort === null || rawPort === '') {
+    return defaultPort;
+  }
+  if (typeof rawPort === 'boolean') {
+    const err = new Error(
+      `INVALID_PORT: Invalid port '${String(rawPort)}' (expected an integer in [0, 65535])`
+    );
+    err.code = 'INVALID_PORT';
+    throw err;
+  }
+  const str = typeof rawPort === 'string' ? rawPort.trim() : null;
+  if (str === '') return defaultPort;
+  const parsed = str !== null ? (/^\d+$/.test(str) ? Number(str) : NaN) : Number(rawPort);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    const err = new Error(
+      `INVALID_PORT: Invalid port '${String(rawPort)}' (expected an integer in [0, 65535])`
+    );
+    err.code = 'INVALID_PORT';
+    throw err;
+  }
+  return parsed;
+}
+
 export async function createContactPulsePreviewServer(options = {}) {
   const requestedHost = String(options.host ?? '127.0.0.1').trim();
-  if (requestedHost !== '127.0.0.1' && requestedHost !== 'localhost') {
+  if (requestedHost !== '127.0.0.1') {
     throw new Error(`Playground server must bind strictly to 127.0.0.1 (got '${requestedHost}')`);
   }
 
-  const requestedPort = options.port !== undefined ? Number(options.port) : 4412;
+  const requestedPort = resolveValidatedPreviewPort(options.port, 4412);
   const maxBodyBytes =
     Number.isInteger(options.maxBodyBytes) && options.maxBodyBytes > 0
       ? options.maxBodyBytes
@@ -411,8 +436,12 @@ function isExecutedAsMainModule(metaUrl) {
 }
 
 if (isExecutedAsMainModule(import.meta.url)) {
-  const port = Number(process.env.PORT || 4412);
-  createContactPulsePreviewServer({ port })
+  Promise.resolve()
+    .then(() =>
+      createContactPulsePreviewServer({
+        port: process.env.PORT !== undefined ? process.env.PORT : 4412,
+      })
+    )
     .then((srv) => {
       process.stdout.write(`RevClamp ContactPulse Web Playground listening on ${srv.url}\n`);
     })

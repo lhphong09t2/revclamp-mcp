@@ -155,6 +155,7 @@ function buildPlaygroundHtml() {
 function applySecurityHeaders(res, isApiRoute = false) {
   res.setHeader('Content-Security-Policy', PLAYGROUND_CSP_HEADER);
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   if (isApiRoute) {
@@ -199,13 +200,37 @@ function isAllowedSamePortOrigin(originHeader, hostHeader) {
  * @param {number} [options.maxBodyBytes=65536]
  * @returns {Promise<{server: http.Server, host: string, port: number, url: string, close: () => Promise<void>}>}
  */
+function resolveValidatedPreviewPort(rawPort, defaultPort = 4411) {
+  if (rawPort === undefined || rawPort === null || rawPort === '') {
+    return defaultPort;
+  }
+  if (typeof rawPort === 'boolean') {
+    const err = new Error(
+      `INVALID_PORT: Invalid port '${String(rawPort)}' (expected an integer in [0, 65535])`
+    );
+    err.code = 'INVALID_PORT';
+    throw err;
+  }
+  const str = typeof rawPort === 'string' ? rawPort.trim() : null;
+  if (str === '') return defaultPort;
+  const parsed = str !== null ? (/^\d+$/.test(str) ? Number(str) : NaN) : Number(rawPort);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    const err = new Error(
+      `INVALID_PORT: Invalid port '${String(rawPort)}' (expected an integer in [0, 65535])`
+    );
+    err.code = 'INVALID_PORT';
+    throw err;
+  }
+  return parsed;
+}
+
 export async function createTalentPulsePreviewServer(options = {}) {
   const requestedHost = String(options.host ?? '127.0.0.1').trim();
-  if (requestedHost !== '127.0.0.1' && requestedHost !== 'localhost') {
+  if (requestedHost !== '127.0.0.1') {
     throw new Error(`Playground server must bind strictly to 127.0.0.1 (got '${requestedHost}')`);
   }
 
-  const requestedPort = options.port !== undefined ? Number(options.port) : 4411;
+  const requestedPort = resolveValidatedPreviewPort(options.port, 4411);
   const maxBodyBytes =
     Number.isInteger(options.maxBodyBytes) && options.maxBodyBytes > 0
       ? options.maxBodyBytes
@@ -281,6 +306,14 @@ export async function createTalentPulsePreviewServer(options = {}) {
     }
 
     if (req.method === 'POST' && pathname === '/api/mcp') {
+      const secFetchSite = String(req.headers['sec-fetch-site'] ?? '').trim().toLowerCase();
+      if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+        sendJson(res, 403, {
+          ok: false,
+          error: `Forbidden Sec-Fetch-Site header ('${secFetchSite}' request blocked)`,
+        });
+        return;
+      }
       const originHeader = req.headers.origin;
       if (originHeader !== undefined && !isAllowedSamePortOrigin(originHeader, hostHeader)) {
         sendJson(res, 403, {
@@ -340,6 +373,7 @@ export async function createTalentPulsePreviewServer(options = {}) {
         try {
           const rpcResponse = await handleMcpJsonRpcRequest(parsedBody, {
             fetchImpl: options.fetchImpl,
+            dnsLookup: options.dnsLookup,
           });
           if (res.headersSent || res.writableEnded) return;
           if (rpcResponse === null) {
@@ -401,8 +435,12 @@ function isExecutedAsMainModule(metaUrl) {
 }
 
 if (isExecutedAsMainModule(import.meta.url)) {
-  const port = Number(process.env.PORT || 4411);
-  createTalentPulsePreviewServer({ port })
+  Promise.resolve()
+    .then(() =>
+      createTalentPulsePreviewServer({
+        port: process.env.PORT !== undefined ? process.env.PORT : 4411,
+      })
+    )
     .then((srv) => {
       process.stdout.write(`RevClamp TalentPulse Web Playground listening on ${srv.url}\n`);
     })

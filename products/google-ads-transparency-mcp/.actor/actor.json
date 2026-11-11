@@ -14,66 +14,9 @@
     "memoryMbytes": 256
   },
   "input": "./input_schema.json",
-  "output": {
-    "actorOutputSchemaVersion": 1,
-    "title": "Google Ads Transparency Creatives & Run Summary",
-    "description": "Extracted Google Ads Transparency creative records (Default Dataset) and run billing/telemetry summary (Key-Value Store OUTPUT).",
-    "properties": {
-      "creatives": {
-        "type": "string",
-        "title": "Extracted Ad Creatives",
-        "description": "Verified advertiser ad creatives (Text, Image, Video), ad copy, destination domains, and active run dates.",
-        "template": "{{links.apiDefaultDatasetUrl}}/items"
-      },
-      "runSummary": {
-        "type": "string",
-        "title": "Run Summary & Telemetry (OUTPUT)",
-        "description": "Structured execution summary, resolved advertiser entities, pagination cursor, and billing receipt summary.",
-        "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
-      }
-    }
-  },
+  "output": "./output_schema.json",
   "storages": {
-    "dataset": {
-      "actorSpecification": 1,
-      "fields": {
-        "type": "object",
-        "properties": {
-          "advertiserId": { "type": "string", "title": "Advertiser ID" },
-          "advertiserName": { "type": "string", "title": "Advertiser Name" },
-          "creativeId": { "type": "string", "title": "Creative ID" },
-          "format": { "type": "string", "title": "Ad Format" },
-          "regionCode": { "type": ["string", "null"], "title": "Region Code" },
-          "firstSeenAtIso": { "type": ["string", "null"], "title": "First Seen (ISO)" },
-          "lastSeenAtIso": { "type": ["string", "null"], "title": "Last Seen (ISO)" },
-          "daysActive": { "type": ["integer", "null"], "title": "Days Active" },
-          "previewUrl": { "type": ["string", "null"], "title": "Preview Asset URL" },
-          "transparencyUrl": { "type": "string", "title": "Transparency Center URL" }
-        }
-      },
-      "views": {
-        "overview": {
-          "title": "Ad Creatives Overview",
-          "transformation": {
-            "fields": [
-              "advertiserId",
-              "advertiserName",
-              "creativeId",
-              "format",
-              "regionCode",
-              "firstSeenAtIso",
-              "lastSeenAtIso",
-              "daysActive",
-              "previewUrl",
-              "transparencyUrl"
-            ]
-          },
-          "display": {
-            "component": "table"
-          }
-        }
-      }
-    }
+    "dataset": "./dataset_schema.json"
   },
   "dockerfile": "../Dockerfile"
 }

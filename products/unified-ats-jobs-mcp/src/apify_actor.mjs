@@ -704,8 +704,18 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
     if (runId) {
       const chargeUrl = `${apiBase}/v2/actor-runs/${encodeURIComponent(runId)}/charge`;
       const allowUnbilledAtHome = env?.TALENTPULSE_ALLOW_UNBILLED_AT_HOME === '1';
-      const idempotentChargeRetryEnabled = env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED === '1';
-      hooks.idempotentChargeRetryEnabled = idempotentChargeRetryEnabled;
+      const rawIdempotencyFlag = String(env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED ?? '')
+        .trim()
+        .toLowerCase();
+      const idempotentChargeRetryEnabled =
+        rawIdempotencyFlag === ''
+          ? true
+          : rawIdempotencyFlag === '1' || rawIdempotencyFlag === 'true';
+      Object.defineProperty(hooks, 'idempotentChargeRetryEnabled', {
+        enumerable: true,
+        configurable: true,
+        get: () => idempotentChargeRetryEnabled !== false,
+      });
       let unbilledOwnerTestLatched = false;
       let latchedPlatformEventName = null;
       const resolvePlatformEventAndPrice = (rawEventName) => {
@@ -1308,6 +1318,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         chargedEventCount: 0,
         durationMs,
         requestCount: 1,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1342,6 +1356,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
           chargedEventCount: 0,
           durationMs,
           requestCount: 1,
+          unitPriceUsdc:
+            hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+          actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+          pricingDeterministic: hooks?.pricingDeterministic,
         }),
       });
     }
@@ -1409,6 +1427,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
             chargedEventCount: chargedSet.size,
             durationMs,
             requestCount: 1,
+            unitPriceUsdc:
+              hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+            actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+            pricingDeterministic: hooks?.pricingDeterministic,
           }),
         });
       }
@@ -1459,6 +1481,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
             chargedEventCount: chargedSet.size,
             durationMs,
             requestCount: 1,
+            unitPriceUsdc:
+              hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+            actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+            pricingDeterministic: hooks?.pricingDeterministic,
           }),
         });
       }
@@ -1535,6 +1561,12 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
                   chargedEventCount: chargedSet.size,
                   durationMs,
                   requestCount: 1,
+                  unitPriceUsdc:
+                    hooks && 'unitPriceUsdc' in hooks
+                      ? hooks.unitPriceUsdc
+                      : ACTOR_PRICING_CONTRACT.priceUsdc,
+                  actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+                  pricingDeterministic: hooks?.pricingDeterministic,
                 }),
               });
             }
@@ -1580,6 +1612,12 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
                   chargedEventCount: chargedSet.size,
                   durationMs,
                   requestCount: 1,
+                  unitPriceUsdc:
+                    hooks && 'unitPriceUsdc' in hooks
+                      ? hooks.unitPriceUsdc
+                      : ACTOR_PRICING_CONTRACT.priceUsdc,
+                  actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+                  pricingDeterministic: hooks?.pricingDeterministic,
                 }),
               });
             }
@@ -1635,6 +1673,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         chargedEventCount: chargedSet.size,
         durationMs,
         requestCount: 1,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1680,6 +1722,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: 0,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1704,6 +1750,7 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
     maxPages: input?.maxPages,
     pageToken: input?.pageToken,
     fetchImpl: hooks.fetchImpl,
+    dnsLookup: hooks.dnsLookup ?? input?.dnsLookup,
     nowFn: nowMs,
     sleepFn,
     randomFn,
@@ -1748,6 +1795,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: totalRpcRequests,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1776,6 +1827,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: totalRpcRequests,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1812,6 +1867,10 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
           chargedEventCount: hasChargeHook ? chargedSet.size : 0,
           durationMs,
           requestCount: totalRpcRequests,
+          unitPriceUsdc:
+            hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+          actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+          pricingDeterministic: hooks?.pricingDeterministic,
         }),
       });
     }
@@ -2293,6 +2352,7 @@ export async function runUnifiedAtsJobsActor(input = {}, hooks = {}) {
     requestCount: totalRpcRequests,
     unitPriceUsdc: lastResolvedUnitPriceUsdc,
     actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+    pricingDeterministic: hooks?.pricingDeterministic,
   });
 
   return finalizeActorReturn({

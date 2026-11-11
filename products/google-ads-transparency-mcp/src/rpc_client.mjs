@@ -20,19 +20,29 @@ import { domainToASCII, domainToUnicode } from 'node:url';
 import {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
   LIVE_SECRET_GUARD_RE,
+  SSRF_BLOCKED_HOST_RE,
   containsLiveSecretToken,
+  parseIpv6Hextets,
+  isPrivateOrReservedIp,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  resolveAndVerifyPublicHostname,
   createEphemeralHttpsAgent,
+  executePinnedHttpsRequest,
 } from './egress_guard.mjs';
 
 export {
   ALLOWED_GOOGLE_ADS_RPC_HOSTS,
   LIVE_SECRET_GUARD_RE,
+  SSRF_BLOCKED_HOST_RE,
   containsLiveSecretToken,
+  parseIpv6Hextets,
+  isPrivateOrReservedIp,
   verifyEgressUrlSsrfSafe,
   assertAllowedGoogleAdsEgress,
+  resolveAndVerifyPublicHostname,
   createEphemeralHttpsAgent,
+  executePinnedHttpsRequest,
 };
 
 export const GOOGLE_ADS_RPC_ENDPOINTS = Object.freeze({
@@ -1936,8 +1946,10 @@ export async function executeGoogleAdsRpcPost(endpointUrl, fReqPayload, options 
     };
   }
 
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  if (typeof fetchImpl !== 'function') {
+  const hasCustomFetch = typeof options.fetchImpl === 'function';
+  const fetchImpl = hasCustomFetch ? options.fetchImpl : globalThis.fetch;
+  const dnsLookupFn = typeof options.dnsLookup === 'function' ? options.dnsLookup : undefined;
+  if (!hasCustomFetch && typeof fetchImpl !== 'function' && typeof executePinnedHttpsRequest !== 'function') {
     return {
       ok: false,
       status: 'UPSTREAM_ERROR',
@@ -2007,25 +2019,59 @@ export async function executeGoogleAdsRpcPost(endpointUrl, fReqPayload, options 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), effectiveTimeoutMs);
       try {
-        const response = await fetchImpl(endpointUrl, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
-            accept: 'application/json, text/plain, */*',
-            'accept-language': 'en-US,en;q=0.9',
-            origin: 'https://adstransparency.google.com',
-            referer: 'https://adstransparency.google.com/',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'x-same-domain': '1',
-            'user-agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-          },
-          body: encodedBody,
-          redirect: 'manual',
-          signal: controller.signal,
-        });
+        const reqHeaders = {
+          'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          accept: 'application/json, text/plain, */*',
+          'accept-language': 'en-US,en;q=0.9',
+          origin: 'https://adstransparency.google.com',
+          referer: 'https://adstransparency.google.com/',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          'x-same-domain': '1',
+          'user-agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+        };
+        let pinnedAddress = null;
+        if (!hasCustomFetch || dnsLookupFn) {
+          const dnsCheck = await resolveAndVerifyPublicHostname(
+            egressCheck.hostname,
+            dnsLookupFn,
+            Math.min(2500, effectiveTimeoutMs)
+          );
+          if (!dnsCheck.safe) {
+            const reasonStr = String(dnsCheck.reason || '');
+            if (/SSRF blocked|valid DNS domain/i.test(reasonStr)) {
+              clearTimeout(timer);
+              return {
+                ok: false,
+                status: 'SSRF_BLOCKED',
+                statusCode: 0,
+                data: null,
+                attempts: attempt + 1,
+                errorMessage: `SSRF guard blocked egress to '${endpointUrl}': ${reasonStr}`,
+              };
+            }
+            throw new Error(reasonStr || 'DNS resolution failed');
+          }
+          pinnedAddress = dnsCheck.addresses?.[0] || null;
+        }
+        const response = hasCustomFetch
+          ? await fetchImpl(endpointUrl, {
+              method: 'POST',
+              headers: reqHeaders,
+              body: encodedBody,
+              redirect: 'manual',
+              signal: controller.signal,
+            })
+          : await executePinnedHttpsRequest(endpointUrl, {
+              method: 'POST',
+              headers: reqHeaders,
+              body: encodedBody,
+              agent: createEphemeralHttpsAgent(effectiveTimeoutMs, pinnedAddress),
+              signal: controller.signal,
+              timeoutMs: effectiveTimeoutMs,
+            });
         lastStatusCode = Number(response?.status || 0);
         const locationHeader = String(response?.headers?.get?.('location') ?? '');
         const isSorryRedirect =
@@ -2156,7 +2202,7 @@ export async function executeGoogleAdsRpcPost(endpointUrl, fReqPayload, options 
         const rawText = await readResponseTextBounded(response, maxResponseBytes);
         clearTimeout(timer);
 
-        const cleanedText = rawText.replace(/^\)\]\}'\s*/, '').trim();
+        const cleanedText = rawText.replace(/^(?:\uFEFF|\s)*\)\]\}'\s*/, '').trim();
         if (!cleanedText) {
           return {
             ok: false,
@@ -3799,8 +3845,10 @@ export async function fetchAndExtractStaticAdCopy(previewUrl, options = {}) {
     return createEmptyUntrustedAdContent('DEADLINE_SKIPPED');
   }
 
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  if (typeof fetchImpl !== 'function') {
+  const hasCustomFetch = typeof options.fetchImpl === 'function';
+  const fetchImpl = hasCustomFetch ? options.fetchImpl : globalThis.fetch;
+  const dnsLookupFn = typeof options.dnsLookup === 'function' ? options.dnsLookup : undefined;
+  if (!hasCustomFetch && typeof fetchImpl !== 'function' && typeof executePinnedHttpsRequest !== 'function') {
     return createEmptyUntrustedAdContent('FETCH_ERROR');
   }
 
@@ -3824,21 +3872,47 @@ export async function fetchAndExtractStaticAdCopy(previewUrl, options = {}) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const response = await fetchImpl(previewUrl, {
-          method: 'GET',
-          headers: {
-            accept: 'application/javascript, text/javascript, text/plain, */*',
-            'accept-language': 'en-US,en;q=0.9',
-            referer: 'https://adstransparency.google.com/',
-            'sec-fetch-dest': 'script',
-            'sec-fetch-mode': 'no-cors',
-            'sec-fetch-site': 'cross-site',
-            'user-agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-          },
-          redirect: 'manual',
-          signal: controller.signal,
-        });
+        const previewHeaders = {
+          accept: 'application/javascript, text/javascript, text/plain, */*',
+          'accept-language': 'en-US,en;q=0.9',
+          referer: 'https://adstransparency.google.com/',
+          'sec-fetch-dest': 'script',
+          'sec-fetch-mode': 'no-cors',
+          'sec-fetch-site': 'cross-site',
+          'user-agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+        };
+        let pinnedAddress = null;
+        if (!hasCustomFetch || dnsLookupFn) {
+          const dnsCheck = await resolveAndVerifyPublicHostname(
+            parsedHost,
+            dnsLookupFn,
+            Math.min(2500, timeoutMs)
+          );
+          if (!dnsCheck.safe) {
+            const reasonStr = String(dnsCheck.reason || '');
+            if (/SSRF blocked|valid DNS domain/i.test(reasonStr)) {
+              clearTimeout(timer);
+              return createEmptyUntrustedAdContent('SSRF_BLOCKED');
+            }
+            throw new Error(reasonStr || 'DNS resolution failed');
+          }
+          pinnedAddress = dnsCheck.addresses?.[0] || null;
+        }
+        const response = hasCustomFetch
+          ? await fetchImpl(previewUrl, {
+              method: 'GET',
+              headers: previewHeaders,
+              redirect: 'manual',
+              signal: controller.signal,
+            })
+          : await executePinnedHttpsRequest(previewUrl, {
+              method: 'GET',
+              headers: previewHeaders,
+              agent: createEphemeralHttpsAgent(timeoutMs, pinnedAddress),
+              signal: controller.signal,
+              timeoutMs,
+            });
         const status = Number(response?.status || 0);
         const locationHeader = String(response?.headers?.get?.('location') ?? '');
         const isSorryRedirect =

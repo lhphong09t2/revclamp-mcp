@@ -3,7 +3,7 @@
   "name": "com.revclamp/b2b-domain-contact-enricher-mcp",
   "title": "B2B Domain Contact, Email & DNS Enricher MCP | RevClamp ContactPulse",
   "description": "B2B domain contact, email, RFC 9116 security.txt & DNS MX/SPF/DMARC deliverability enricher MCP.",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "websiteUrl": "https://revclamp.com",
   "repository": {
     "url": "https://github.com/lhphong09t2/revclamp-mcp",
@@ -27,7 +27,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@revclamp/b2b-domain-contact-enricher-mcp",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

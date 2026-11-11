@@ -3,8 +3,8 @@
  *
  * Implements:
  *   1. Auto-Detecting Company/URL Router (`resolveCompanyAtsBoard`) across 5 public ATS providers:
- *      - Greenhouse (`GET https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true`)
- *      - Workday CXS (`POST https://{tenant}.wd{1..5}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs`
+ *      - Greenhouse (`GET https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true&pay_transparency=true`)
+ *      - Workday CXS (`POST https://{tenant}.wd{1..999}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs`
  *        with page-1 `totalCount` latching to defeat the page-2 `total: 0` trap)
  *      - Ashby (`GET https://api.ashbyhq.com/posting-api/job-board/{company}?includeCompensation=true`)
  *      - Lever (`GET https://api.lever.co/v0/postings/{company}?mode=json`)
@@ -26,7 +26,9 @@ import {
   isAllowedAtsApiHost,
   verifyEgressUrlSsrfSafe,
   assertAllowedAtsEgress,
+  resolveAndVerifyPublicHostname,
   createEphemeralHttpsAgent,
+  executePinnedHttpsRequest,
 } from './egress_guard.mjs';
 
 export {
@@ -37,7 +39,9 @@ export {
   isAllowedAtsApiHost,
   verifyEgressUrlSsrfSafe,
   assertAllowedAtsEgress,
+  resolveAndVerifyPublicHostname,
   createEphemeralHttpsAgent,
+  executePinnedHttpsRequest,
 };
 
 export const SUPPORTED_ATS_PROVIDERS = Object.freeze([
@@ -842,7 +846,7 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
   }
 
   // 1. Check if input is a URL or host/path matching one of the 5 ATS platforms
-  if (/^https?:\/\//i.test(trimmed) || /^(?:boards\.greenhouse\.io|job-boards\.greenhouse\.io|boards-api\.greenhouse\.io|jobs\.ashbyhq\.com|api\.ashbyhq\.com|jobs\.lever\.co|api\.lever\.co|jobs\.smartrecruiters\.com|api\.smartrecruiters\.com|[a-z0-9-]+\.wd[1-5]\.myworkdayjobs\.com)\//i.test(trimmed)) {
+  if (/^https?:\/\//i.test(trimmed) || /^(?:boards\.greenhouse\.io|job-boards\.greenhouse\.io|boards-api\.greenhouse\.io|jobs\.ashbyhq\.com|api\.ashbyhq\.com|jobs\.lever\.co|api\.lever\.co|jobs\.smartrecruiters\.com|api\.smartrecruiters\.com|[a-z0-9-]+\.wd[1-9]\d{0,2}\.myworkdayjobs\.com)\//i.test(trimmed)) {
     try {
       const urlStr = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
       const parsed = new URL(urlStr);
@@ -926,8 +930,8 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
         }
       }
 
-      // Workday CXS URLs: {tenant}.wd{1..5}.myworkdayjobs.com/{site} or /wday/cxs/{tenant}/{site}/jobs
-      const wdMatch = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(wd[1-5])\.myworkdayjobs\.com$/i.exec(host);
+      // Workday CXS URLs: {tenant}.wd{1..999}.myworkdayjobs.com/{site} or /wday/cxs/{tenant}/{site}/jobs
+      const wdMatch = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(wd[1-9]\d{0,2})\.myworkdayjobs\.com$/i.exec(host);
       if (wdMatch) {
         const tenant = wdMatch[1].toLowerCase();
         const wdInstance = wdMatch[2].toLowerCase();
@@ -1112,14 +1116,14 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
       const wdInstance = String(overrides.wdInstance || knownEntry?.wdInstance || 'wd5')
         .trim()
         .toLowerCase();
-      if (!/^wd[1-5]$/.test(wdInstance)) {
+      if (!/^wd[1-9]\d{0,2}$/.test(wdInstance)) {
         return {
           ok: false,
           atsProvider: null,
           companySlug: tenant,
           companyName: tenant,
           detectedFromUrl: false,
-          reason: `Invalid Workday instance '${wdInstance}' (expected wd1..wd5)`,
+          reason: `Invalid Workday instance '${wdInstance}' (expected wd1..wd999, e.g. wd1, wd5, wd12, wd102)`,
         };
       }
       return {
@@ -1153,14 +1157,14 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
     )
       .trim()
       .toLowerCase();
-    if (knownEntry.atsProvider === 'WORKDAY' && !/^wd[1-5]$/.test(resolvedWdInstance)) {
+    if (knownEntry.atsProvider === 'WORKDAY' && !/^wd[1-9]\d{0,2}$/.test(resolvedWdInstance)) {
       return {
         ok: false,
         atsProvider: null,
         companySlug: knownEntry.companySlug,
         companyName: knownEntry.companyName,
         detectedFromUrl: false,
-        reason: `Invalid Workday instance '${resolvedWdInstance}' (expected wd1..wd5)`,
+        reason: `Invalid Workday instance '${resolvedWdInstance}' (expected wd1..wd999, e.g. wd1, wd5, wd12, wd102)`,
       };
     }
     return {
@@ -1175,14 +1179,14 @@ export function parseAtsTargetFromInput(rawQuery, overrides = {}) {
   const fallbackWdInstance = String(overrides.wdInstance || 'wd5')
     .trim()
     .toLowerCase();
-  if (!/^wd[1-5]$/.test(fallbackWdInstance)) {
+  if (!/^wd[1-9]\d{0,2}$/.test(fallbackWdInstance)) {
     return {
       ok: false,
       atsProvider: null,
       companySlug: cleanedSlug,
       companyName: cleanedSlug,
       detectedFromUrl: false,
-      reason: `Invalid Workday instance '${fallbackWdInstance}' (expected wd1..wd5)`,
+      reason: `Invalid Workday instance '${fallbackWdInstance}' (expected wd1..wd999, e.g. wd1, wd5, wd12, wd102)`,
     };
   }
 
@@ -1458,6 +1462,62 @@ export function verifyAtsResponseSchemaCanary(providerOrMethod, payload, context
     return { ok: true, status: 'OK', billableCount: 0 };
   }
 
+  if (method === 'GREENHOUSE_DETAIL') {
+    if (
+      (typeof payload.id !== 'number' && typeof payload.id !== 'string') ||
+      !String(payload.id).trim() ||
+      typeof payload.title !== 'string' ||
+      !payload.title.trim()
+    ) {
+      return {
+        ok: false,
+        status: 'SCHEMA_DRIFT_HALT',
+        billableCount: 0,
+        reason: 'GREENHOUSE_DETAIL payload is missing required id or title',
+      };
+    }
+    if (
+      context.requestedJobId &&
+      String(payload.id).trim() !== String(context.requestedJobId).trim()
+    ) {
+      return {
+        ok: false,
+        status: 'SCHEMA_DRIFT_HALT',
+        billableCount: 0,
+        reason: `GREENHOUSE_DETAIL id mismatch: expected ${context.requestedJobId}, got ${payload.id}`,
+      };
+    }
+    return { ok: true, status: 'OK', billableCount: 0 };
+  }
+
+  if (method === 'LEVER_DETAIL') {
+    if (
+      typeof payload.id !== 'string' ||
+      !payload.id.trim() ||
+      typeof payload.text !== 'string' ||
+      !payload.text.trim()
+    ) {
+      return {
+        ok: false,
+        status: 'SCHEMA_DRIFT_HALT',
+        billableCount: 0,
+        reason: 'LEVER_DETAIL payload is missing required string id or text title',
+      };
+    }
+    if (
+      context.requestedJobId &&
+      payload.id.trim() !== String(context.requestedJobId).trim()
+    ) {
+      return {
+        ok: false,
+        status: 'SCHEMA_DRIFT_HALT',
+        billableCount: 0,
+        reason: `LEVER_DETAIL id mismatch: expected ${context.requestedJobId}, got ${payload.id}`,
+      };
+    }
+    return { ok: true, status: 'OK', billableCount: 0 };
+  }
+
   return {
     ok: false,
     status: 'SCHEMA_DRIFT_HALT',
@@ -1544,7 +1604,9 @@ export async function executeAtsJsonRequest(url, options = {}) {
   const nowFn = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
   const sleepFn = typeof options.sleepFn === 'function' ? options.sleepFn : defaultSleep;
   const randomFn = typeof options.randomFn === 'function' ? options.randomFn : Math.random;
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const hasCustomFetch = typeof options.fetchImpl === 'function';
+  const fetchImpl = hasCustomFetch ? options.fetchImpl : globalThis.fetch;
+  const dnsLookupFn = typeof options.dnsLookup === 'function' ? options.dnsLookup : undefined;
 
   const maxRetries = Math.min(
     2,
@@ -1595,13 +1657,47 @@ export async function executeAtsJsonRequest(url, options = {}) {
           ...(options.headers || {}),
         };
 
-        const response = await fetchImpl(url, {
-          method,
-          headers,
-          ...(requestBodyStr !== undefined ? { body: requestBodyStr } : {}),
-          redirect: 'manual',
-          signal: controller.signal,
-        });
+        let pinnedAddress = null;
+        if (!hasCustomFetch || dnsLookupFn) {
+          const dnsCheck = await resolveAndVerifyPublicHostname(
+            egressCheck.hostname,
+            dnsLookupFn,
+            Math.min(2500, attemptTimeoutMs)
+          );
+          if (!dnsCheck.safe) {
+            const reasonStr = String(dnsCheck.reason || '');
+            if (/SSRF blocked|valid DNS domain/i.test(reasonStr)) {
+              clearTimeout(timer);
+              return {
+                ok: false,
+                status: 'SSRF_BLOCKED',
+                statusCode: 0,
+                data: null,
+                attempts: attempt + 1,
+                errorMessage: `SSRF / DNS Guard blocked host: ${reasonStr}`,
+              };
+            }
+            throw new Error(reasonStr || 'DNS resolution failed');
+          }
+          pinnedAddress = dnsCheck.addresses?.[0] || null;
+        }
+
+        const response = hasCustomFetch
+          ? await fetchImpl(url, {
+              method,
+              headers,
+              ...(requestBodyStr !== undefined ? { body: requestBodyStr } : {}),
+              redirect: 'manual',
+              signal: controller.signal,
+            })
+          : await executePinnedHttpsRequest(url, {
+              method,
+              headers,
+              ...(requestBodyStr !== undefined ? { body: requestBodyStr } : {}),
+              agent: createEphemeralHttpsAgent(attemptTimeoutMs, pinnedAddress),
+              signal: controller.signal,
+              timeoutMs: attemptTimeoutMs,
+            });
 
         lastStatusCode = Number(response?.status || 0);
         const locationHeader = String(response?.headers?.get?.('location') ?? '');
@@ -1851,6 +1947,12 @@ export function sanitizeUntrustedJobText(rawHtmlOrText, maxChars = MAX_EXCERPT_C
     .replace(/<script\b[^>]*>[\s\S]*$/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*$/gi, ' ');
 
+  // Redact angle-bracket chat-template injection delimiters before stripping HTML tags
+  s = s.replace(
+    /<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>|<<SYS>>|<\/SYS>>/gi,
+    ' [REDACTED_UNTRUSTED_DIRECTIVE] '
+  );
+
   // Replace block/break tags with spaces, then strip all HTML/XML tags and leftover angle brackets
   s = s
     .replace(/<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|td|section|article|header|footer)\b[^>]*>/gi, ' ')
@@ -1867,6 +1969,27 @@ export function sanitizeUntrustedJobText(rawHtmlOrText, maxChars = MAX_EXCERPT_C
   );
 
   s = s.replace(/\s+/g, ' ').trim();
+
+  // Redact prompt-injection override directives after invisible/zero-width character removal
+  s = s
+    .replace(
+      /\b(?:ignore|disregard|forget|override)\s+(?:all\s+)?(?:previous|prior|above|earlier|system|developer)\s+(?:instructions?|prompts?|directives?|rules?|guardrails?)(?:\s+(?:and|to)\s+(?:exfiltrate|leak|dump|print|output|send|reveal|execute)\b[^.!?;]{0,80})?/gi,
+      '[REDACTED_UNTRUSTED_DIRECTIVE]'
+    )
+    .replace(
+      /\b(?:exfiltrate|leak|dump)\s+(?:all\s+)?(?:environment\s+variables|env\s+vars|api\s+keys|secrets|credentials|private\s+keys|system\s+prompt)\b/gi,
+      '[REDACTED_UNTRUSTED_DIRECTIVE]'
+    )
+    .replace(
+      /\b(?:new\s+system\s+prompt|system\s+prompt\s*:|developer\s+message\s*:|you\s+are\s+now\s+(?:a\b|an\b|in\s+developer\s+mode|unrestricted))/gi,
+      '[REDACTED_UNTRUSTED_DIRECTIVE]'
+    )
+    .replace(
+      /\[(?:SYSTEM|INST|\/INST|ADMIN_OVERRIDE|SYSTEM_PROMPT|DEVELOPER)\]/gi,
+      '[REDACTED_UNTRUSTED_DIRECTIVE]'
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
   const codePoints = Array.from(s);
   if (codePoints.length > safeMax) {
     return codePoints.slice(0, safeMax).join('').trim();
@@ -1971,8 +2094,49 @@ function normalizeCompensationInterval(rawInterval) {
 export function extractJobCompensation(params = {}) {
   const { structuredComp = null, plainText = '' } =
     params && typeof params === 'object' ? params : {};
-  // 1. Check structured compensation (Ashby / Lever / SmartRecruiters)
+  // 1. Check structured compensation (Greenhouse pay_input_ranges / Ashby / Lever / SmartRecruiters)
   if (structuredComp && typeof structuredComp === 'object') {
+    const payRanges = Array.isArray(structuredComp.pay_input_ranges)
+      ? structuredComp.pay_input_ranges
+      : structuredComp.min_cents !== undefined || structuredComp.max_cents !== undefined
+        ? [structuredComp]
+        : [];
+    if (payRanges.length > 0) {
+      const validRange = payRanges.find(
+        (r) => r && (Number(r.min_cents) > 0 || Number(r.max_cents) > 0)
+      );
+      if (validRange) {
+        const rawMinCents = Number(validRange.min_cents || validRange.max_cents);
+        const rawMaxCents = Number(validRange.max_cents || validRange.min_cents);
+        if (
+          Number.isFinite(rawMinCents) &&
+          Number.isFinite(rawMaxCents) &&
+          rawMinCents > 0 &&
+          rawMaxCents >= rawMinCents
+        ) {
+          const intervalHint = `${validRange.title || ''} ${validRange.blurb || ''}`;
+          let interval = normalizeCompensationInterval(intervalHint);
+          const minDollars = rawMinCents / 100;
+          const maxDollars = rawMaxCents / 100;
+          if (!/HOUR|HR\b|MONTH|MO\b|WEEK|WK\b|DAY|DAILY/i.test(intervalHint)) {
+            if (minDollars >= 10 && maxDollars <= 400) interval = 'HOUR';
+            else if (minDollars >= 2000 && maxDollars <= 25000) interval = 'MONTH';
+          }
+          return {
+            minAmount:
+              interval === 'HOUR' ? Math.round(minDollars * 100) / 100 : Math.round(minDollars),
+            maxAmount:
+              interval === 'HOUR' ? Math.round(maxDollars * 100) / 100 : Math.round(maxDollars),
+            currency: String(validRange.currency_type || validRange.currency || 'USD')
+              .trim()
+              .toUpperCase(),
+            interval,
+            source: 'STRUCTURED_ATS',
+          };
+        }
+      }
+    }
+
     // Ashby format: { summaryComponents: [{ compensationType: 'Salary', interval: '1 YEAR', currencyCode: 'USD', minValue: 204000, maxValue: 264000 }] }
     const components =
       Array.isArray(structuredComp.summaryComponents) && structuredComp.summaryComponents.length > 0
@@ -2363,10 +2527,15 @@ export function normalizeAtsJobRecord(atsProvider, rawJob = {}, context = {}) {
   if (provider === 'GREENHOUSE') {
     upstreamJobId = String(rawJob.id ?? '').trim();
     title = String(rawJob.title ?? '').trim();
-    department =
-      Array.isArray(rawJob.departments) && rawJob.departments[0]?.name
-        ? String(rawJob.departments[0].name).trim()
-        : null;
+    const validDept = Array.isArray(rawJob.departments)
+      ? rawJob.departments.find((d) => {
+          const dName = String(d?.name ?? '').trim();
+          if (!dName) return false;
+          if (Number(d?.id) === 0 || /^no\s+department$/i.test(dName)) return false;
+          return true;
+        })
+      : null;
+    department = validDept ? String(validDept.name).trim() : null;
     locationRaw = String(rawJob.location?.name ?? '').trim();
     explicitCountry = String(rawJob.offices?.[0]?.location ?? '').trim();
     rawPostedAt = rawJob.first_published || rawJob.updated_at || null;
@@ -2376,6 +2545,9 @@ export function normalizeAtsJobRecord(atsProvider, rawJob = {}, context = {}) {
       `https://boards.greenhouse.io/${encodeURIComponent(companySlug)}/jobs/${encodeURIComponent(upstreamJobId)}`
     );
     rawDescriptionText = String(rawJob.content ?? '');
+    if (Array.isArray(rawJob.pay_input_ranges) && rawJob.pay_input_ranges.length > 0) {
+      structuredComp = { pay_input_ranges: rawJob.pay_input_ranges };
+    }
   } else if (provider === 'ASHBY') {
     upstreamJobId = String(rawJob.id ?? '').trim();
     title = String(rawJob.title ?? '').trim();
@@ -3005,7 +3177,7 @@ export async function resolveCompanyAtsBoard(options = {}) {
     target: null,
     probeAttempts: totalAttempts,
     billableCount: 0,
-    reason: `No active public ATS board matched '${slug}' across Ashby, Greenhouse, Lever, or SmartRecruiters (Tip: For custom Workday boards, pass the full *.wd1..5.myworkdayjobs.com career URL.)`,
+    reason: `No active public ATS board matched '${slug}' across Ashby, Greenhouse, Lever, or SmartRecruiters (Tip: For custom Workday boards, pass the full *.wd{N}.myworkdayjobs.com career URL.)`,
   };
 }
 
@@ -3313,13 +3485,14 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
   const isTightLeverDeadline = Boolean(
     options.deadlineAtMs && options.deadlineAtMs - nowFn() < 12000
   );
-  const leverCeiling = isTightLeverDeadline ? 15 : 25;
-  const requestedLeverPageSize =
+  const hasExplicitLeverPageSize =
     options.leverPageSize !== undefined &&
     options.leverPageSize !== null &&
-    Number.isFinite(Number(options.leverPageSize))
-      ? Math.max(1, Math.floor(Number(options.leverPageSize)))
-      : 15;
+    Number.isFinite(Number(options.leverPageSize));
+  const leverCeiling = isTightLeverDeadline ? 15 : hasExplicitLeverPageSize ? 100 : 25;
+  const requestedLeverPageSize = hasExplicitLeverPageSize
+    ? Math.max(1, Math.floor(Number(options.leverPageSize)))
+    : 15;
   const leverMaxPageSize = Math.min(leverCeiling, requestedLeverPageSize);
   const pageSize =
     atsProvider === 'WORKDAY'
@@ -3383,7 +3556,7 @@ export async function fetchUnifiedAtsJobPostings(options = {}) {
     let reqBody = undefined;
 
     if (atsProvider === 'GREENHOUSE') {
-      endpointUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(companySlug)}/jobs?content=true`;
+      endpointUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(companySlug)}/jobs?content=true&pay_transparency=true`;
     } else if (atsProvider === 'ASHBY') {
       endpointUrl = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(companySlug)}?includeCompensation=true`;
     } else if (atsProvider === 'LEVER') {
@@ -3771,15 +3944,6 @@ export async function getAtsJobPostingDetail(options = {}) {
   }
   options = aliasRes.args;
   const rawJobId = String(options.jobId ?? options.upstreamJobId ?? '').trim();
-  if (!rawJobId) {
-    return {
-      ok: false,
-      status: 'INVALID_INPUT',
-      detail: null,
-      httpAttempts: 0,
-      reason: 'Missing required parameter jobId',
-    };
-  }
 
   let atsProvider = String(options.atsProvider ?? options.provider ?? 'AUTO')
     .trim()
@@ -3788,6 +3952,125 @@ export async function getAtsJobPostingDetail(options = {}) {
     options.company ?? options.companySlug ?? options.query ?? options.careerUrl ?? ''
   ).trim();
   let upstreamJobId = rawJobId;
+  let inferredExternalPath = String(options.externalPath || '').trim();
+  let inferredWdTenant = options.workdayTenant;
+  let inferredWdSite = options.workdaySite;
+  let inferredWdInstance = options.wdInstance;
+
+  // Unwrap full ATS job URLs passed in jobId, careerUrl, url, or query
+  for (const rawUrlCandidate of [rawJobId, options.careerUrl, options.url, options.query]) {
+    const cand = String(rawUrlCandidate || '').trim();
+    if (!cand || (!/^https?:\/\//i.test(cand) && !cand.includes('/'))) continue;
+    const shouldInferJobId = cand === rawJobId || !upstreamJobId;
+    try {
+      const parsedUrl = new URL(/^https?:\/\//i.test(cand) ? cand : `https://${cand}`);
+      const urlHost = parsedUrl.hostname.toLowerCase().replace(/\.+$/, '');
+      const urlSegs = parsedUrl.pathname
+        .split('/')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const wdHostMatch = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(wd[1-9]\d{0,2})\.myworkdayjobs\.com$/i.exec(
+        urlHost
+      );
+      if (wdHostMatch) {
+        if (atsProvider === 'AUTO' || !atsProvider) atsProvider = 'WORKDAY';
+        if (!inferredWdTenant) inferredWdTenant = wdHostMatch[1].toLowerCase();
+        if (!inferredWdInstance) inferredWdInstance = wdHostMatch[2].toLowerCase();
+        if (!companySlug || /^https?:\/\//i.test(companySlug)) {
+          companySlug = wdHostMatch[1].toLowerCase();
+        }
+        const jobSegIdx = urlSegs.findIndex((s) => s.toLowerCase() === 'job');
+        if (jobSegIdx !== -1 && !inferredExternalPath) {
+          inferredExternalPath = `/${urlSegs.slice(jobSegIdx).join('/')}`;
+        }
+        if (!inferredWdSite) {
+          if (urlSegs[0] === 'wday' && urlSegs[1] === 'cxs' && urlSegs[3]) {
+            inferredWdSite = urlSegs[3];
+          } else {
+            const preJobSegs = (jobSegIdx !== -1 ? urlSegs.slice(0, jobSegIdx) : urlSegs).filter(
+              (s) => !/^[a-z]{2}(?:-[A-Z]{2})?$/i.test(s) && s.toLowerCase() !== 'jobs'
+            );
+            if (preJobSegs[0]) inferredWdSite = preJobSegs[0];
+          }
+        }
+        if (shouldInferJobId && inferredExternalPath) {
+          const reqIdMatch = /_([A-Za-z0-9-]+)$/.exec(inferredExternalPath);
+          upstreamJobId = reqIdMatch
+            ? reqIdMatch[1]
+            : urlSegs[urlSegs.length - 1] || upstreamJobId;
+        }
+      } else if (
+        urlHost === 'boards.greenhouse.io' ||
+        urlHost === 'job-boards.greenhouse.io' ||
+        urlHost === 'boards-api.greenhouse.io'
+      ) {
+        if (atsProvider === 'AUTO' || !atsProvider) atsProvider = 'GREENHOUSE';
+        if (urlSegs[0] === 'v1' && urlSegs[1] === 'boards' && urlSegs[2]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[2];
+          if (shouldInferJobId && urlSegs[3] === 'jobs' && urlSegs[4]) upstreamJobId = urlSegs[4];
+        } else if (urlSegs[0]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[0];
+          if (shouldInferJobId && urlSegs[1] === 'jobs' && urlSegs[2]) upstreamJobId = urlSegs[2];
+        }
+      } else if (urlHost === 'jobs.lever.co' || urlHost === 'api.lever.co') {
+        if (atsProvider === 'AUTO' || !atsProvider) atsProvider = 'LEVER';
+        if (urlSegs[0] === 'v0' && urlSegs[1] === 'postings' && urlSegs[2]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[2];
+          if (shouldInferJobId && urlSegs[3]) upstreamJobId = urlSegs[3];
+        } else if (urlSegs[0]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[0];
+          if (shouldInferJobId && urlSegs[1]) upstreamJobId = urlSegs[1];
+        }
+      } else if (urlHost === 'jobs.ashbyhq.com' || urlHost === 'api.ashbyhq.com') {
+        if (atsProvider === 'AUTO' || !atsProvider) atsProvider = 'ASHBY';
+        if (urlSegs[0] === 'posting-api' && urlSegs[1] === 'job-board' && urlSegs[2]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[2];
+        } else if (urlSegs[0]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[0];
+          if (shouldInferJobId && urlSegs[1]) upstreamJobId = urlSegs[1];
+        }
+      } else if (urlHost === 'jobs.smartrecruiters.com' || urlHost === 'api.smartrecruiters.com') {
+        if (atsProvider === 'AUTO' || !atsProvider) atsProvider = 'SMARTRECRUITERS';
+        if (urlSegs[0] === 'v1' && urlSegs[1] === 'companies' && urlSegs[2]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[2];
+          if (shouldInferJobId && urlSegs[3] === 'postings' && urlSegs[4]) {
+            upstreamJobId = urlSegs[4];
+          }
+        } else if (urlSegs[0]) {
+          if (!companySlug || /^https?:\/\//i.test(companySlug)) companySlug = urlSegs[0];
+          if (shouldInferJobId && urlSegs[1]) {
+            const srIdPrefix = /^(\d+)/.exec(urlSegs[1]);
+            upstreamJobId = srIdPrefix ? srIdPrefix[1] : urlSegs[1];
+          }
+        }
+      }
+    } catch {
+      // Ignore non-URL strings
+    }
+  }
+
+  if (!upstreamJobId && inferredExternalPath) {
+    const reqIdMatch = /_([A-Za-z0-9-]+)$/.exec(inferredExternalPath);
+    if (reqIdMatch) {
+      upstreamJobId = reqIdMatch[1];
+    } else {
+      const extSegs = inferredExternalPath
+        .split('/')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      upstreamJobId = extSegs[extSegs.length - 1] || '';
+    }
+  }
+
+  if (!upstreamJobId && !inferredExternalPath) {
+    return {
+      ok: false,
+      status: 'INVALID_INPUT',
+      detail: null,
+      httpAttempts: 0,
+      reason: 'Missing required parameter jobId',
+    };
+  }
 
   const canonicalMatch = /^(gh|wd|ashby|lever|sr)_([A-Za-z0-9_-]{1,64})_([A-Za-z0-9_.-]{1,96})$/.exec(
     rawJobId
@@ -3821,14 +4104,17 @@ export async function getAtsJobPostingDetail(options = {}) {
     upstreamJobId = colonMatch[3];
   }
 
-  const parsedTarget = parseAtsTargetFromInput(companySlug || options.query, {
-    atsProvider,
-    workdayTenant: options.workdayTenant,
-    workdaySite: options.workdaySite,
-    wdInstance: options.wdInstance,
-  });
+  const parsedTarget = parseAtsTargetFromInput(
+    companySlug || options.query || inferredWdTenant,
+    {
+      atsProvider,
+      workdayTenant: inferredWdTenant,
+      workdaySite: inferredWdSite,
+      wdInstance: inferredWdInstance,
+    }
+  );
 
-  if (!parsedTarget.ok || !parsedTarget.atsProvider) {
+  if (!parsedTarget.ok) {
     return {
       ok: false,
       status: 'INVALID_INPUT',
@@ -3840,22 +4126,286 @@ export async function getAtsJobPostingDetail(options = {}) {
     };
   }
 
-  const provider = parsedTarget.atsProvider;
-  const slug = parsedTarget.companySlug;
-  const nowFn = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
+  let resolvedTarget = parsedTarget;
+  let extraProbeAttempts = 0;
+  if (!resolvedTarget.atsProvider) {
+    const probeRes = await resolveCompanyAtsBoard({
+      ...options,
+      query: resolvedTarget.companySlug,
+      workdayTenant: inferredWdTenant,
+      workdaySite: inferredWdSite,
+      wdInstance: inferredWdInstance,
+    });
+    extraProbeAttempts = Number(probeRes.probeAttempts || 0);
+    if (!probeRes.ok) {
+      return {
+        ok: false,
+        status: probeRes.status,
+        detail: null,
+        httpAttempts: extraProbeAttempts,
+        reason: probeRes.reason,
+      };
+    }
+    if (!probeRes.board?.atsProvider) {
+      return {
+        ok: true,
+        status: 'EMPTY_RESULT',
+        detail: null,
+        boardTarget: null,
+        httpAttempts: extraProbeAttempts,
+      };
+    }
+    resolvedTarget = { ...resolvedTarget, ...probeRes.board };
+  }
 
-  if (provider === 'SMARTRECRUITERS') {
-    const detailUrl = `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(slug)}/postings/${encodeURIComponent(upstreamJobId)}`;
+  const provider = resolvedTarget.atsProvider;
+  const slug = resolvedTarget.companySlug;
+  const nowFn = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
+  const boardTargetMeta = {
+    atsProvider: provider,
+    provider,
+    companySlug: slug,
+    companyName: resolvedTarget.companyName || slug,
+    ...(resolvedTarget.workdayTenant ? { workdayTenant: resolvedTarget.workdayTenant } : {}),
+    ...(resolvedTarget.workdaySite ? { workdaySite: resolvedTarget.workdaySite } : {}),
+    ...(resolvedTarget.wdInstance ? { wdInstance: resolvedTarget.wdInstance } : {}),
+  };
+
+  if (provider === 'GREENHOUSE' && /^[A-Za-z0-9_-]{1,96}$/.test(upstreamJobId)) {
+    const detailUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(slug)}/jobs/${encodeURIComponent(upstreamJobId)}?pay_transparency=true`;
     const res = await executeAtsJsonRequest(detailUrl, options);
+    const totalAttempts = extraProbeAttempts + res.attempts;
     if (!res.ok) {
       if (res.status === 'BOARD_NOT_FOUND') {
-        return { ok: true, status: 'EMPTY_RESULT', detail: null, httpAttempts: res.attempts };
+        return {
+          ok: true,
+          status: 'EMPTY_RESULT',
+          detail: null,
+          boardTarget: boardTargetMeta,
+          httpAttempts: totalAttempts,
+        };
       }
       return {
         ok: false,
         status: res.status,
         detail: null,
-        httpAttempts: res.attempts,
+        httpAttempts: totalAttempts,
+        reason: res.errorMessage,
+      };
+    }
+    if (res.data && Array.isArray(res.data.jobs)) {
+      const boardCanary = verifyAtsResponseSchemaCanary('GREENHOUSE', res.data);
+      if (!boardCanary.ok) {
+        return {
+          ok: false,
+          status: boardCanary.status,
+          detail: null,
+          httpAttempts: totalAttempts,
+          reason: boardCanary.reason,
+        };
+      }
+      const rawMatch = res.data.jobs.find(
+        (j) => String(j?.id ?? '').trim() === String(upstreamJobId).trim()
+      );
+      if (!rawMatch) {
+        return {
+          ok: true,
+          status: 'EMPTY_RESULT',
+          detail: null,
+          boardTarget: boardTargetMeta,
+          httpAttempts: totalAttempts,
+        };
+      }
+      return {
+        ok: true,
+        status: 'OK',
+        detail: normalizeAtsJobRecord('GREENHOUSE', rawMatch, {
+          ...resolvedTarget,
+          nowMs: nowFn(),
+        }),
+        boardTarget: boardTargetMeta,
+        httpAttempts: totalAttempts,
+      };
+    }
+    const canary = verifyAtsResponseSchemaCanary('GREENHOUSE_DETAIL', res.data, {
+      requestedJobId: upstreamJobId,
+    });
+    if (!canary.ok) {
+      return {
+        ok: false,
+        status: canary.status,
+        detail: null,
+        httpAttempts: totalAttempts,
+        reason: canary.reason,
+      };
+    }
+    return {
+      ok: true,
+      status: 'OK',
+      detail: normalizeAtsJobRecord('GREENHOUSE', res.data, {
+        ...resolvedTarget,
+        nowMs: nowFn(),
+      }),
+      boardTarget: boardTargetMeta,
+      httpAttempts: totalAttempts,
+    };
+  }
+
+  if (provider === 'LEVER' && /^[A-Za-z0-9_.-]{1,96}$/.test(upstreamJobId)) {
+    const detailUrl = `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}/${encodeURIComponent(upstreamJobId)}`;
+    const res = await executeAtsJsonRequest(detailUrl, options);
+    const totalAttempts = extraProbeAttempts + res.attempts;
+    if (!res.ok) {
+      if (res.status === 'BOARD_NOT_FOUND') {
+        return {
+          ok: true,
+          status: 'EMPTY_RESULT',
+          detail: null,
+          boardTarget: boardTargetMeta,
+          httpAttempts: totalAttempts,
+        };
+      }
+      return {
+        ok: false,
+        status: res.status,
+        detail: null,
+        httpAttempts: totalAttempts,
+        reason: res.errorMessage,
+      };
+    }
+    if (Array.isArray(res.data)) {
+      const boardCanary = verifyAtsResponseSchemaCanary('LEVER', res.data);
+      if (!boardCanary.ok) {
+        return {
+          ok: false,
+          status: boardCanary.status,
+          detail: null,
+          httpAttempts: totalAttempts,
+          reason: boardCanary.reason,
+        };
+      }
+      const rawMatch = res.data.find(
+        (j) => String(j?.id ?? '').trim() === String(upstreamJobId).trim()
+      );
+      if (!rawMatch) {
+        return {
+          ok: true,
+          status: 'EMPTY_RESULT',
+          detail: null,
+          boardTarget: boardTargetMeta,
+          httpAttempts: totalAttempts,
+        };
+      }
+      return {
+        ok: true,
+        status: 'OK',
+        detail: normalizeAtsJobRecord('LEVER', rawMatch, {
+          ...resolvedTarget,
+          nowMs: nowFn(),
+        }),
+        boardTarget: boardTargetMeta,
+        httpAttempts: totalAttempts,
+      };
+    }
+    const canary = verifyAtsResponseSchemaCanary('LEVER_DETAIL', res.data, {
+      requestedJobId: upstreamJobId,
+    });
+    if (!canary.ok) {
+      return {
+        ok: false,
+        status: canary.status,
+        detail: null,
+        httpAttempts: totalAttempts,
+        reason: canary.reason,
+      };
+    }
+    return {
+      ok: true,
+      status: 'OK',
+      detail: normalizeAtsJobRecord('LEVER', res.data, {
+        ...resolvedTarget,
+        nowMs: nowFn(),
+      }),
+      boardTarget: boardTargetMeta,
+      httpAttempts: totalAttempts,
+    };
+  }
+
+  if (provider === 'ASHBY') {
+    const boardUrl = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}?includeCompensation=true`;
+    const res = await executeAtsJsonRequest(boardUrl, options);
+    const totalAttempts = extraProbeAttempts + res.attempts;
+    if (!res.ok) {
+      if (res.status === 'BOARD_NOT_FOUND') {
+        return {
+          ok: true,
+          status: 'EMPTY_RESULT',
+          detail: null,
+          boardTarget: boardTargetMeta,
+          httpAttempts: totalAttempts,
+        };
+      }
+      return {
+        ok: false,
+        status: res.status,
+        detail: null,
+        httpAttempts: totalAttempts,
+        reason: res.errorMessage,
+      };
+    }
+    const canary = verifyAtsResponseSchemaCanary('ASHBY', res.data);
+    if (!canary.ok) {
+      return {
+        ok: false,
+        status: canary.status,
+        detail: null,
+        httpAttempts: totalAttempts,
+        reason: canary.reason,
+      };
+    }
+    const rawMatch = Array.isArray(res.data?.jobs)
+      ? res.data.jobs.find((j) => String(j?.id ?? '').trim() === String(upstreamJobId).trim())
+      : null;
+    if (!rawMatch) {
+      return {
+        ok: true,
+        status: 'EMPTY_RESULT',
+        detail: null,
+        boardTarget: boardTargetMeta,
+        httpAttempts: totalAttempts,
+      };
+    }
+    return {
+      ok: true,
+      status: 'OK',
+      detail: normalizeAtsJobRecord('ASHBY', rawMatch, {
+        ...resolvedTarget,
+        nowMs: nowFn(),
+      }),
+      boardTarget: boardTargetMeta,
+      httpAttempts: totalAttempts,
+    };
+  }
+
+  if (provider === 'SMARTRECRUITERS') {
+    const detailUrl = `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(slug)}/postings/${encodeURIComponent(upstreamJobId)}`;
+    const res = await executeAtsJsonRequest(detailUrl, options);
+    const totalAttempts = extraProbeAttempts + res.attempts;
+    if (!res.ok) {
+      if (res.status === 'BOARD_NOT_FOUND') {
+        return {
+          ok: true,
+          status: 'EMPTY_RESULT',
+          detail: null,
+          boardTarget: boardTargetMeta,
+          httpAttempts: totalAttempts,
+        };
+      }
+      return {
+        ok: false,
+        status: res.status,
+        detail: null,
+        httpAttempts: totalAttempts,
         reason: res.errorMessage,
       };
     }
@@ -3867,95 +4417,119 @@ export async function getAtsJobPostingDetail(options = {}) {
         ok: false,
         status: canary.status,
         detail: null,
-        httpAttempts: res.attempts,
+        httpAttempts: totalAttempts,
         reason: canary.reason,
       };
     }
     const normalized = normalizeAtsJobRecord('SMARTRECRUITERS', res.data, {
-      ...parsedTarget,
+      ...resolvedTarget,
       nowMs: nowFn(),
     });
     return {
       ok: true,
       status: 'OK',
       detail: normalized,
-      httpAttempts: res.attempts,
+      boardTarget: boardTargetMeta,
+      httpAttempts: totalAttempts,
     };
   }
 
-  if (provider === 'WORKDAY') {
-    const tenant = String(parsedTarget.workdayTenant || slug).toLowerCase();
-    const wdInst = String(parsedTarget.wdInstance || 'wd5').toLowerCase();
-    const rawSite = String(parsedTarget.workdaySite || `${tenant}ExternalCareerSite`).trim();
+  const fetchWorkdayDetailByExternalPath = async (extPath, priorAttempts = 0) => {
+    const tenant = String(resolvedTarget.workdayTenant || slug).toLowerCase();
+    const wdInst = String(resolvedTarget.wdInstance || 'wd5').toLowerCase();
+    const rawSite = String(resolvedTarget.workdaySite || `${tenant}ExternalCareerSite`).trim();
     const site = /^[A-Za-z0-9_-]{1,128}$/.test(rawSite) ? rawSite : `${tenant}ExternalCareerSite`;
-    const extPath = String(options.externalPath || '').trim();
-    if (extPath && extPath.startsWith('/job/')) {
-      const detailUrl = `https://${tenant}.${wdInst}.myworkdayjobs.com/wday/cxs/${encodeURIComponent(tenant)}/${encodeURIComponent(site)}${extPath}`;
-      const res = await executeAtsJsonRequest(detailUrl, options);
-      if (!res.ok) {
-        if (res.status === 'BOARD_NOT_FOUND') {
-          return { ok: true, status: 'EMPTY_RESULT', detail: null, httpAttempts: res.attempts };
-        }
+    const detailUrl = `https://${tenant}.${wdInst}.myworkdayjobs.com/wday/cxs/${encodeURIComponent(tenant)}/${encodeURIComponent(site)}${extPath}`;
+    const res = await executeAtsJsonRequest(detailUrl, options);
+    const totalAttempts = priorAttempts + res.attempts;
+    if (!res.ok) {
+      if (res.status === 'BOARD_NOT_FOUND') {
         return {
-          ok: false,
-          status: res.status,
+          ok: true,
+          status: 'EMPTY_RESULT',
           detail: null,
-          httpAttempts: res.attempts,
-          reason: res.errorMessage,
+          boardTarget: boardTargetMeta,
+          httpAttempts: totalAttempts,
         };
       }
-      const canary = verifyAtsResponseSchemaCanary('WORKDAY_DETAIL', res.data, {
-        requestedReqId: upstreamJobId,
-      });
-      if (!canary.ok) {
-        return {
-          ok: false,
-          status: canary.status,
-          detail: null,
-          httpAttempts: res.attempts,
-          reason: canary.reason,
-        };
-      }
-      const info = res.data.jobPostingInfo;
-      const normalized = normalizeAtsJobRecord(
-        'WORKDAY',
-        {
-          title: info.title,
-          externalPath: extPath,
-          bulletFields: [info.jobReqId || upstreamJobId],
-          locationsText: info.location,
-          country: info.country,
-          timeType: info.timeType,
-          postedOn: info.postedOn || info.startDate,
-          externalUrl: info.externalUrl,
-          jobDescription: info.jobDescription,
-        },
-        { ...parsedTarget, nowMs: nowFn() }
-      );
       return {
-        ok: true,
-        status: 'OK',
-        detail: normalized,
-        httpAttempts: res.attempts,
+        ok: false,
+        status: res.status,
+        detail: null,
+        httpAttempts: totalAttempts,
+        reason: res.errorMessage,
       };
     }
+    const canary = verifyAtsResponseSchemaCanary('WORKDAY_DETAIL', res.data, {
+      requestedReqId: upstreamJobId,
+    });
+    if (!canary.ok) {
+      return {
+        ok: false,
+        status: canary.status,
+        detail: null,
+        httpAttempts: totalAttempts,
+        reason: canary.reason,
+      };
+    }
+    const info = res.data.jobPostingInfo;
+    const normalized = normalizeAtsJobRecord(
+      'WORKDAY',
+      {
+        title: info.title,
+        externalPath: extPath,
+        bulletFields: [info.jobReqId || upstreamJobId],
+        locationsText: info.location,
+        country: info.country,
+        timeType: info.timeType,
+        postedOn: info.postedOn || info.startDate,
+        externalUrl: info.externalUrl,
+        jobDescription: info.jobDescription,
+      },
+      { ...resolvedTarget, nowMs: nowFn() }
+    );
+    return {
+      ok: true,
+      status: 'OK',
+      detail: normalized,
+      boardTarget: boardTargetMeta,
+      httpAttempts: totalAttempts,
+    };
+  };
+
+  if (provider === 'WORKDAY' && inferredExternalPath) {
+    if (
+      !/^\/job\/[A-Za-z0-9_.~/%-]+$/.test(inferredExternalPath) ||
+      inferredExternalPath.includes('..')
+    ) {
+      return {
+        ok: false,
+        status: 'INVALID_INPUT',
+        detail: null,
+        httpAttempts: extraProbeAttempts,
+        reason: 'Invalid Workday externalPath (must start with /job/ and contain safe URL path segments)',
+      };
+    }
+    return fetchWorkdayDetailByExternalPath(inferredExternalPath, extraProbeAttempts);
   }
 
-  // Fallback for GREENHOUSE, ASHBY, LEVER (or WORKDAY without externalPath): search board and match jobId
+  // Fallback for WORKDAY without externalPath (or non-standard IDs): bounded multi-page board scan
   const listRes = await fetchUnifiedAtsJobPostings({
     ...options,
-    resolvedBoard: parsedTarget,
+    resolvedBoard: resolvedTarget,
     maxResults: 200,
     limit: 200,
     max_results: 200,
-    maxPages: 1,
+    maxPages: 5,
+    leverPageSize: 50,
   });
+  const scanAttempts = extraProbeAttempts + listRes.httpAttempts;
   if (!listRes.ok) {
     return {
       ok: false,
       status: listRes.status,
       detail: null,
-      httpAttempts: listRes.httpAttempts,
+      httpAttempts: scanAttempts,
       reason: listRes.reason,
     };
   }
@@ -3967,15 +4541,27 @@ export async function getAtsJobPostingDetail(options = {}) {
       ok: true,
       status: 'EMPTY_RESULT',
       detail: null,
-      httpAttempts: listRes.httpAttempts,
+      boardTarget: listRes.boardTarget || listRes.board || boardTargetMeta,
+      httpAttempts: scanAttempts,
     };
+  }
+  if (
+    provider === 'WORKDAY' &&
+    typeof matched.externalPath === 'string' &&
+    /^\/job\/[A-Za-z0-9_.~/%-]+$/.test(matched.externalPath) &&
+    !matched.externalPath.includes('..')
+  ) {
+    const hydrated = await fetchWorkdayDetailByExternalPath(matched.externalPath, scanAttempts);
+    if (hydrated.ok && hydrated.detail) {
+      return hydrated;
+    }
   }
   return {
     ok: true,
     status: 'OK',
     detail: matched,
-    boardTarget: listRes.boardTarget || listRes.board || null,
-    httpAttempts: listRes.httpAttempts,
+    boardTarget: listRes.boardTarget || listRes.board || boardTargetMeta,
+    httpAttempts: scanAttempts,
   };
 }
 

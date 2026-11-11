@@ -719,6 +719,18 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
     if (runId) {
       const chargeUrl = `${apiBase}/v2/actor-runs/${encodeURIComponent(runId)}/charge`;
       const allowUnbilledAtHome = env?.ADPULSE_ALLOW_UNBILLED_AT_HOME === '1';
+      const rawIdempotencyFlag = String(env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED ?? '')
+        .trim()
+        .toLowerCase();
+      const idempotentChargeRetryEnabled =
+        rawIdempotencyFlag === ''
+          ? true
+          : rawIdempotencyFlag === '1' || rawIdempotencyFlag === 'true';
+      Object.defineProperty(hooks, 'idempotentChargeRetryEnabled', {
+        enumerable: true,
+        configurable: true,
+        get: () => idempotentChargeRetryEnabled !== false,
+      });
       let unbilledOwnerTestLatched = false;
       let latchedPlatformEventName = null;
       const resolvePlatformEventAndPrice = (rawEventName) => {
@@ -844,13 +856,11 @@ export function createApifyPlatformHooks(env = process.env, fetchImpl = globalTh
             chargedCreativeIds: [],
             eventName: primaryEventName,
             unitPriceUsdc: resolvedUnitPriceUsdc,
+            pricingDeterministic: hooks.pricingDeterministic,
           };
         }
 
-        const chargeIdempotencyVerified =
-          env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED === '1' ||
-          env?.APIFY_CHARGE_IDEMPOTENCY_SUPPORTED === 'true';
-        const maxChargeAttempts = chargeIdempotencyVerified ? 2 : 1;
+        const maxChargeAttempts = idempotentChargeRetryEnabled ? 2 : 1;
         const perAttemptTimeoutMs = 900;
         const canStartChargePost = () =>
           !Number.isFinite(receipt?.deadlineAtMs) ||
@@ -1332,6 +1342,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: 0,
         durationMs,
         requestCount: 1,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1367,6 +1381,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
           chargedEventCount: 0,
           durationMs,
           requestCount: 1,
+          unitPriceUsdc:
+            hooks && 'unitPriceUsdc' in hooks
+              ? hooks.unitPriceUsdc
+              : ACTOR_PRICING_CONTRACT.priceUsdc,
+          actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+          pricingDeterministic: hooks?.pricingDeterministic,
         }),
       });
     }
@@ -1437,6 +1457,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
             chargedEventCount: chargedSet.size,
             durationMs,
             requestCount: 1,
+            unitPriceUsdc:
+              hooks && 'unitPriceUsdc' in hooks
+                ? hooks.unitPriceUsdc
+                : ACTOR_PRICING_CONTRACT.priceUsdc,
+            actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+            pricingDeterministic: hooks?.pricingDeterministic,
           }),
         });
       }
@@ -1488,6 +1514,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
             chargedEventCount: chargedSet.size,
             durationMs,
             requestCount: 1,
+            unitPriceUsdc:
+              hooks && 'unitPriceUsdc' in hooks
+                ? hooks.unitPriceUsdc
+                : ACTOR_PRICING_CONTRACT.priceUsdc,
+            actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+            pricingDeterministic: hooks?.pricingDeterministic,
           }),
         });
       }
@@ -1565,6 +1597,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
                   chargedEventCount: chargedSet.size,
                   durationMs,
                   requestCount: 1,
+                  unitPriceUsdc:
+                    hooks && 'unitPriceUsdc' in hooks
+                      ? hooks.unitPriceUsdc
+                      : ACTOR_PRICING_CONTRACT.priceUsdc,
+                  actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+                  pricingDeterministic: hooks?.pricingDeterministic,
                 }),
               });
             }
@@ -1611,6 +1649,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
                   chargedEventCount: chargedSet.size,
                   durationMs,
                   requestCount: 1,
+                  unitPriceUsdc:
+                    hooks && 'unitPriceUsdc' in hooks
+                      ? hooks.unitPriceUsdc
+                      : ACTOR_PRICING_CONTRACT.priceUsdc,
+                  actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+                  pricingDeterministic: hooks?.pricingDeterministic,
                 }),
               });
             }
@@ -1667,6 +1711,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: chargedSet.size,
         durationMs,
         requestCount: 1,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1712,6 +1760,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: 0,
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1744,6 +1796,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
       allowPrimaryDirectoryFallbackWhenSubsidiariesRequested:
         input?.fallbackToDirectoryOnRateLimit !== false,
       fetchImpl: hooks.fetchImpl,
+      dnsLookup: hooks.dnsLookup,
       nowFn: nowMs,
       sleepFn,
       randomFn,
@@ -1785,6 +1838,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: Math.max(1, entityRes.rpcAttempts),
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1814,6 +1871,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: Math.max(1, entityRes.rpcAttempts),
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1835,6 +1896,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     region: input?.region,
     formatFilter: input?.formatFilter,
     fetchImpl: hooks.fetchImpl,
+    dnsLookup: hooks.dnsLookup,
     nowFn: nowMs,
     sleepFn,
     randomFn,
@@ -1880,6 +1942,10 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         chargedEventCount: hasChargeHook ? chargedSet.size : 0,
         durationMs,
         requestCount: Math.max(1, totalRpcRequests),
+        unitPriceUsdc:
+          hooks && 'unitPriceUsdc' in hooks ? hooks.unitPriceUsdc : ACTOR_PRICING_CONTRACT.priceUsdc,
+        actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+        pricingDeterministic: hooks?.pricingDeterministic,
       }),
     });
   }
@@ -1921,6 +1987,12 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
           chargedEventCount: hasChargeHook ? chargedSet.size : 0,
           durationMs,
           requestCount: Math.max(1, totalRpcRequests),
+          unitPriceUsdc:
+            hooks && 'unitPriceUsdc' in hooks
+              ? hooks.unitPriceUsdc
+              : ACTOR_PRICING_CONTRACT.priceUsdc,
+          actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+          pricingDeterministic: hooks?.pricingDeterministic,
         }),
       });
     }
@@ -1963,6 +2035,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
         includeAdCopy: Boolean(input?.includeAdCopy),
         fallbackPreviewUrl: targetItem.previewUrl,
         fetchImpl: hooks.fetchImpl,
+        dnsLookup: hooks.dnsLookup,
         nowFn: nowMs,
         sleepFn,
         randomFn,
@@ -2486,6 +2559,7 @@ export async function runGoogleAdsTransparencyActor(input = {}, hooks = {}) {
     requestCount: Math.max(1, totalRpcRequests),
     unitPriceUsdc: lastResolvedUnitPriceUsdc,
     actorStartFeeUsdc: hooks?.actorStartFeeUsdc,
+    pricingDeterministic: hooks?.pricingDeterministic,
   });
 
   return finalizeActorReturn({

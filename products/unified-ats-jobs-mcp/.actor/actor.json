@@ -14,73 +14,9 @@
     "memoryMbytes": 256
   },
   "input": "./input_schema.json",
-  "output": {
-    "actorOutputSchemaVersion": 1,
-    "title": "Unified ATS Job Postings & Hiring Signal Summary",
-    "description": "Normalized B2B ATS job postings across Greenhouse, Workday CXS, Ashby, Lever, and SmartRecruiters (Default Dataset) and execution/billing telemetry (Key-Value Store OUTPUT).",
-    "properties": {
-      "jobPostings": {
-        "type": "string",
-        "title": "Normalized ATS Job Postings",
-        "description": "Canonical B2B job postings with compensation ranges, workplaceType, seniorityLevel, techStackKeywords, and prompt-injection sanitized excerpts.",
-        "template": "{{links.apiDefaultDatasetUrl}}/items"
-      },
-      "runSummary": {
-        "type": "string",
-        "title": "Run Summary & Telemetry (OUTPUT)",
-        "description": "Structured execution summary, resolved ATS board metadata, pagination cursor, and billing receipt summary.",
-        "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
-      }
-    }
-  },
+  "output": "./output_schema.json",
   "storages": {
-    "dataset": {
-      "actorSpecification": 1,
-      "fields": {
-        "type": "object",
-        "properties": {
-          "jobId": { "type": "string", "title": "Job ID" },
-          "atsProvider": { "type": "string", "title": "ATS Provider" },
-          "companySlug": { "type": "string", "title": "Company Slug" },
-          "companyName": { "type": "string", "title": "Company Name" },
-          "title": { "type": "string", "title": "Job Title" },
-          "department": { "type": ["string", "null"], "title": "Department" },
-          "locationRaw": { "type": "string", "title": "Location" },
-          "workplaceType": { "type": "string", "title": "Workplace Type" },
-          "countryIso2": { "type": ["string", "null"], "title": "Country (ISO-2)" },
-          "employmentType": { "type": ["string", "null"], "title": "Employment Type" },
-          "seniorityLevel": { "type": ["string", "null"], "title": "Seniority Level" },
-          "postedAtIso": { "type": ["string", "null"], "title": "Posted At (ISO)" },
-          "daysOpen": { "type": ["integer", "null"], "title": "Days Open" },
-          "applyUrl": { "type": ["string", "null"], "title": "Apply URL" }
-        }
-      },
-      "views": {
-        "overview": {
-          "title": "Normalized ATS Job Postings Overview",
-          "transformation": {
-            "fields": [
-              "jobId",
-              "atsProvider",
-              "companyName",
-              "title",
-              "department",
-              "locationRaw",
-              "workplaceType",
-              "countryIso2",
-              "employmentType",
-              "seniorityLevel",
-              "postedAtIso",
-              "daysOpen",
-              "applyUrl"
-            ]
-          },
-          "display": {
-            "component": "table"
-          }
-        }
-      }
-    }
+    "dataset": "./dataset_schema.json"
   },
   "dockerfile": "../Dockerfile"
 }

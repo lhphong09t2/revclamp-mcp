@@ -3,7 +3,7 @@
  *
  * Self-contained, zero-dependency Node.js implementation of all 9 deterministic
  * B2B FinOps, Stripe 2025-03-31.basil, Visa CE 3.0, EU/XI VIES VAT format,
- * Shopify Plus B2B Net-15/30/60, Webhook HMAC-SHA256, 72h Replay FSM, and
+ * Shopify Plus B2B Net-15/30/60 (and custom 1..180d wholesale terms), Webhook HMAC-SHA256, 72h Replay FSM, and
  * 0% Take-Rate ROI tools.
  *
  * Open-Core Execution Boundary:
@@ -31,7 +31,7 @@ export const SUPPORTED_MCP_PROTOCOL_VERSIONS = Object.freeze([
 ]);
 
 const LOCAL_LIVE_SECRET_GUARD_RE =
-  /(?:[sr]k_live_[A-Za-z0-9_-]{4,}|whsec_live_[A-Za-z0-9_-]{4,}|whsec_(?!test_|synth_|sandbox_|demo_|sample_|mock_|example_|fake_|dummy_)[A-Za-z0-9_-]{10,}|shpss_live_[A-Za-z0-9_-]{4,}|shpss_[0-9a-fA-F]{16,}|shp(?:at|ua|ca|pa)_[A-Za-z0-9_-]{8,}|lsq_[A-Za-z0-9_-]{4,}|r[gc]_live_[A-Za-z0-9_-]{4,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
+  /(?:[sr]k_live_[A-Za-z0-9_-]{4,}|whsec_live_[A-Za-z0-9_-]{4,}|whsec_(?!test_|synth_|sandbox_|demo_|sample_|mock_|example_|fake_|dummy_)[A-Za-z0-9_-]{10,}|shpss_live_[A-Za-z0-9_-]{4,}|shpss_[0-9a-fA-F]{16,}|shp(?:at|ua|ca|pa)_[A-Za-z0-9_-]{8,}|r[gc]_live_[A-Za-z0-9_-]{4,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
 
 const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
   revclamp_audit_revenue_leakage: Object.freeze([
@@ -245,6 +245,10 @@ const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
       canonical: "toleranceCents",
       aliases: Object.freeze(["tolerance_cents"]),
     }),
+    Object.freeze({
+      canonical: "invoiceIssuedAtSec",
+      aliases: Object.freeze(["invoice_issued_at_sec", "issued_at_sec", "issuedAtSec"]),
+    }),
   ]),
   revclamp_verify_webhook_signature: Object.freeze([
     Object.freeze({
@@ -422,13 +426,25 @@ export function normalizeMcpToolArgs(toolName, rawArgs) {
       (k) => Object.hasOwn(rawArgs, k) && rawArgs[k] !== undefined
     );
     if (presentKeys.length > 1) {
-      const coerceAliasVal = (v) =>
-        toolName === "revclamp_validate_eu_vat_vies" &&
-        group.canonical === "buyerVatId" &&
-        typeof v === "number" &&
-        Number.isFinite(v)
-          ? String(Math.trunc(v))
-          : v;
+      const coerceAliasVal = (v) => {
+        if (
+          toolName === "revclamp_validate_eu_vat_vies" &&
+          group.canonical === "buyerVatId" &&
+          typeof v === "number" &&
+          Number.isFinite(v)
+        ) {
+          return String(Math.trunc(v));
+        }
+        if (
+          toolName === "revclamp_validate_eu_vat_vies" &&
+          group.canonical === "viesMode" &&
+          typeof v === "string" &&
+          v.trim().toUpperCase() === "SYNTAX"
+        ) {
+          return "FORMAT_ONLY";
+        }
+        return v;
+      };
       const firstKey = presentKeys[0];
       const firstVal = coerceAliasVal(rawArgs[firstKey]);
       for (let i = 1; i < presentKeys.length; i += 1) {
@@ -458,6 +474,12 @@ export function normalizeMcpToolArgs(toolName, rawArgs) {
     }
     if (typeof normalized.vatId === "number" && Number.isFinite(normalized.vatId)) {
       normalized.vatId = String(Math.trunc(normalized.vatId));
+    }
+    if (
+      typeof normalized.viesMode === "string" &&
+      normalized.viesMode.trim().toUpperCase() === "SYNTAX"
+    ) {
+      normalized.viesMode = "FORMAT_ONLY";
     }
   }
   if (
@@ -1409,7 +1431,7 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
   {
     name: "revclamp_reconcile_b2b_net_terms",
     description:
-      "Reconciles Shopify Plus B2B Net-15/30/60 wholesale invoices, upfront deposits, credit notes, and rounding tolerances using integer EUR-cent double-entry accounting.",
+      "Reconciles Shopify Plus B2B Net-15/30/60 (and custom 1..180-day) wholesale invoices, upfront deposits, credit notes, and rounding tolerances using integer EUR-cent double-entry accounting.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1422,8 +1444,9 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
         creditNotesCents: { type: "integer", minimum: 0, default: 0 },
         requiredDepositCents: { type: "integer", minimum: 0 },
         requiredDepositPercent: { type: "integer", minimum: 0, maximum: 100, default: 30 },
-        paymentTermsDays: { type: "integer", enum: [15, 30, 60], default: 30 },
+        paymentTermsDays: { type: "integer", minimum: 1, maximum: 180, default: 30 },
         daysElapsedSinceInvoice: { type: "integer", minimum: 0, maximum: 3650, default: 0 },
+        invoiceIssuedAtSec: { type: "integer", minimum: 1 },
         toleranceCents: { type: "integer", minimum: 0, maximum: 500, default: 0 },
         demo: { type: "boolean", default: false },
       },
@@ -2229,42 +2252,78 @@ function parseStrictIpv4Octets(str) {
   return octets;
 }
 
-function normalizeIpForCe3Correlation(ip) {
+function isNonRoutableOrCollisionIpv6Prefix(w0, w1, w2, w3) {
+  if (w0 === 0 && w1 === 0 && w2 === 0 && w3 === 0) return true;
+  if ((w0 & 0xffc0) === 0xfe80) return true;
+  if ((w0 & 0xff00) === 0xff00) return true;
+  if (w0 === 0x2001 && w1 === 0x0db8 && w2 === 0 && w3 === 0) return true;
+  if (w0 === 0x0064 && w1 === 0xff9b && (w2 === 0x0001 || (w2 === 0 && w3 === 0))) return true;
+  return false;
+}
+
+export function normalizeIpForCe3Correlation(ip) {
   if (typeof ip !== "string") return null;
-  let raw = ip.trim().toLowerCase();
-  if (!raw || raw.includes(",")) return null;
-  if (raw.startsWith("ipv4:")) {
-    raw = raw.slice(5).trim();
-  } else if (raw.startsWith("ipv6_64:")) {
-    const v6Match = raw.match(
-      /^ipv6_64:([0-9a-f]{1,4}):([0-9a-f]{1,4}):([0-9a-f]{1,4}):([0-9a-f]{1,4})$/
-    );
-    if (!v6Match) return null;
-    return `ipv6_64:${v6Match
-      .slice(1, 5)
-      .map((w) => Number.parseInt(w, 16).toString(16).padStart(4, "0"))
-      .join(":")}`;
+  let clean = ip.trim();
+  if (!clean || clean.includes(",")) return null;
+  if (clean.toLowerCase().startsWith("ipv4:")) {
+    let v4Candidate = clean.slice(5).trim();
+    if (!v4Candidate || v4Candidate.includes("[") || v4Candidate.includes("]")) return null;
+    if (/^\d{1,3}(?:\.\d{1,3}){3}:\d{1,5}$/.test(v4Candidate)) {
+      const lastColon = v4Candidate.lastIndexOf(":");
+      const portNum = Number.parseInt(v4Candidate.slice(lastColon + 1), 10);
+      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return null;
+      v4Candidate = v4Candidate.slice(0, lastColon);
+    }
+    const v4Octets = parseStrictIpv4Octets(v4Candidate);
+    return v4Octets ? `ipv4:${v4Octets.join(".")}` : null;
   }
-  const bracketPortMatch = raw.match(/^\[([^\]]+)\](?::(\d{1,5}))?$/);
+  if (clean.toLowerCase().startsWith("ipv6_64:")) {
+    const rawPrefix = clean.slice(8).trim().toLowerCase();
+    const prefixGroups = rawPrefix.split(":");
+    if (prefixGroups.length === 4 && prefixGroups.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) {
+      const prefixWords = prefixGroups.map((g) => Number.parseInt(g, 16));
+      if (
+        isNonRoutableOrCollisionIpv6Prefix(
+          prefixWords[0],
+          prefixWords[1],
+          prefixWords[2],
+          prefixWords[3]
+        )
+      ) {
+        return null;
+      }
+      return `ipv6_64:${prefixWords.map((w) => w.toString(16).padStart(4, "0")).join(":")}`;
+    }
+    return null;
+  }
+
+  const bracketPortMatch = clean.match(/^\[([^\[\]]+)\]:(\d{1,5})$/);
   if (bracketPortMatch) {
-    if (bracketPortMatch[2] !== undefined) {
-      const portNum = Number(bracketPortMatch[2]);
-      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return null;
-    }
-    raw = bracketPortMatch[1];
-  } else {
-    const v4PortMatch = raw.match(/^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/);
-    if (v4PortMatch) {
-      const portNum = Number(v4PortMatch[2]);
-      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return null;
-      raw = v4PortMatch[1];
-    }
+    const portNum = Number.parseInt(bracketPortMatch[2], 10);
+    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return null;
+    clean = bracketPortMatch[1];
+  } else if (clean.startsWith("[") || clean.endsWith("]")) {
+    if (!clean.startsWith("[") || !clean.endsWith("]")) return null;
+    clean = clean.slice(1, -1);
+    if (clean.includes("[") || clean.includes("]")) return null;
+  } else if (clean.includes("[") || clean.includes("]")) {
+    return null;
+  } else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d{1,5}$/.test(clean)) {
+    const lastColon = clean.lastIndexOf(":");
+    const portNum = Number.parseInt(clean.slice(lastColon + 1), 10);
+    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) return null;
+    clean = clean.slice(0, lastColon);
   }
-  const clean = raw.replace(/^\[|\]$/g, "").replace(/%[^\s%\]]+$/, "").trim();
+
+  clean = clean.replace(/%[^\s%\]]+$/, "").trim().toLowerCase();
   if (!clean) return null;
+
   const directV4 = parseStrictIpv4Octets(clean);
-  if (directV4) return `ipv4:${directV4.join(".")}`;
+  if (directV4) {
+    return `ipv4:${directV4.join(".")}`;
+  }
   if (!clean.includes(":")) return null;
+
   let hexCandidate = clean;
   if (clean.includes(".")) {
     const lastColonIdx = clean.lastIndexOf(":");
@@ -2296,15 +2355,26 @@ function normalizeIpForCe3Correlation(ip) {
     if (!Number.isInteger(val) || val < 0 || val > 0xffff) return null;
     words.push(val);
   }
-  if (
+
+  const isIpv4Mapped =
     words[0] === 0 &&
     words[1] === 0 &&
     words[2] === 0 &&
     words[3] === 0 &&
     words[4] === 0 &&
-    words[5] === 0xffff
-  ) {
+    words[5] === 0xffff;
+  const isRfc6052Nat64 =
+    words[0] === 0x0064 &&
+    words[1] === 0xff9b &&
+    words[2] === 0 &&
+    words[3] === 0 &&
+    words[4] === 0 &&
+    words[5] === 0;
+  if (isIpv4Mapped || isRfc6052Nat64) {
     return `ipv4:${(words[6] >> 8) & 0xff}.${words[6] & 0xff}.${(words[7] >> 8) & 0xff}.${words[7] & 0xff}`;
+  }
+  if (isNonRoutableOrCollisionIpv6Prefix(words[0], words[1], words[2], words[3])) {
+    return null;
   }
   return `ipv6_64:${words.slice(0, 4).map((w) => w.toString(16).padStart(4, "0")).join(":")}`;
 }
@@ -3977,10 +4047,45 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     const effectiveBuyerVatId =
       args.buyerVatId === undefined && isDemo ? "NL123456789B01" : args.buyerVatId || "";
     const norm = normalizeVatId(effectiveBuyerVatId);
-    const viesMode = String(
-      args.viesMode || (args.buyerVatId === undefined && isDemo ? "VALID" : "FORMAT_ONLY")
-    ).toUpperCase();
+    const viesMode = String(args.viesMode || (isDemo ? "VALID" : "FORMAT_ONLY")).toUpperCase();
     const crossBorder = Boolean(norm.validFormat && sellerCountry !== norm.memberState);
+    const normalizedVat = {
+      validFormat: Boolean(norm.validFormat),
+      countryCode: norm.memberState || "",
+      memberState: norm.memberState || "",
+      vatNumber: norm.vatNumber || "",
+      fullVatId: norm.fullVatId || "",
+      normalizedVatId: norm.fullVatId || "",
+      ...(norm.validFormat ? {} : { reason: "INVALID_EU_VAT_FORMAT" }),
+    };
+    const withNestedViesEnvelope = (flatResult) => ({
+      ...flatResult,
+      normalizedVat,
+      viesDecision: {
+        valid: flatResult.valid,
+        formatValid: flatResult.formatValid,
+        status: flatResult.status,
+        ...(flatResult.action !== undefined ? { action: flatResult.action } : {}),
+        reason: flatResult.reason,
+        consultationId: flatResult.consultationId ?? null,
+        ...(flatResult.consultationIdSource
+          ? { consultationIdSource: flatResult.consultationIdSource }
+          : {}),
+        crossBorderSupply: Boolean(flatResult.crossBorderSupply ?? crossBorder),
+        domesticSameMemberState: Boolean(
+          flatResult.domesticSameMemberState ?? (norm.validFormat && !crossBorder)
+        ),
+        goodsOnlyProtocol: Boolean(flatResult.goodsOnlyProtocol),
+        reverseChargeEligible: Boolean(flatResult.reverseChargeEligible),
+        zeroRateAllowed: Boolean(flatResult.zeroRateAllowed),
+        statutoryReverseChargeClause: flatResult.statutoryReverseChargeClause ?? null,
+        sellerStatutoryReverseChargeClause: flatResult.sellerStatutoryReverseChargeClause ?? null,
+        statutoryGoodsExemptionClause: flatResult.statutoryGoodsExemptionClause ?? null,
+        sellerStatutoryGoodsExemptionClause: flatResult.sellerStatutoryGoodsExemptionClause ?? null,
+        applicableStatutoryClause: flatResult.applicableStatutoryClause ?? null,
+        sellerApplicableStatutoryClause: flatResult.sellerApplicableStatutoryClause ?? null,
+      },
+    });
     const goodsOnlyProtocol = Boolean(
       crossBorder && (sellerCountry === "XI" || norm.memberState === "XI")
     );
@@ -4008,7 +4113,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       : null;
 
     if (goodsOnlyProtocol && supplyType === "SERVICES") {
-      return {
+      return withNestedViesEnvelope({
         ok: true,
         executionMode: "local_open_source_engine",
         ...(isDemo ? { sample: true, simulatedViesLookup: true } : {}),
@@ -4035,7 +4140,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         applicableStatutoryClause: null,
         sellerApplicableStatutoryClause: null,
         consultationId: null,
-      };
+      });
     }
 
     if (viesMode === "LIVE") {
@@ -4055,7 +4160,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     }
 
     if (!norm.validFormat) {
-      return {
+      return withNestedViesEnvelope({
         ok: true,
         executionMode: "local_open_source_engine",
         ...(isDemo ? { sample: true, simulatedViesLookup: true } : {}),
@@ -4067,10 +4172,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         reason: "INVALID_EU_VAT_FORMAT",
         sellerCountry,
         normalizedVatId: norm.fullVatId,
+        memberState: norm.memberState,
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
-      };
+      });
     }
 
     const callerConsultationId =
@@ -4079,7 +4185,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         : null;
 
     if (!isDemo || viesMode === "FORMAT_ONLY") {
-      return {
+      return withNestedViesEnvelope({
         ok: true,
         executionMode: "local_open_source_engine",
         valid: null,
@@ -4111,7 +4217,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           requires: "REVCLAMP_API_KEY",
           url: "https://revclamp.com/pricing",
         },
-      };
+      });
     }
 
     const TRANSIENT_SIM_MODES = new Set([
@@ -4126,7 +4232,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       "NETWORK_ERROR",
     ]);
     if (TRANSIENT_SIM_MODES.has(viesMode)) {
-      return {
+      return withNestedViesEnvelope({
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
@@ -4146,11 +4252,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
-      };
+      });
     }
 
     if (viesMode === "INVALID_REQUESTER_INFO" || viesMode === "IP_BLOCKED") {
-      return {
+      return withNestedViesEnvelope({
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
@@ -4170,11 +4276,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
-      };
+      });
     }
 
     if (viesMode === "INVALID" || viesMode === "VAT_BLOCKED" || viesMode === "INVALID_INPUT") {
-      return {
+      return withNestedViesEnvelope({
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
@@ -4194,11 +4300,11 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
-      };
+      });
     }
 
     if (viesMode !== "VALID" && viesMode !== "VERIFIED") {
-      return {
+      return withNestedViesEnvelope({
         ok: true,
         executionMode: "local_open_source_engine",
         sample: true,
@@ -4218,7 +4324,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         reverseChargeEligible: false,
         zeroRateAllowed: false,
         consultationId: null,
-      };
+      });
     }
 
     const applicableStatutoryClause = crossBorder
@@ -4232,7 +4338,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         : sellerStatutoryTerminology?.statutoryReverseChargeClause || null
       : null;
 
-    return {
+    return withNestedViesEnvelope({
       ok: true,
       executionMode: "local_open_source_engine",
       sample: true,
@@ -4270,7 +4376,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       consultationIdSource: callerConsultationId
         ? "CALLER_SUPPLIED_UNVERIFIED"
         : "DEMO_SAMPLE_DEFAULT",
-    };
+    });
   }
 
   if (toolName === "revclamp_reconcile_b2b_net_terms") {
@@ -4357,8 +4463,64 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       throw err;
     }
     const requiredDepositPercent = args.requiredDepositPercent ?? 30;
+    if (
+      typeof requiredDepositPercent !== "number" ||
+      !Number.isSafeInteger(requiredDepositPercent) ||
+      requiredDepositPercent < 0 ||
+      requiredDepositPercent > 100
+    ) {
+      const err = new Error(
+        "INVALID_REQUIRED_DEPOSIT_PERCENT: requiredDepositPercent must be an integer between 0 and 100."
+      );
+      err.code = -32602;
+      err.reason = "INVALID_REQUIRED_DEPOSIT_PERCENT";
+      throw err;
+    }
     const paymentTermsDays = args.paymentTermsDays ?? 30;
+    if (
+      typeof paymentTermsDays !== "number" ||
+      !Number.isSafeInteger(paymentTermsDays) ||
+      paymentTermsDays < 1 ||
+      paymentTermsDays > 180
+    ) {
+      const err = new Error(
+        "INVALID_PAYMENT_TERMS_DAYS: paymentTermsDays must be an integer between 1 and 180."
+      );
+      err.code = -32602;
+      err.reason = "INVALID_PAYMENT_TERMS_DAYS";
+      throw err;
+    }
     const daysElapsed = args.daysElapsedSinceInvoice ?? 0;
+    if (
+      typeof daysElapsed !== "number" ||
+      !Number.isSafeInteger(daysElapsed) ||
+      daysElapsed < 0 ||
+      daysElapsed > 3650
+    ) {
+      const err = new Error(
+        "INVALID_DAYS_ELAPSED: daysElapsedSinceInvoice must be an integer between 0 and 3650."
+      );
+      err.code = -32602;
+      err.reason = "INVALID_DAYS_ELAPSED";
+      throw err;
+    }
+    let dueAtSec = null;
+    if (args.invoiceIssuedAtSec !== undefined) {
+      if (
+        typeof args.invoiceIssuedAtSec !== "number" ||
+        !Number.isSafeInteger(args.invoiceIssuedAtSec) ||
+        args.invoiceIssuedAtSec <= 0 ||
+        args.invoiceIssuedAtSec > 10_000_000_000
+      ) {
+        const err = new Error(
+          "INVALID_INVOICE_ISSUED_AT_SEC: invoiceIssuedAtSec must be a positive Unix epoch integer."
+        );
+        err.code = -32602;
+        err.reason = "INVALID_INVOICE_ISSUED_AT_SEC";
+        throw err;
+      }
+      dueAtSec = args.invoiceIssuedAtSec + paymentTermsDays * 86_400;
+    }
     const toleranceCents = args.toleranceCents ?? 0;
     const maxAllowedToleranceCents = Math.min(
       500,
@@ -4386,15 +4548,16 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     if (
       !Number.isSafeInteger(rawRequiredDepositCents) ||
       rawRequiredDepositCents < 0 ||
-      rawRequiredDepositCents > orderTotalCents
+      rawRequiredDepositCents > effectiveTotalCents
     ) {
       const err = new Error(
-        "INVALID_REQUIRED_DEPOSIT_CENTS: requiredDepositCents must be an integer between 0 and totalOrderCents."
+        "INVALID_REQUIRED_DEPOSIT_CENTS: requiredDepositCents must be an integer between 0 and effectiveTotalCents."
       );
       err.code = -32602;
+      err.reason = "INVALID_REQUIRED_DEPOSIT_CENTS";
       throw err;
     }
-    const requiredDepositCents = Math.min(rawRequiredDepositCents, effectiveTotalCents);
+    const requiredDepositCents = rawRequiredDepositCents;
 
     const shortfallRawCents = Math.max(0, effectiveTotalCents - paidAmountCents);
     const overpaidCents = Math.max(0, paidAmountCents - effectiveTotalCents);
@@ -4452,6 +4615,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       paidAmountCents + remainingBalanceCents + appliedToleranceCents - overpaidCents ===
       effectiveTotalCents;
 
+    const daysRemainingUntilDue = Math.max(0, paymentTermsDays - daysElapsed);
     const reconciliation = {
       orderId,
       state,
@@ -4460,6 +4624,12 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       fulfillmentAllowed,
       fulfillmentHold,
       releaseHoldAction: fulfillmentAllowed,
+      paymentTermsDays,
+      daysElapsedSinceInvoice: daysElapsed,
+      daysRemainingUntilDue,
+      ...(dueAtSec !== null
+        ? { invoiceIssuedAtSec: args.invoiceIssuedAtSec, dueAtSec }
+        : {}),
       totalOrderCents: orderTotalCents,
       creditNoteCents: creditNotesCents,
       effectiveTotalCents,
@@ -4483,6 +4653,12 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       orderTag,
       fulfillmentAllowed,
       fulfillmentHold,
+      paymentTermsDays,
+      daysElapsedSinceInvoice: daysElapsed,
+      daysRemainingUntilDue,
+      ...(dueAtSec !== null
+        ? { invoiceIssuedAtSec: args.invoiceIssuedAtSec, dueAtSec }
+        : {}),
       effectiveTotalCents,
       requiredDepositCents,
       effectivePaidCents: paidAmountCents,
@@ -5042,7 +5218,10 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       if (tsSec === null || !eventName) continue;
       const isoTs = new Date(tsSec * 1000).toISOString().replace(".000Z", "Z");
       const parts = [`${isoTs}`, `event=${eventName}`, `actor=${cleanCustomerId}`];
-      const cleanIp = sanitizeLogToken(ev.ip_address || ev.ipAddress || ev.ip, 64);
+      const cleanIp = sanitizeLogToken(
+        ev.ip_address || ev.ipAddress || ev.ip || ev.client_ip || ev.metadata?.ip_address,
+        64
+      );
       if (cleanIp) parts.push(`ip=${cleanIp}`);
       const cleanDev = sanitizeLogToken(
         ev.device_id || ev.deviceId || ev.device_fingerprint || ev.deviceFingerprint,
@@ -5088,9 +5267,24 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         customerId: cleanCustomerId,
         skipped: true,
         reason: "MALFORMED_EXISTING_REVCLAMP_BLOCK_MARKERS",
+        skippedReason: "MALFORMED_EXISTING_REVCLAMP_BLOCK_MARKERS",
         submit: false,
+        submitForcedFalse: true,
+        utf16CodeUnits: boundedMalformedLog.length,
         evidence: {
           access_activity_log: boundedMalformedLog,
+        },
+        drawer: {
+          ok: true,
+          skipped: true,
+          skippedReason: "MALFORMED_EXISTING_REVCLAMP_BLOCK_MARKERS",
+          submitFalseLocked: true,
+          stripeUpdateParams: {
+            submit: false,
+            evidence: {
+              access_activity_log: boundedMalformedLog,
+            },
+          },
         },
       };
     }
@@ -5138,7 +5332,10 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         customerId: cleanCustomerId,
         skipped: true,
         reason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
+        skippedReason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
         submit: false,
+        submitForcedFalse: true,
+        utf16CodeUnits: totalMerchantChars,
         segmentBreakdown: {
           prefixUtf16CodeUnits: merchantPrefixLog.length,
           preSeparatorUtf16CodeUnits: preSeparator.length,
@@ -5157,6 +5354,16 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           ),
         },
         evidence: {},
+        drawer: {
+          ok: true,
+          skipped: true,
+          skippedReason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
+          submitFalseLocked: true,
+          stripeUpdateParams: {
+            submit: false,
+            evidence: {},
+          },
+        },
       };
     }
 
@@ -5184,7 +5391,10 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
         customerId: cleanCustomerId,
         skipped: true,
         reason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
+        skippedReason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
         submit: false,
+        submitForcedFalse: true,
+        utf16CodeUnits: totalMerchantChars,
         segmentBreakdown: {
           prefixUtf16CodeUnits: merchantPrefixLog.length,
           preSeparatorUtf16CodeUnits: preSeparator.length,
@@ -5203,6 +5413,16 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           ),
         },
         evidence: {},
+        drawer: {
+          ok: true,
+          skipped: true,
+          skippedReason: "EXISTING_MERCHANT_NOTES_EXCEED_18K_CEILING",
+          submitFalseLocked: true,
+          stripeUpdateParams: {
+            submit: false,
+            evidence: {},
+          },
+        },
       };
     }
 
@@ -5214,10 +5434,49 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     ].join("\n");
 
     const merged = `${merchantPrefixLog}${preSeparator}${block}${postSeparator}${merchantSuffixLog}`;
+    const shouldSynthesizeDemoCe3Transactions =
+      isDemo && args.disputedTransaction === undefined && args.priorTransactions === undefined;
+    const demoAnchorSec = 1_781_533_330;
+    const effectiveDisputedTx = shouldSynthesizeDemoCe3Transactions
+      ? {
+          id: "ch_demo_disputed_01",
+          occurredAtSec: demoAnchorSec,
+          customer_id: cleanCustomerId,
+          email: "finance@enterprise.example",
+          ip_address: "198.51.100.42",
+          device_id: "dev_fp_9921a",
+        }
+      : args.disputedTransaction;
+    const effectivePriorTxs = shouldSynthesizeDemoCe3Transactions
+      ? [
+          {
+            id: "ch_demo_prior_1",
+            status: "succeeded",
+            disputed: false,
+            refunded: false,
+            occurredAtSec: demoAnchorSec - 150 * 86_400,
+            customer_id: cleanCustomerId,
+            email: "finance@enterprise.example",
+            ip_address: "198.51.100.42",
+            device_id: "dev_fp_9921a",
+          },
+          {
+            id: "ch_demo_prior_2",
+            status: "succeeded",
+            disputed: false,
+            refunded: false,
+            occurredAtSec: demoAnchorSec - 210 * 86_400,
+            customer_id: cleanCustomerId,
+            email: "finance@enterprise.example",
+            ip_address: "198.51.100.42",
+            device_id: "dev_fp_9921a",
+          },
+        ]
+      : args.priorTransactions;
     const ce3Qualification = evaluateLocalVisaCe3Qualification(
       disputeReason,
-      args.disputedTransaction,
-      args.priorTransactions
+      effectiveDisputedTx,
+      effectivePriorTxs
     );
 
     return {
@@ -5230,6 +5489,7 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       ce3Eligible: Boolean(ce3Qualification?.qualified),
       ce3Qualification,
       submit: false,
+      submitForcedFalse: true,
       utf16CodeUnits: merged.length,
       linesIncluded: packedLines.length,
       segmentBreakdown: {
@@ -5249,6 +5509,21 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       evidence: {
         access_activity_log: merged,
       },
+      drawer: {
+        ok: true,
+        skipped: false,
+        submitFalseLocked: true,
+        disputeId: cleanDisputeId,
+        customerId: cleanCustomerId,
+        utf16CodeUnits: merged.length,
+        ce3Qualification,
+        stripeUpdateParams: {
+          submit: false,
+          evidence: {
+            access_activity_log: merged,
+          },
+        },
+      },
       limitations: ["LOCAL_DRAFT_ONLY_NOT_STAGED_TO_STRIPE_API"],
       upgrade: {
         capability: "autonomous_stripe_dispute_staging_and_90d_ledger",
@@ -5264,16 +5539,49 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
     const hasCallerEvents = Array.isArray(args.usageEvents) && args.usageEvents.length > 0;
     const costPerEventCents = Number(args.costPerEventCents ?? 142);
     const graceDays = Number(args.dunningGracePeriodDays ?? 3);
+    const UPDATABLE_DISPUTE_STATUSES = new Set(["needs_response", "warning_needs_response"]);
+    const DISPUTE_ID_RE = /^(?:du|dp)_[A-Za-z0-9_-]{1,64}$/;
+    const countEligibleDisputes = (disputesList) => {
+      if (!Array.isArray(disputesList)) return 0;
+      let count = 0;
+      for (const d of disputesList.slice(0, 5000)) {
+        if (!d || typeof d !== "object" || Array.isArray(d)) continue;
+        const dispId = typeof d.id === "string" ? d.id.trim() : "";
+        if (!dispId || !DISPUTE_ID_RE.test(dispId)) continue;
+        const dispStatus =
+          typeof d.status === "string" && d.status.trim()
+            ? d.status.trim().toLowerCase()
+            : "needs_response";
+        if (!UPDATABLE_DISPUTE_STATUSES.has(dispStatus)) continue;
+        if (d.eligibleForAutoEvidence !== undefined && !d.eligibleForAutoEvidence) continue;
+        count += 1;
+      }
+      return count;
+    };
 
     if ((!hasCallerCustomers || !hasCallerEvents) && !isDemo) {
+      const scannedCustomers = hasCallerCustomers ? args.customers.length : 0;
+      const scannedEvents = hasCallerEvents ? args.usageEvents.length : 0;
+      const disputesEligibleForAutoEvidence = countEligibleDisputes(args.disputes);
       return {
         ok: true,
         executionMode: "local_open_source_engine",
         statelessEphemeralAudit: true,
-        customersEvaluated: hasCallerCustomers ? args.customers.length : 0,
-        usageEventsEvaluated: hasCallerEvents ? args.usageEvents.length : 0,
+        customersEvaluated: scannedCustomers,
+        usageEventsEvaluated: scannedEvents,
         ghostEventsDetected: 0,
+        affectedCustomersCount: 0,
         estimatedMonthlyLeakUsd: 0,
+        disputesEligibleForAutoEvidence,
+        audit: {
+          scannedCustomers,
+          scannedEvents,
+          ghostLeakEventsCount: 0,
+          affectedCustomersCount: 0,
+          estimatedBleedUsd: 0,
+          estimatedMonthlyBleedUsd: 0,
+          disputesEligibleForAutoEvidence,
+        },
         ce3ReadinessStatus: "NO_CALLER_SNAPSHOT_SUPPLIED",
         limitations: ["NO_WORKSPACE_LEDGER_CONNECTED"],
         upgrade: {
@@ -5310,6 +5618,12 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
             occurred_at_sec: 1760000000,
           },
         ];
+    const effectiveDisputes = Array.isArray(args.disputes)
+      ? args.disputes
+      : !hasCallerCustomers && isDemo
+        ? [{ id: "du_demo_sample_01", status: "needs_response", reason: "fraudulent" }]
+        : [];
+    const disputesEligibleForAutoEvidence = countEligibleDisputes(effectiveDisputes);
 
     const subMap = new Map();
     const emailToCustomerIds = new Map();
@@ -5325,20 +5639,36 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           }
           emailToCustomerIds.get(normEmail).add(cleanCid);
         }
-        const rawSubsEnv =
-          c.subscriptions && typeof c.subscriptions === "object"
-            ? c.subscriptions
-            : { data: [], has_more: true };
-        const enrichedData = Array.isArray(rawSubsEnv.data)
-          ? rawSubsEnv.data.map((s) =>
+        let rawList = null;
+        let resolvedHasMore = true;
+        if (Array.isArray(c.subscriptions)) {
+          rawList = c.subscriptions;
+          resolvedHasMore =
+            c.subscriptionsHasMore === true || c.has_more === true
+              ? true
+              : c.subscriptionsHasMore === false || c.has_more === false
+                ? false
+                : true;
+        } else if (c.subscriptions && typeof c.subscriptions === "object") {
+          rawList = Array.isArray(c.subscriptions.data) ? c.subscriptions.data : null;
+          resolvedHasMore =
+            c.subscriptions.has_more === true || c.subscriptionsHasMore === true
+              ? true
+              : c.subscriptions.has_more === false || c.subscriptionsHasMore === false
+                ? false
+                : true;
+        }
+        const enrichedData = Array.isArray(rawList)
+          ? rawList.map((s) =>
               s && typeof s === "object" && !s.customer ? { ...s, customer: cleanCid } : s
             )
           : null;
-        subMap.set(cleanCid, { ...rawSubsEnv, data: enrichedData });
+        subMap.set(cleanCid, { data: enrichedData, has_more: resolvedHasMore });
       }
     }
 
     let ghostEventsDetected = 0;
+    const affectedCustomerIds = new Set();
     for (const ev of events) {
       if (!ev || typeof ev !== "object") continue;
       let cid = extractCanonicalCustomerId(ev);
@@ -5364,12 +5694,14 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       );
       if (evalRes.isGhostUsage) {
         ghostEventsDetected += 1;
+        affectedCustomerIds.add(cid);
       }
     }
 
     const estimatedMonthlyLeakUsd = Number(
       ((ghostEventsDetected * costPerEventCents) / 100).toFixed(2)
     );
+    const affectedCustomersCount = affectedCustomerIds.size;
 
     return {
       ok: true,
@@ -5379,7 +5711,18 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       customersEvaluated: customers.length,
       usageEventsEvaluated: events.length,
       ghostEventsDetected,
+      affectedCustomersCount,
       estimatedMonthlyLeakUsd,
+      disputesEligibleForAutoEvidence,
+      audit: {
+        scannedCustomers: subMap.size,
+        scannedEvents: events.length,
+        ghostLeakEventsCount: ghostEventsDetected,
+        affectedCustomersCount,
+        estimatedBleedUsd: estimatedMonthlyLeakUsd,
+        estimatedMonthlyBleedUsd: estimatedMonthlyLeakUsd,
+        disputesEligibleForAutoEvidence,
+      },
       ce3ReadinessStatus: "STATELESS_CALLER_SNAPSHOT_EVALUATED",
       limitations: ["STATELESS_CALLER_SNAPSHOT_ONLY_NO_90D_WORKSPACE_LEDGER"],
       upgrade: {
@@ -5398,7 +5741,9 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
 function toSafeLocalRpcId(rawId) {
   if (rawId === null || rawId === undefined) return null;
   if (typeof rawId === "number" && Number.isFinite(rawId)) return rawId;
-  if (typeof rawId === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(rawId)) return rawId;
+  if (typeof rawId === "string" && rawId.length <= 128 && !/[\x00-\x1f\x7f]/.test(rawId)) {
+    return rawId;
+  }
   return null;
 }
 
@@ -5665,7 +6010,7 @@ export function executeLocalMcpJsonRpc(
         sellerCountry: "DE",
         buyerVatId: "NL123456789B01",
         supplyType: "GOODS",
-        viesMode: "SYNTAX",
+        viesMode: "FORMAT_ONLY",
       },
       revclamp_reconcile_b2b_net_terms: {
         orderId: "ord_test_01",
@@ -5778,17 +6123,55 @@ export function executeLocalMcpJsonRpc(
       };
       let serializedBytes = Buffer.byteLength(JSON.stringify(responseObj), "utf8");
       if (serializedBytes > 32_768) {
-        const compactForText =
+        const hasDrawerLog = Boolean(
+          structuredContent &&
+            typeof structuredContent === "object" &&
+            structuredContent.drawer &&
+            typeof structuredContent.drawer === "object" &&
+            structuredContent.drawer.stripeUpdateParams &&
+            typeof structuredContent.drawer.stripeUpdateParams === "object" &&
+            structuredContent.drawer.stripeUpdateParams.evidence &&
+            typeof structuredContent.drawer.stripeUpdateParams.evidence.access_activity_log ===
+              "string"
+        );
+        const buildDrawerWithPlaceholder = (baseContent, placeholderText) =>
+          hasDrawerLog
+            ? {
+                ...baseContent.drawer,
+                stripeUpdateParams: {
+                  ...baseContent.drawer.stripeUpdateParams,
+                  evidence: {
+                    ...baseContent.drawer.stripeUpdateParams.evidence,
+                    access_activity_log: placeholderText,
+                  },
+                },
+              }
+            : baseContent.drawer;
+
+        const textPlaceholder =
           structuredContent &&
           typeof structuredContent === "object" &&
           structuredContent.evidence &&
           typeof structuredContent.evidence.access_activity_log === "string"
+            ? `[Omitted in text mirror to respect 32,768-byte cap; full ${structuredContent.evidence.access_activity_log.length} UTF-16 code unit draft is in result.structuredContent.evidence.access_activity_log]`
+            : null;
+        const compactForText = textPlaceholder
+          ? {
+              ...structuredContent,
+              evidence: {
+                ...structuredContent.evidence,
+                access_activity_log: textPlaceholder,
+              },
+              ...(hasDrawerLog
+                ? { drawer: buildDrawerWithPlaceholder(structuredContent, textPlaceholder) }
+                : {}),
+            }
+          : structuredContent;
+        const compactStructuredTier1 =
+          textPlaceholder && hasDrawerLog
             ? {
                 ...structuredContent,
-                evidence: {
-                  ...structuredContent.evidence,
-                  access_activity_log: `[Omitted in text mirror to respect 32,768-byte cap; full ${structuredContent.evidence.access_activity_log.length} UTF-16 code unit draft is in result.structuredContent.evidence.access_activity_log]`,
-                },
+                drawer: buildDrawerWithPlaceholder(structuredContent, textPlaceholder),
               }
             : structuredContent;
         responseObj = {
@@ -5801,7 +6184,7 @@ export function executeLocalMcpJsonRpc(
                 text: JSON.stringify(compactForText),
               },
             ],
-            structuredContent,
+            structuredContent: compactStructuredTier1,
             isError: false,
           },
         };
@@ -5813,12 +6196,16 @@ export function executeLocalMcpJsonRpc(
           structuredContent.evidence &&
           typeof structuredContent.evidence.access_activity_log === "string"
         ) {
+          const tier2Placeholder = `[Omitted to respect 32,768-byte JSON-RPC envelope cap; original draft was ${structuredContent.evidence.access_activity_log.length} UTF-16 code units]`;
           const compactBoth = {
             ...structuredContent,
             evidence: {
               ...structuredContent.evidence,
-              access_activity_log: `[Omitted to respect 32,768-byte JSON-RPC envelope cap; original draft was ${structuredContent.evidence.access_activity_log.length} UTF-16 code units]`,
+              access_activity_log: tier2Placeholder,
             },
+            ...(hasDrawerLog
+              ? { drawer: buildDrawerWithPlaceholder(structuredContent, tier2Placeholder) }
+              : {}),
           };
           responseObj = {
             jsonrpc: "2.0",
