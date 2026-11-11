@@ -291,7 +291,15 @@ export async function loadApifyActorInput(
       !Object.prototype.hasOwnProperty.call(next, 'creativeId') &&
       !hasNonEmptyAlias(['pageToken', 'cursor'])
     ) {
-      return { query: 'Stripe', ...next };
+      const hasExplicitLimit =
+        Object.prototype.hasOwnProperty.call(next, 'maxResults') ||
+        Object.prototype.hasOwnProperty.call(next, 'limit') ||
+        Object.prototype.hasOwnProperty.call(next, 'max_results');
+      return {
+        query: 'Stripe',
+        ...(!hasExplicitLimit ? { maxResults: 5 } : {}),
+        ...next,
+      };
     }
     return next;
   };
