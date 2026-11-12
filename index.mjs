@@ -229,8 +229,13 @@ export function toSafeRpcId(rawId) {
   return null;
 }
 
-export function scanMcpClientPayloadForSecrets(node, depth = 0) {
-  if (depth > 8) {
+export function scanMcpClientPayloadForSecrets(
+  node,
+  depth = 0,
+  state = { nodesVisited: 0 }
+) {
+  state.nodesVisited += 1;
+  if (depth > 16 || state.nodesVisited > 4_096) {
     return { ok: false, reason: "MCP_ARGUMENT_DEPTH_EXCEEDED" };
   }
   if (node === null || node === undefined) {
@@ -244,17 +249,20 @@ export function scanMcpClientPayloadForSecrets(node, depth = 0) {
   }
   if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i += 1) {
-      const sub = scanMcpClientPayloadForSecrets(node[i], depth + 1);
+      const sub = scanMcpClientPayloadForSecrets(node[i], depth + 1, state);
       if (!sub.ok) return sub;
     }
     return { ok: true };
   }
   if (typeof node === "object") {
     for (const [k, v] of Object.entries(node)) {
+      if (depth + 1 > 16 || state.nodesVisited >= 4_096) {
+        return { ok: false, reason: "MCP_ARGUMENT_DEPTH_EXCEEDED" };
+      }
       if (LIVE_SECRET_GUARD_RE.test(k)) {
         return { ok: false, reason: "LIVE_SECRET_FORBIDDEN_IN_SANDBOX" };
       }
-      const sub = scanMcpClientPayloadForSecrets(v, depth + 1);
+      const sub = scanMcpClientPayloadForSecrets(v, depth + 1, state);
       if (!sub.ok) return sub;
     }
     return { ok: true };
