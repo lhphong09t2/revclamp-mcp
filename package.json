@@ -1,7 +1,7 @@
 {
   "name": "revclamp-mcp",
   "mcpName": "com.revclamp/revclamp-mcp",
-  "version": "1.20.32",
+  "version": "1.20.33",
   "description": "RevClamp MCP Server & CLI for Stripe 2025-03-31.basil entitlement checks, Visa CE 3.0 dispute staging, EU/XI VIES VAT validation, Shopify Plus B2B Net-15/30/60 & 1..180d reconciliation, HMAC checks, and 72h replay simulation.",
   "type": "module",
   "main": "./index.mjs",
@@ -48,9 +48,9 @@
     "node": ">=20.0.0"
   },
   "revclamp": {
-    "engineSha256": "30189ad4398797a26231ab8e523242558c3117d382515e04feb3cc8c1350bad8"
+    "engineSha256": "b80ec15988556c913f853b36c36d7317c39be656f6cc35573dc420060366a5dc"
   },
   "revclampIntegrity": {
-    "engineSha256": "30189ad4398797a26231ab8e523242558c3117d382515e04feb3cc8c1350bad8"
+    "engineSha256": "b80ec15988556c913f853b36c36d7317c39be656f6cc35573dc420060366a5dc"
   }
 }

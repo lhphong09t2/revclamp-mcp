@@ -33,6 +33,112 @@ export const SUPPORTED_MCP_PROTOCOL_VERSIONS = Object.freeze([
 const LOCAL_LIVE_SECRET_GUARD_RE =
   /(?:[sr]k_live_[A-Za-z0-9_-]{4,}|whsec_live_[A-Za-z0-9_-]{4,}|whsec_(?!test_|synth_|sandbox_|demo_|sample_|mock_|example_|fake_|dummy_)[A-Za-z0-9_-]{10,}|shpss_live_[A-Za-z0-9_-]{4,}|shpss_[0-9a-fA-F]{16,}|shp(?:at|ua|ca|pa)_[A-Za-z0-9_-]{8,}|r[gc]_live_[A-Za-z0-9_-]{4,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
 
+export const GHOST_USAGE_TIMESTAMP_ALIAS_KEYS = Object.freeze([
+  "timestampSec",
+  "usage_timestamp_sec",
+  "usageTimestamp",
+  "usage_timestamp",
+  "eventTimestamp",
+  "event_timestamp",
+  "occurred_at_sec",
+]);
+
+export const GHOST_USAGE_EVENT_TIMESTAMP_KEYS = Object.freeze([
+  "occurred_at_sec",
+  "occurredAtSec",
+  "timestampSec",
+  "usageTimestampSec",
+  "usage_timestamp_sec",
+  "usageTimestamp",
+  "usage_timestamp",
+  "eventTimestamp",
+  "event_timestamp",
+  "occurredAt",
+  "occurred_at",
+  "createdAtSec",
+  "created_at",
+  "settledAtSec",
+  "settled_at",
+  "created",
+  "timestamp",
+]);
+
+const STRICT_ISO_8601_TIMESTAMP_RE =
+  /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(?:[T\s](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?)?$/i;
+
+export function parseStrictGhostTimestampSec(rawVal, fieldLabel = "timestamp") {
+  if (typeof rawVal === "number" && Number.isSafeInteger(rawVal) && rawVal > 0) {
+    if (rawVal <= 10_000_000_000) {
+      return { ok: true, sec: rawVal };
+    }
+    if (rawVal <= 10_000_000_000_000) {
+      return { ok: true, sec: Math.floor(rawVal / 1000) };
+    }
+    return {
+      ok: false,
+      message: `Invalid params: ${fieldLabel} millisecond epoch timestamp is out of bounds.`,
+    };
+  }
+  if (typeof rawVal === "string" && rawVal.trim().length > 0) {
+    const trimmed = rawVal.trim();
+    if (/^\d{9,16}$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (!Number.isSafeInteger(n) || n <= 0 || n > 10_000_000_000_000) {
+        return {
+          ok: false,
+          message: `Invalid params: ${fieldLabel} numeric timestamp is out of bounds.`,
+        };
+      }
+      return { ok: true, sec: n <= 10_000_000_000 ? n : Math.floor(n / 1000) };
+    }
+    const isoMatch = STRICT_ISO_8601_TIMESTAMP_RE.exec(trimmed);
+    if (!isoMatch) {
+      return {
+        ok: false,
+        message: `Invalid params: ${fieldLabel} must be a valid UNIX timestamp or ISO-8601 date string.`,
+      };
+    }
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    const calCheck = new Date(Date.UTC(year, month - 1, day));
+    if (
+      calCheck.getUTCFullYear() !== year ||
+      calCheck.getUTCMonth() !== month - 1 ||
+      calCheck.getUTCDate() !== day
+    ) {
+      return {
+        ok: false,
+        message: `Invalid params: ${fieldLabel} ISO-8601 calendar date is invalid.`,
+      };
+    }
+    let normalizedIso = trimmed.replace(/^(\d{4}-\d{2}-\d{2})[T\s]+/i, "$1T");
+    normalizedIso = normalizedIso.replace(/z$/i, "Z").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+    if (normalizedIso.includes("T") && !/(?:Z|[+-]\d{2}:\d{2})$/.test(normalizedIso)) {
+      normalizedIso = `${normalizedIso}Z`;
+    }
+    const parsedMs = Date.parse(normalizedIso);
+    if (!Number.isFinite(parsedMs) || parsedMs <= 0) {
+      return {
+        ok: false,
+        message: `Invalid params: ${fieldLabel} must be a valid timestamp.`,
+      };
+    }
+    const sec = Math.floor(parsedMs / 1000);
+    if (sec <= 0 || sec > 10_000_000_000) {
+      return {
+        ok: false,
+        message: `Invalid params: ${fieldLabel} ISO-8601 timestamp is out of bounds.`,
+      };
+    }
+    return { ok: true, sec };
+  }
+  return {
+    ok: false,
+    message: `Invalid params: ${fieldLabel} must be a positive integer (epoch seconds or milliseconds) or ISO-8601 string.`,
+  };
+}
+
 const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
   revclamp_audit_revenue_leakage: Object.freeze([
     Object.freeze({
@@ -91,12 +197,7 @@ const LOCAL_MCP_TOOL_ARG_ALIAS_GROUPS = Object.freeze({
     }),
     Object.freeze({
       canonical: "usageTimestampSec",
-      aliases: Object.freeze([
-        "timestampSec",
-        "usage_timestamp_sec",
-        "usageTimestamp",
-        "occurred_at_sec",
-      ]),
+      aliases: GHOST_USAGE_TIMESTAMP_ALIAS_KEYS,
     }),
     Object.freeze({
       canonical: "usageEvent",
@@ -442,6 +543,16 @@ export function normalizeMcpToolArgs(toolName, rawArgs) {
           v.trim().toUpperCase() === "SYNTAX"
         ) {
           return "FORMAT_ONLY";
+        }
+        if (
+          toolName === "revclamp_evaluate_ghost_usage" &&
+          group.canonical === "usageTimestampSec"
+        ) {
+          try {
+            return parseGhostFlexibleTimestampSec(v, group.canonical);
+          } catch {
+            return v;
+          }
         }
         return v;
       };
@@ -1336,24 +1447,32 @@ export const LOCAL_MCP_TOOLS = Object.freeze([
           default: 3,
         },
         usageTimestampSec: {
-          type: "integer",
+          type: ["integer", "string"],
           minimum: 1,
-          description: "Optional Unix epoch timestamp in integer seconds when the usage event occurred.",
+          description:
+            "Optional usage event timestamp as Unix epoch seconds, Unix epoch milliseconds, or ISO-8601 string.",
         },
         occurredAtSec: {
-          type: "integer",
+          type: ["integer", "string"],
           minimum: 1,
-          description: "Optional alias for usageTimestampSec.",
+          description:
+            "Optional alias for usageTimestampSec (Unix epoch seconds, Unix epoch milliseconds, or ISO-8601 string).",
         },
         occurredAt: {
+          type: ["integer", "string"],
+          minimum: 1,
           description:
             "Optional usage event timestamp as ISO-8601 string, Unix epoch seconds, or Unix epoch milliseconds.",
         },
         occurred_at: {
+          type: ["integer", "string"],
+          minimum: 1,
           description:
             "Optional snake_case alias for occurredAt (ISO-8601 string, Unix epoch seconds, or Unix epoch milliseconds).",
         },
         timestamp: {
+          type: ["integer", "string"],
+          minimum: 1,
           description:
             "Optional alias for occurredAt (ISO-8601 string, Unix epoch seconds, or Unix epoch milliseconds).",
         },
@@ -1659,7 +1778,64 @@ export function validateArgsAgainstSchema(schema, args) {
     if (val === undefined) continue;
     const propSchema = props[key];
     if (!propSchema) continue;
-    if (propSchema.type === "integer") {
+    if (Array.isArray(propSchema.type)) {
+      let matchedType = false;
+      for (const allowedType of propSchema.type) {
+        if (allowedType === "integer" && typeof val === "number" && Number.isSafeInteger(val)) {
+          if (propSchema.minimum !== undefined && val < propSchema.minimum) {
+            return { ok: false, message: `Argument '${key}' must be >= ${propSchema.minimum}.` };
+          }
+          if (propSchema.maximum !== undefined && val > propSchema.maximum) {
+            return { ok: false, message: `Argument '${key}' must be <= ${propSchema.maximum}.` };
+          }
+          matchedType = true;
+          break;
+        }
+        if (allowedType === "number" && typeof val === "number" && Number.isFinite(val)) {
+          if (propSchema.minimum !== undefined && val < propSchema.minimum) {
+            return { ok: false, message: `Argument '${key}' must be >= ${propSchema.minimum}.` };
+          }
+          if (propSchema.maximum !== undefined && val > propSchema.maximum) {
+            return { ok: false, message: `Argument '${key}' must be <= ${propSchema.maximum}.` };
+          }
+          matchedType = true;
+          break;
+        }
+        if (allowedType === "string" && typeof val === "string") {
+          if (propSchema.maxLength !== undefined && val.length > propSchema.maxLength) {
+            return {
+              ok: false,
+              message: `Argument '${key}' exceeds maximum length of ${propSchema.maxLength}.`,
+            };
+          }
+          matchedType = true;
+          break;
+        }
+        if (allowedType === "boolean" && typeof val === "boolean") {
+          matchedType = true;
+          break;
+        }
+        if (allowedType === "array" && Array.isArray(val)) {
+          matchedType = true;
+          break;
+        }
+        if (
+          allowedType === "object" &&
+          val !== null &&
+          typeof val === "object" &&
+          !Array.isArray(val)
+        ) {
+          matchedType = true;
+          break;
+        }
+      }
+      if (!matchedType) {
+        return {
+          ok: false,
+          message: `Argument '${key}' must match type ${propSchema.type.join(" | ")}.`,
+        };
+      }
+    } else if (propSchema.type === "integer") {
       if (typeof val !== "number" || !Number.isSafeInteger(val)) {
         return { ok: false, message: `Argument '${key}' must be a safe integer.` };
       }
@@ -1911,11 +2087,9 @@ function parseEventTimestampSec(ev) {
         if (!isValidUnixSec(normSec)) return null;
         resolvedSecs.push(normSec);
       } else if (typeof val === "string" && val.trim()) {
-        const ms = Date.parse(val.trim());
-        if (!Number.isFinite(ms)) return null;
-        const s = Math.floor(ms / 1000);
-        if (!isValidUnixSec(s)) return null;
-        resolvedSecs.push(s);
+        const parsedFlex = parseStrictGhostTimestampSec(val, flexKey);
+        if (!parsedFlex.ok || !isValidUnixSec(parsedFlex.sec)) return null;
+        resolvedSecs.push(parsedFlex.sec);
       } else {
         return null;
       }
@@ -2726,45 +2900,13 @@ export function executeLocalMcpTool(toolName, rawArgs = {}, options = {}) {
 }
 
 function parseGhostFlexibleTimestampSec(rawVal, fieldLabel) {
-  if (typeof rawVal === "number" && Number.isSafeInteger(rawVal) && rawVal > 0) {
-    if (rawVal >= 100_000_000_000) {
-      const sec = Math.floor(rawVal / 1000);
-      if (sec <= 0 || sec > 10_000_000_000) {
-        const err = new Error(
-          `Invalid params: ${fieldLabel} millisecond epoch timestamp is out of bounds.`
-        );
-        err.code = -32602;
-        throw err;
-      }
-      return sec;
-    }
-    if (rawVal > 10_000_000_000) {
-      const err = new Error(`Invalid params: ${fieldLabel} timestamp is out of bounds.`);
-      err.code = -32602;
-      throw err;
-    }
-    return rawVal;
+  const parsed = parseStrictGhostTimestampSec(rawVal, fieldLabel);
+  if (!parsed.ok) {
+    const err = new Error(parsed.message);
+    err.code = -32602;
+    throw err;
   }
-  if (typeof rawVal === "string" && rawVal.trim().length > 0) {
-    const parsedMs = Date.parse(rawVal.trim());
-    if (!Number.isFinite(parsedMs) || parsedMs <= 0) {
-      const err = new Error(`Invalid params: ${fieldLabel} must be a valid timestamp.`);
-      err.code = -32602;
-      throw err;
-    }
-    const sec = Math.floor(parsedMs / 1000);
-    if (sec <= 0 || sec > 10_000_000_000) {
-      const err = new Error(`Invalid params: ${fieldLabel} ISO-8601 timestamp is out of bounds.`);
-      err.code = -32602;
-      throw err;
-    }
-    return sec;
-  }
-  const err = new Error(
-    `Invalid params: ${fieldLabel} must be a positive integer (epoch seconds or milliseconds) or ISO-8601 string.`
-  );
-  err.code = -32602;
-  throw err;
+  return parsed.sec;
 }
 
 const VALID_STRIPE_SUBSCRIPTION_STATUSES = new Set([
@@ -4750,63 +4892,24 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       err.code = -32602;
       throw err;
     }
-    if (
-      args.usageTimestampSec !== undefined &&
-      (typeof args.usageTimestampSec !== "number" ||
-        !Number.isSafeInteger(args.usageTimestampSec) ||
-        args.usageTimestampSec <= 0 ||
-        args.usageTimestampSec > 10_000_000_000)
-    ) {
-      const err = new Error("Invalid params: usageTimestampSec must be a positive integer.");
-      err.code = -32602;
-      throw err;
-    }
-    if (
-      args.occurredAtSec !== undefined &&
-      (typeof args.occurredAtSec !== "number" ||
-        !Number.isSafeInteger(args.occurredAtSec) ||
-        args.occurredAtSec <= 0 ||
-        args.occurredAtSec > 10_000_000_000)
-    ) {
-      const err = new Error("Invalid params: occurredAtSec must be a positive integer.");
-      err.code = -32602;
-      throw err;
-    }
+    const EV_OBJ_TIMESTAMP_KEYS = GHOST_USAGE_EVENT_TIMESTAMP_KEYS;
     const tsCandidates = [];
-    if (args.usageTimestampSec !== undefined) tsCandidates.push(args.usageTimestampSec);
-    if (args.occurredAtSec !== undefined) tsCandidates.push(args.occurredAtSec);
+    if (args.usageTimestampSec !== undefined) {
+      tsCandidates.push(parseGhostFlexibleTimestampSec(args.usageTimestampSec, "usageTimestampSec"));
+    }
+    if (args.occurredAtSec !== undefined) {
+      tsCandidates.push(parseGhostFlexibleTimestampSec(args.occurredAtSec, "occurredAtSec"));
+    }
     for (const topFlexTsKey of ["occurredAt", "occurred_at", "timestamp"]) {
       if (args[topFlexTsKey] !== undefined) {
         tsCandidates.push(parseGhostFlexibleTimestampSec(args[topFlexTsKey], topFlexTsKey));
       }
     }
     if (evObj) {
-      for (const intKey of [
-        "occurred_at_sec",
-        "occurredAtSec",
-        "timestampSec",
-        "usageTimestampSec",
-      ]) {
-        if (evObj[intKey] !== undefined) {
-          if (
-            typeof evObj[intKey] !== "number" ||
-            !Number.isSafeInteger(evObj[intKey]) ||
-            evObj[intKey] <= 0 ||
-            evObj[intKey] > 10_000_000_000
-          ) {
-            const err = new Error(
-              `Invalid params: usageEvent.${intKey} must be a positive integer.`
-            );
-            err.code = -32602;
-            throw err;
-          }
-          tsCandidates.push(evObj[intKey]);
-        }
-      }
-      for (const flexKey of ["occurred_at", "created", "timestamp"]) {
-        if (evObj[flexKey] !== undefined) {
+      for (const evTsKey of EV_OBJ_TIMESTAMP_KEYS) {
+        if (evObj[evTsKey] !== undefined) {
           tsCandidates.push(
-            parseGhostFlexibleTimestampSec(evObj[flexKey], `usageEvent.${flexKey}`)
+            parseGhostFlexibleTimestampSec(evObj[evTsKey], `usageEvent.${evTsKey}`)
           );
         }
       }
@@ -5100,19 +5203,19 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
           ? undefined
           : Math.floor(Date.now() / 1000);
     const normalizedUsageEvent = evObj
-      ? {
-          ...evObj,
-          ...(effectiveTopCustomerId && !evCustomerId
-            ? { customer_id: effectiveTopCustomerId }
-            : {}),
-          ...(fallbackTsSec !== undefined &&
-          evObj.occurred_at === undefined &&
-          evObj.occurred_at_sec === undefined &&
-          evObj.occurredAtSec === undefined &&
-          evObj.timestamp === undefined
-            ? { occurred_at_sec: fallbackTsSec }
-            : {}),
-        }
+      ? (() => {
+          const clonedEv = { ...evObj };
+          if (effectiveTopCustomerId && !evCustomerId) {
+            clonedEv.customer_id = effectiveTopCustomerId;
+          }
+          if (fallbackTsSec !== undefined) {
+            for (const evTsKey of EV_OBJ_TIMESTAMP_KEYS) {
+              delete clonedEv[evTsKey];
+            }
+            clonedEv.occurred_at_sec = fallbackTsSec;
+          }
+          return clonedEv;
+        })()
       : {
           customer_id:
             effectiveTopCustomerId || (args.demo === true ? "cus_demo_ghost_01" : ""),
@@ -5124,12 +5227,15 @@ function executeLocalMcpToolCore(toolName, rawArgs = {}) {
       normalizedUsageEvent,
       args.dunningGracePeriodDays ?? 3
     );
+    const effectiveOccurredAtSec = res.occurredAtSec ?? fallbackTsSec;
     return {
       ...res,
+      ...(effectiveOccurredAtSec !== undefined ? { occurredAtSec: effectiveOccurredAtSec } : {}),
       ...(args.demo === true ? { sample: true, demo: true } : {}),
       isGhostLeak: res.isGhostUsage,
       evaluation: {
         ...res,
+        ...(effectiveOccurredAtSec !== undefined ? { occurredAtSec: effectiveOccurredAtSec } : {}),
         isGhostLeak: res.isGhostUsage,
       },
     };
