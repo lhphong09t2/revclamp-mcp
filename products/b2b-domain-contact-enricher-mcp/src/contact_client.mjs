@@ -1834,12 +1834,122 @@ export function evaluateDnsDeliverabilityPosture({
 /**
  * Computes a deterministic 16-hex scope hash for pagination cursor binding.
  */
-export function computePaginationScopeHash({ domains = [], roleFilter = 'ANY' } = {}) {
+export function computePaginationScopeHash({
+  domains = [],
+  roleFilter = 'ANY',
+  companyOnly = false,
+} = {}) {
   const canonical = JSON.stringify({
     domains: [...domains].map((d) => String(d).toLowerCase()),
     roleFilter: String(roleFilter || 'ANY').toUpperCase(),
+    ...(companyOnly ? { companyOnly: true } : {}),
   });
   return crypto.createHash('sha256').update(canonical, 'utf8').digest('hex').slice(0, 16);
+}
+
+/**
+ * Deterministic Polar AUP (2026-10-01) allowlist projection returning strictly company-level posture.
+ */
+export function projectCompanyOnlyPosture(payload = {}) {
+  const src =
+    payload && typeof payload === 'object'
+      ? payload.profile && typeof payload.profile === 'object' && !Array.isArray(payload.profile)
+        ? payload.profile
+        : payload
+      : {};
+  const contacts = Array.isArray(src.contacts) ? src.contacts : [];
+  const primaryRole = String(src.primaryRole ?? src.primary_role ?? '').trim().toUpperCase();
+  const hasExplicitSecurity =
+    typeof src.hasSecurityRole === 'boolean'
+      ? src.hasSecurityRole
+      : typeof src.has_security_role === 'boolean'
+        ? src.has_security_role
+        : null;
+  const hasExplicitBilling =
+    typeof src.hasBillingRole === 'boolean'
+      ? src.hasBillingRole
+      : typeof src.has_billing_role === 'boolean'
+        ? src.has_billing_role
+        : null;
+  const hasSecurityRole =
+    hasExplicitSecurity !== null
+      ? hasExplicitSecurity
+      : contacts.some((c) => String(c?.role || '').trim().toUpperCase() === 'SECURITY') ||
+        primaryRole === 'SECURITY' ||
+        Boolean(typeof src.security_contact === 'string' && src.security_contact.trim()) ||
+        Boolean(
+          src.securityTxt &&
+            src.securityTxt.found &&
+            !src.securityTxt.isExpired &&
+            Array.isArray(src.securityTxt.contacts) &&
+            src.securityTxt.contacts.length > 0
+        );
+  const hasBillingRole =
+    hasExplicitBilling !== null
+      ? hasExplicitBilling
+      : contacts.some((c) => {
+          const r = String(c?.role || '').trim().toUpperCase();
+          return r === 'BILLING_FINANCE' || r === 'BILLING';
+        }) ||
+        primaryRole === 'BILLING_FINANCE' ||
+        primaryRole === 'BILLING';
+
+  const openRolesVal =
+    src.openRolesCount ?? src.open_roles_count ?? src.total_open_roles ?? null;
+  const activeAdsVal = src.activeAdsCount ?? src.active_ads_count ?? null;
+
+  return {
+    domain: typeof src.domain === 'string' ? src.domain : null,
+    organizationName:
+      typeof (src.organizationName ?? src.organization_name) === 'string'
+        ? (src.organizationName ?? src.organization_name)
+        : null,
+    atsProvider:
+      typeof (src.atsProvider ?? src.ats_provider) === 'string'
+        ? (src.atsProvider ?? src.ats_provider)
+        : null,
+    openRolesCount:
+      typeof openRolesVal === 'number' && Number.isFinite(openRolesVal) ? openRolesVal : null,
+    salaryBandSummary:
+      typeof (src.salaryBandSummary ?? src.salary_band_summary) === 'string'
+        ? (src.salaryBandSummary ?? src.salary_band_summary)
+        : null,
+    activeAdsCount:
+      typeof activeAdsVal === 'number' && Number.isFinite(activeAdsVal) ? activeAdsVal : null,
+    emailGatewayProvider:
+      typeof (src.emailGatewayProvider ?? src.email_gateway_provider) === 'string'
+        ? (src.emailGatewayProvider ?? src.email_gateway_provider)
+        : typeof src.mx_status === 'string'
+          ? src.mx_status
+          : null,
+    deliverabilityGrade:
+      typeof (src.deliverabilityGrade ?? src.deliverability_grade) === 'string'
+        ? (src.deliverabilityGrade ?? src.deliverability_grade)
+        : null,
+    dmarcPolicy:
+      typeof (src.dmarcPolicy ?? src.dmarc_policy ?? src.dnsPosture?.dmarcPolicy) === 'string'
+        ? (src.dmarcPolicy ?? src.dmarc_policy ?? src.dnsPosture?.dmarcPolicy)
+        : null,
+    spfAllMechanism:
+      typeof (
+        src.spfAllMechanism ??
+        src.spf_all_mechanism ??
+        src.dnsPosture?.spfAllMechanism ??
+        src.spf_status
+      ) === 'string'
+        ? (src.spfAllMechanism ??
+          src.spf_all_mechanism ??
+          src.dnsPosture?.spfAllMechanism ??
+          src.spf_status)
+        : null,
+    securityTxtStatus:
+      typeof (src.securityTxtStatus ?? src.security_txt_status ?? src.securityTxt?.status) === 'string'
+        ? (src.securityTxtStatus ?? src.security_txt_status ?? src.securityTxt?.status)
+        : null,
+    hasSecurityRole: Boolean(hasSecurityRole),
+    hasBillingRole: Boolean(hasBillingRole),
+    emptyResult: Boolean(src.emptyResult ?? payload?.emptyResult),
+  };
 }
 
 /**
@@ -2456,6 +2566,39 @@ export function normalizeContactPulseInputAliases(rawInput = {}, mode = 'batch')
     normalized.pageToken = rawInput.cursor;
   }
 
+  // companyOnly / company_only boolean alias group
+  for (const coKey of ['companyOnly', 'company_only']) {
+    if (
+      rawInput[coKey] !== undefined &&
+      rawInput[coKey] !== null &&
+      typeof rawInput[coKey] !== 'boolean'
+    ) {
+      return {
+        ok: false,
+        normalized,
+        status: 'INVALID_INPUT',
+        errorCode: 'INVALID_PARAMETER_TYPE',
+        reason: `Parameter '${coKey}' must be a boolean`,
+      };
+    }
+  }
+  const hasCamelCo = rawInput.companyOnly !== undefined && rawInput.companyOnly !== null;
+  const hasSnakeCo = rawInput.company_only !== undefined && rawInput.company_only !== null;
+  if (hasCamelCo && hasSnakeCo && rawInput.companyOnly !== rawInput.company_only) {
+    return {
+      ok: false,
+      normalized,
+      status: 'INVALID_INPUT',
+      errorCode: 'CONFLICTING_PARAMETER_ALIASES',
+      reason: `Conflicting companyOnly parameters: 'companyOnly' (${String(rawInput.companyOnly)}) and 'company_only' (${String(rawInput.company_only)}) do not match`,
+    };
+  }
+  if (hasCamelCo || hasSnakeCo) {
+    const resolvedCompanyOnly = hasCamelCo ? rawInput.companyOnly : rawInput.company_only;
+    normalized.companyOnly = resolvedCompanyOnly;
+    normalized.company_only = resolvedCompanyOnly;
+  }
+
   return { ok: true, normalized };
 }
 
@@ -2783,31 +2926,45 @@ export async function enrichSingleB2bDomain(rawDomain, options = {}) {
     (securityTxt.found && !securityTxt.isExpired);
   const billable = !curated && hasEnrichedSignal;
 
+  const isCompanyOnly =
+    effectiveOptions.companyOnly === true || effectiveOptions.company_only === true;
+  const fullProfile = {
+    profileId: `DOMAIN:${domain}`,
+    domain,
+    organizationName,
+    canonicalUrl,
+    resolutionSource,
+    dataSource: resolutionSource,
+    emptyResult: !hasEnrichedSignal,
+    billable,
+    primaryEmail: primaryContact?.email || null,
+    primaryRole: primaryContact?.role || null,
+    contactsCount: filteredContacts.length,
+    contacts: filteredContacts,
+    emailGatewayProvider: dnsPosture.emailGatewayProvider,
+    deliverabilityGrade: dnsPosture.deliverabilityGrade,
+    dmarcPolicy: dnsPosture.dmarcPolicy,
+    spfAllMechanism: dnsPosture.spfAllMechanism,
+    securityTxtStatus: securityTxt.status,
+    dnsPosture,
+    securityTxt,
+    socialProfiles,
+    untrustedDomainExcerpt: buildUntrustedDomainExcerpt(organizationName, 240),
+  };
+
+  if (isCompanyOnly) {
+    return {
+      ok: true,
+      companyOnly: true,
+      emptyResult: fullProfile.emptyResult,
+      projectionVersion: 'v2_company_only',
+      profile: projectCompanyOnlyPosture(fullProfile),
+    };
+  }
+
   return {
     ok: true,
-    profile: {
-      profileId: `DOMAIN:${domain}`,
-      domain,
-      organizationName,
-      canonicalUrl,
-      resolutionSource,
-      dataSource: resolutionSource,
-      emptyResult: !hasEnrichedSignal,
-      billable,
-      primaryEmail: primaryContact?.email || null,
-      primaryRole: primaryContact?.role || null,
-      contactsCount: filteredContacts.length,
-      contacts: filteredContacts,
-      emailGatewayProvider: dnsPosture.emailGatewayProvider,
-      deliverabilityGrade: dnsPosture.deliverabilityGrade,
-      dmarcPolicy: dnsPosture.dmarcPolicy,
-      spfAllMechanism: dnsPosture.spfAllMechanism,
-      securityTxtStatus: securityTxt.status,
-      dnsPosture,
-      securityTxt,
-      socialProfiles,
-      untrustedDomainExcerpt: buildUntrustedDomainExcerpt(organizationName, 240),
-    },
+    profile: fullProfile,
   };
 }
 
@@ -2869,7 +3026,17 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
   }
 
   const allDomains = parsedBatch.domains;
-  const scopeHash = computePaginationScopeHash({ domains: allDomains, roleFilter });
+  const isCompanyOnly = Boolean(
+    input?.companyOnly === true ||
+      input?.company_only === true ||
+      options?.companyOnly === true ||
+      options?.company_only === true
+  );
+  const scopeHash = computePaginationScopeHash({
+    domains: allDomains,
+    roleFilter,
+    companyOnly: isCompanyOnly,
+  });
   const cursorRes = decodePaginationCursor(input?.pageToken, scopeHash);
   if (!cursorRes.ok) {
     return {
@@ -2902,6 +3069,7 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
   let deadlineReached = false;
   let lastAttemptedOffset = startOffset;
 
+  let nonEmptyCount = 0;
   for (let sliceIdx = 0; sliceIdx < sliceDomains.length; sliceIdx += 1) {
     if (
       sliceIdx > 0 &&
@@ -2920,9 +3088,12 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
       nowMs: options?.nowMs || Date.now(),
       deadlineAtMs,
       preferCurated: options?.preferCurated === true || input?.useSampleFixtures === true,
+      companyOnly: isCompanyOnly,
     });
     lastAttemptedOffset = startOffset + sliceIdx + 1;
     if (res.ok && res.profile) {
+      const itemIsEmpty = Boolean(res.emptyResult ?? res.profile.emptyResult);
+      if (!itemIsEmpty) nonEmptyCount += 1;
       items.push(res.profile);
       itemNextOffsets.push(startOffset + sliceIdx + 1);
     }
@@ -2939,8 +3110,6 @@ export async function resolveB2bDomainContactsBatch(input = {}, options = {}) {
     : null;
   const paginationStatus =
     deadlineReached && hasMore ? 'DEADLINE_REACHED_HAS_MORE' : hasMore ? 'HAS_MORE' : 'COMPLETE';
-
-  const nonEmptyCount = items.filter((item) => !item.emptyResult).length;
 
   return {
     ok: true,
@@ -3021,6 +3190,13 @@ export async function verifyEmailDeliverabilityPosture(input = {}, options = {})
     targetDomain = emailCheck.domainPart;
   }
 
+  const isCompanyOnly = Boolean(
+    input?.companyOnly === true ||
+      input?.company_only === true ||
+      options?.companyOnly === true ||
+      options?.company_only === true
+  );
+
   const enriched = await enrichSingleB2bDomain(targetDomain, {
     includeDnsPosture: true,
     includeSecurityTxt: true,
@@ -3039,6 +3215,45 @@ export async function verifyEmailDeliverabilityPosture(input = {}, options = {})
   const knownDirectoryMatch = candidateEmail
     ? p.contacts.some((c) => c.email === candidateEmail)
     : false;
+
+  if (isCompanyOnly) {
+    const companyProj = projectCompanyOnlyPosture(p);
+    const sanitizedDnsPosture = {
+      hasMx: Boolean(p.dnsPosture?.hasMx),
+      mxHosts: Array.isArray(p.dnsPosture?.mxHosts) ? p.dnsPosture.mxHosts : [],
+      emailGatewayProvider: p.dnsPosture?.emailGatewayProvider || p.emailGatewayProvider || 'NONE',
+      hasSpfRecord: Boolean(p.dnsPosture?.spfRecord),
+      spfAllMechanism: p.dnsPosture?.spfAllMechanism || p.spfAllMechanism || 'MISSING',
+      spfMultipleRecordsWarning: Boolean(p.dnsPosture?.spfMultipleRecordsWarning),
+      hasDmarcRecord: Boolean(p.dnsPosture?.dmarcRecord),
+      dmarcPolicy: p.dnsPosture?.dmarcPolicy || p.dmarcPolicy || 'MISSING',
+      dmarcSubdomainPolicy: p.dnsPosture?.dmarcSubdomainPolicy ?? null,
+      dmarcPct: p.dnsPosture?.dmarcPct ?? 100,
+      hasDmarcRua: Boolean(p.dnsPosture?.dmarcRua),
+      hasDmarcRuf: Boolean(p.dnsPosture?.dmarcRuf),
+      deliverabilityGrade: p.dnsPosture?.deliverabilityGrade || p.deliverabilityGrade || 'F',
+    };
+    return {
+      ok: true,
+      companyOnly: true,
+      projectionVersion: 'v2_company_only',
+      status: p.emptyResult ? 'EMPTY_RESULT' : 'SUCCEEDED',
+      emptyResult: Boolean(p.emptyResult),
+      domain: p.domain,
+      organizationName: p.organizationName,
+      classifiedRole: role,
+      isRoleAccount,
+      knownDirectoryMatch,
+      hasSecurityRole: companyProj.hasSecurityRole,
+      hasBillingRole: companyProj.hasBillingRole,
+      emailGatewayProvider: p.emailGatewayProvider,
+      deliverabilityGrade: p.deliverabilityGrade,
+      dmarcPolicy: p.dmarcPolicy,
+      spfAllMechanism: p.spfAllMechanism,
+      securityTxtStatus: p.securityTxtStatus,
+      dnsPosture: sanitizedDnsPosture,
+    };
+  }
 
   return {
     ok: true,

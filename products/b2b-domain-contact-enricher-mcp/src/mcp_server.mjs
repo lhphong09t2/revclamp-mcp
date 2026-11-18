@@ -168,6 +168,18 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           default: false,
           description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
+        companyOnly: {
+          title: 'Company-Only Posture Projection (Optional)',
+          type: 'boolean',
+          default: false,
+          description: 'When true, return Polar AUP company-only metadata without personal emails or social handles.',
+        },
+        company_only: {
+          title: 'Company-Only Posture Projection (Snake-Case Alias)',
+          type: 'boolean',
+          deprecated: true,
+          description: 'Alias for companyOnly.',
+        },
         cursor: {
           title: 'Pagination Cursor (Optional)',
           type: 'string',
@@ -230,6 +242,18 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           default: false,
           description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
         },
+        companyOnly: {
+          title: 'Company-Only Posture Projection (Optional)',
+          type: 'boolean',
+          default: false,
+          description: 'When true, return Polar AUP company-only metadata without personal emails or social handles.',
+        },
+        company_only: {
+          title: 'Company-Only Posture Projection (Snake-Case Alias)',
+          type: 'boolean',
+          deprecated: true,
+          description: 'Alias for companyOnly.',
+        },
       },
       additionalProperties: false,
     },
@@ -284,6 +308,18 @@ export const MCP_TOOLS_MANIFEST = Object.freeze([
           type: 'boolean',
           default: false,
           description: 'When true, prefer deterministic offline sample fixtures for curated domains.',
+        },
+        companyOnly: {
+          title: 'Company-Only Posture Projection (Optional)',
+          type: 'boolean',
+          default: false,
+          description: 'When true, return Polar AUP company-only metadata without personal emails or social handles.',
+        },
+        company_only: {
+          title: 'Company-Only Posture Projection (Snake-Case Alias)',
+          type: 'boolean',
+          deprecated: true,
+          description: 'Alias for companyOnly.',
         },
       },
       additionalProperties: false,
@@ -406,7 +442,7 @@ export function validateMcpToolArguments(toolName, rawArgs) {
       reason: "Parameter 'domains' must be an array of strings or a comma-separated string",
     };
   }
-  for (const boolKey of ['includeDnsPosture', 'includeSecurityTxt', 'useSampleFixtures']) {
+  for (const boolKey of ['includeDnsPosture', 'includeSecurityTxt', 'useSampleFixtures', 'companyOnly', 'company_only']) {
     if (args[boolKey] !== undefined && typeof args[boolKey] !== 'boolean') {
       return {
         ok: false,
@@ -559,6 +595,7 @@ export async function handleMcpJsonRpcRequest(req, options = {}) {
 
     if (toolName === 'inspect_domain_dns_and_security_txt') {
       const target = String(args.domain || args.query || args.company || args.url || '').trim();
+      const isCompanyOnly = args?.companyOnly === true || args?.company_only === true;
       const singleRes = await enrichSingleB2bDomain(target, {
         includeDnsPosture: true,
         includeSecurityTxt: true,
@@ -566,9 +603,19 @@ export async function handleMcpJsonRpcRequest(req, options = {}) {
         dnsLookup: options?.dnsLookup,
         nowMs: options?.nowMs || Date.now(),
         preferCurated: options?.preferCurated === true || args?.useSampleFixtures === true,
+        companyOnly: isCompanyOnly,
       });
       if (!singleRes.ok) {
         return truncateMcpResponseEnvelope(reqId, singleRes);
+      }
+      if (singleRes.companyOnly) {
+        return truncateMcpResponseEnvelope(reqId, {
+          ok: true,
+          companyOnly: true,
+          projectionVersion: singleRes.projectionVersion || 'v2_company_only',
+          status: singleRes.profile.emptyResult ? 'EMPTY_RESULT' : 'SUCCEEDED',
+          ...singleRes.profile,
+        });
       }
       return truncateMcpResponseEnvelope(reqId, {
         ok: true,
@@ -589,7 +636,11 @@ export async function handleMcpJsonRpcRequest(req, options = {}) {
     }
 
     if (toolName === 'verify_email_deliverability_posture') {
-      const postureRes = await verifyEmailDeliverabilityPosture(args, options);
+      const isCompanyOnly = args?.companyOnly === true || args?.company_only === true;
+      const postureRes = await verifyEmailDeliverabilityPosture(args, {
+        ...options,
+        companyOnly: isCompanyOnly,
+      });
       return truncateMcpResponseEnvelope(reqId, postureRes);
     }
 
