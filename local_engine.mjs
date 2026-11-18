@@ -25,6 +25,7 @@ export const PACKAGE_VERSION = JSON.parse(
 ).version;
 export const MCP_PROTOCOL_VERSION = "2024-11-05";
 export const SUPPORTED_MCP_PROTOCOL_VERSIONS = Object.freeze([
+  "2025-11-25",
   "2025-06-18",
   "2025-03-26",
   "2024-11-05",
@@ -5912,11 +5913,52 @@ export function executeLocalMcpJsonRpc(
     }
   }
 
+  if (method === "server/discover") {
+    return {
+      jsonrpc: "2.0",
+      id: safeId,
+      result: {
+        resultType: "complete",
+        supportedVersions: [...SUPPORTED_MCP_PROTOCOL_VERSIONS],
+        capabilities: {
+          tools: { listChanged: false },
+          resources: { listChanged: false },
+          prompts: { listChanged: false },
+        },
+        _meta: {
+          "io.modelcontextprotocol/serverInfo": {
+            name: "revclamp-mcp",
+            version: packageVersion,
+            title: "RevClamp B2B Revenue, Chargeback & EU VAT MCP Server",
+            icons: [
+              {
+                src: "https://revclamp.com/apple-touch-icon.png",
+                mimeType: "image/png",
+                sizes: ["180x180"],
+              },
+              {
+                src: "https://revclamp.com/favicon.png",
+                mimeType: "image/png",
+                sizes: ["32x32"],
+              },
+            ],
+          },
+        },
+        instructions:
+          "Local open-source MCP engine with 9 deterministic B2B Stripe, Visa CE 3.0, EU/XI VIES VAT, Shopify Net-Terms, and webhook verification tools (zero network calls by default). Set REVCLAMP_API_KEY to enable hosted 90-day workspaces at https://api.revclamp.com/api/mcp.",
+        ttlMs: 3600000,
+        cacheScope: "public",
+      },
+    };
+  }
+
   if (method === "initialize") {
     const requestedVersion = String(rpcRequest?.params?.protocolVersion || "").trim();
     const negotiatedVersion = SUPPORTED_MCP_PROTOCOL_VERSIONS.includes(requestedVersion)
       ? requestedVersion
-      : MCP_PROTOCOL_VERSION;
+      : /^\d{4}-\d{2}-\d{2}$/.test(requestedVersion) && requestedVersion >= "2026-01-01"
+        ? "2025-11-25"
+        : MCP_PROTOCOL_VERSION;
     return {
       jsonrpc: "2.0",
       id: safeId,
@@ -5961,6 +6003,16 @@ export function executeLocalMcpJsonRpc(
       id: safeId,
       result: {
         resources: LOCAL_MCP_RESOURCES,
+      },
+    };
+  }
+
+  if (method === "resources/templates/list") {
+    return {
+      jsonrpc: "2.0",
+      id: safeId,
+      result: {
+        resourceTemplates: [],
       },
     };
   }

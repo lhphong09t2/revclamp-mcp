@@ -24,6 +24,7 @@ import {
   PACKAGE_VERSION,
   LOCAL_MCP_TOOLS,
   MCP_PROTOCOL_VERSION,
+  SUPPORTED_MCP_PROTOCOL_VERSIONS,
   MCP_TOOL_TO_WEB_SLUG_MAP,
   DEFAULT_AUTORUN_PRESET_BY_MCP_TOOL,
   buildLocalCloudUpgradeHint,
@@ -36,6 +37,7 @@ export {
   PACKAGE_VERSION,
   LOCAL_MCP_TOOLS,
   MCP_PROTOCOL_VERSION,
+  SUPPORTED_MCP_PROTOCOL_VERSIONS,
   MCP_TOOL_TO_WEB_SLUG_MAP,
   DEFAULT_AUTORUN_PRESET_BY_MCP_TOOL,
   buildLocalCloudUpgradeHint,
@@ -393,6 +395,15 @@ async function readBoundedResponseText(res, maxBytes = MAX_PAYLOAD_BYTES) {
  * @param {object} [options]
  * @returns {Promise<object|null>}
  */
+/** Encode MCP HTTP header value as plain ASCII or canonical `=?base64?...?=` sentinel. */
+function encodeMcpHeaderValue(rawVal) {
+  const str = String(rawVal ?? "");
+  if (/[^\x20-\x7e]/.test(str) || str !== str.trim() || str.startsWith("=?base64?")) {
+    return `=?base64?${Buffer.from(str, "utf8").toString("base64")}?=`;
+  }
+  return str;
+}
+
 export async function forwardMcpJsonRpc(
   rpcRequest,
   {
@@ -404,6 +415,7 @@ export async function forwardMcpJsonRpc(
     timeoutMs = REQUEST_TIMEOUT_MS,
     fetchImpl,
     mode = process.env.REVCLAMP_MCP_MODE || "",
+    protocolVersion = "",
   } = {}
 ) {
   const effectiveEnv = env && typeof env === "object" ? env : process.env;
@@ -470,6 +482,10 @@ export async function forwardMcpJsonRpc(
 
   if (methodStr === "notifications/initialized" && isNotification) {
     return null;
+  }
+
+  if (methodStr !== rpcRequest.method) {
+    rpcRequest = { ...rpcRequest, method: methodStr };
   }
 
   if (
@@ -553,7 +569,61 @@ export async function forwardMcpJsonRpc(
     }
   }
 
+  const explicitProtoVer = typeof protocolVersion === "string" ? protocolVersion.trim() : "";
+
   try {
+    const rawViesMode = String(rpcRequest?.params?.arguments?.viesMode || "")
+      .trim()
+      .toUpperCase();
+    const isLocalOnlyViesCall =
+      methodStr === "tools/call" &&
+      rpcRequest?.params?.name === "revclamp_validate_eu_vat_vies" &&
+      (rawViesMode === "FORMAT_ONLY" || rpcRequest?.params?.arguments?.demo === true);
+
+    const existingMeta =
+      rpcRequest.params &&
+      typeof rpcRequest.params._meta === "object" &&
+      rpcRequest.params._meta !== null &&
+      !Array.isArray(rpcRequest.params._meta)
+        ? rpcRequest.params._meta
+        : null;
+    if (
+      !isNotification &&
+      effectiveMode !== "local" &&
+      hasExplicitRemote &&
+      !isLocalOnlyViesCall &&
+      explicitProtoVer === "2026-07-28" &&
+      (!existingMeta ||
+        !Object.prototype.hasOwnProperty.call(
+          existingMeta,
+          "io.modelcontextprotocol/protocolVersion"
+        ) ||
+        !Object.prototype.hasOwnProperty.call(
+          existingMeta,
+          "io.modelcontextprotocol/clientCapabilities"
+        ))
+    ) {
+      const seededMeta = {
+        ...(existingMeta || {}),
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      };
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          seededMeta,
+          "io.modelcontextprotocol/clientCapabilities"
+        )
+      ) {
+        seededMeta["io.modelcontextprotocol/clientCapabilities"] = {};
+      }
+      rpcRequest = {
+        ...rpcRequest,
+        params: {
+          ...(rpcRequest.params || {}),
+          _meta: seededMeta,
+        },
+      };
+    }
+
     const serialized = JSON.stringify(rpcRequest);
     if (Buffer.byteLength(serialized, "utf8") > MAX_PAYLOAD_BYTES) {
       if (isNotification) {
@@ -565,14 +635,6 @@ export async function forwardMcpJsonRpc(
         error: { code: -32600, message: "JSON-RPC request exceeds 32,768-byte limit" },
       };
     }
-
-    const rawViesMode = String(rpcRequest?.params?.arguments?.viesMode || "")
-      .trim()
-      .toUpperCase();
-    const isLocalOnlyViesCall =
-      methodStr === "tools/call" &&
-      rpcRequest?.params?.name === "revclamp_validate_eu_vat_vies" &&
-      (rawViesMode === "FORMAT_ONLY" || rpcRequest?.params?.arguments?.demo === true);
 
     const cleanKey = resolvedApiKey;
 
@@ -595,7 +657,26 @@ export async function forwardMcpJsonRpc(
     const headers = {
       "content-type": "application/json",
       accept: "application/json",
+      "mcp-method": encodeMcpHeaderValue(methodStr),
     };
+    const metaProtoVer =
+      typeof rpcRequest?.params?._meta?.["io.modelcontextprotocol/protocolVersion"] === "string"
+        ? rpcRequest.params._meta["io.modelcontextprotocol/protocolVersion"].trim()
+        : "";
+    const forwardedProtoVer = metaProtoVer || explicitProtoVer;
+    if (forwardedProtoVer) {
+      headers["mcp-protocol-version"] = encodeMcpHeaderValue(forwardedProtoVer);
+    }
+    const rawMcpTargetName =
+      methodStr === "resources/read" && typeof rpcRequest?.params?.uri === "string"
+        ? rpcRequest.params.uri
+        : (methodStr === "tools/call" || methodStr === "prompts/get") &&
+            typeof rpcRequest?.params?.name === "string"
+          ? rpcRequest.params.name
+          : "";
+    if (rawMcpTargetName.length > 0) {
+      headers["mcp-name"] = encodeMcpHeaderValue(rawMcpTargetName);
+    }
     if (cleanKey) {
       headers.authorization = `Bearer ${cleanKey}`;
     }

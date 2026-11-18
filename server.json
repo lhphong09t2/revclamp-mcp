@@ -24,13 +24,13 @@
       ]
     }
   ],
-  "version": "1.20.33",
+  "version": "1.20.34",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "revclamp-mcp",
-      "version": "1.20.33",
+      "version": "1.20.34",
       "transport": {
         "type": "stdio"
       },
@@ -54,7 +54,23 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://api.revclamp.com/api/mcp"
+      "url": "https://api.revclamp.com/api/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Optional workspace Bearer token (omit for keyless sandbox; provision from dashboard).",
+          "isRequired": false,
+          "isSecret": true,
+          "value": "Bearer {workspaceKey}",
+          "variables": {
+            "workspaceKey": {
+              "description": "Optional workspace bearer token from /dashboard",
+              "isRequired": false,
+              "isSecret": true
+            }
+          }
+        }
+      ]
     }
   ]
 }
