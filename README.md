@@ -3,6 +3,7 @@
 [![RevClamp Enterprise — B2B Revenue & Compliance Guardrails](https://revclamp.com/assets/revclamp-product-banner.png)](https://revclamp.com)
 
 [![mcptry](https://mcptry.com/badge/com.revclamp/revclamp-mcp.svg)](https://mcptry.com/servers/com.revclamp/revclamp-mcp)
+[![lhphong09t2/revclamp-mcp MCP server](https://glama.ai/mcp/servers/lhphong09t2/revclamp-mcp/badges/score.svg)](https://glama.ai/mcp/servers/lhphong09t2/revclamp-mcp)
 
 **`revclamp-mcp`** is a standalone, zero-dependency **Open-Source Model Context Protocol (MCP) Server & CLI** (`index.mjs` + `local_engine.mjs`) implementing **9 deterministic B2B FinOps, Stripe `2025-03-31.basil`, Visa CE 3.0, EU/XI VIES VAT, Shopify Plus B2B Net-15/30/60, and Webhook Security tools** in pure Node.js.
 
